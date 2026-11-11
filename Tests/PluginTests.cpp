@@ -69,7 +69,7 @@ TEST_CASE("OpenSmackerProcessor renders audio upon MIDI note-on", "[plugin]") {
 
 TEST_CASE("OpenSmackerProcessor saves and restores state information", "[plugin]") {
     OpenSmackerProcessor proc1;
-    proc1.setCurrentProgram(8); // SN 09 Daniel Kandi Always Alive Snare
+    proc1.setCurrentProgram(8); // SN 09 Euphoric Always Alive Snare
 
     juce::MemoryBlock block;
     proc1.getStateInformation(block);
@@ -86,7 +86,7 @@ TEST_CASE("OpenSmackerProcessor saves and restores state information", "[plugin]
 TEST_CASE("OpenSmackerEditor instantiates and captures live Simple and Advanced screenshots", "[plugin][gui]") {
     OpenSmackerProcessor processor;
     processor.prepareToPlay(48000.0, 512);
-    processor.setCurrentProgram(1); // SN 02 Above & Beyond Group Therapy Snare
+    processor.setCurrentProgram(1); // SN 02 Melodic Group Therapy Snare
 
     // Trigger a hit so the live visualizer stage is active in the screenshot
     juce::AudioBuffer<float> buffer(2, 512);
@@ -119,8 +119,8 @@ TEST_CASE("OpenSmackerEditor instantiates and captures live Simple and Advanced 
         }
     }
 
-    // 2. Capture Advanced Mode Screenshot (showing BL 04 Kandiman 138 Euphoric Bell)
-    processor.setCurrentProgram(27); // BL 04 Kandiman 138 Euphoric Bell
+    // 2. Capture Advanced Mode Screenshot (showing BL 04 Euphoric 138 Pluck Bell)
+    processor.setCurrentProgram(27); // BL 04 Euphoric 138 Pluck Bell
     editor->setAdvancedView(true);
     juce::Image advSnapshot = editor->createComponentSnapshot(editor->getLocalBounds());
     REQUIRE(advSnapshot.isValid());
@@ -159,7 +159,7 @@ TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset chang
 
     lockParam->setValueNotifyingHost(1.0f);
 
-    processor.setCurrentProgram(48); // TM 01 Anjunabeats Groove Tom has octave 2 default
+    processor.setCurrentProgram(48); // TM 01 Progressive Groove Tom has octave 2 default
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 6.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFreq)->load() - 2400.0f) < 2.0f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneNote)->load() - 4.0f) < 0.05f);
