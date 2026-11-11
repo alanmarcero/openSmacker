@@ -112,9 +112,15 @@ void StereoCompressor::process(float& left, float& right, const CompressorSettin
     }
 
     float gainDb = 0.0f;
-    if (envelopeDb_ > settings.thresholdDb && settings.ratio > 1.0f) {
+    if (settings.ratio > 1.0f) {
+        constexpr float kneeWidthDb = 2.0f;
         const float overDb = envelopeDb_ - settings.thresholdDb;
-        gainDb = -overDb * (1.0f - (1.0f / settings.ratio));
+        if (overDb > kneeWidthDb * 0.5f) {
+            gainDb = -overDb * (1.0f - (1.0f / settings.ratio));
+        } else if (overDb > -kneeWidthDb * 0.5f) {
+            const float k = overDb + kneeWidthDb * 0.5f;
+            gainDb = -(k * k / (2.0f * kneeWidthDb)) * (1.0f - (1.0f / settings.ratio));
+        }
     }
 
     const float totalGainLin = dbToLin(gainDb + settings.makeupDb);
