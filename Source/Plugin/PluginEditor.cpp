@@ -177,7 +177,7 @@ void OpenSmackerEditor::paint(juce::Graphics& g) {
 
     g.setColour(opensmacker::theme::kTextDim.brighter(0.25f));
     g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawText("v1.0.0 | 72 SN / BL / TM PRESETS", getWidth() - 250, headerArea.getY() + 13, 234, 20, juce::Justification::right, true);
+    g.drawText("v" JucePlugin_VersionString " | 72 SN / BL / TM PRESETS", getWidth() - 250, headerArea.getY() + 13, 234, 20, juce::Justification::right, true);
 }
 
 void OpenSmackerEditor::resized() {

@@ -35,6 +35,7 @@ if(OS_BUILD_PLUGIN)
     set_target_properties(SmackerAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     juce_add_plugin(OpenSmacker
+        VERSION "${PROJECT_VERSION}"
         COMPANY_NAME "Alan Marcero"
         BUNDLE_ID "com.alanmarcero.opensmacker"
         PRODUCT_NAME "openSmacker"
