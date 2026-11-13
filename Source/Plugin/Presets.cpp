@@ -8,81 +8,138 @@ using namespace opensmacker::params;
 
 namespace {
 
-FactoryPreset makePreset(
-    const char* name,
-    float preBursts, float preSpread, float noiseDecay, float reverbDecayScale,
-    float preLevel, float preJitter, float voiceMode, float fmAmount,
-    float toneFreq, float toneNote, float toneOctave, float toneFine,
-    float pitchDrop, float pitchDropTime, float toneDecay, float toneLevel, float noteTrack,
-    float clickType, float clickFreq, float clickLevel,
-    float noiseType, float noiseHPF, float toneQ, float noiseLevel,
-    float noiseStereoWidth, float flamPanSpread,
-    float distType, float distToneBias, float noiseLPF, float reverbGateScale,
-    float distDrive, float distMix, float noiseLPFOverride,
-    float compThresh, float compRatio, float compAttack, float compRelease, float compMakeup,
-    float limiterCeiling, float revSize, float revDamp, float revMix, float masterGain = 0.0f,
-    float reverseMode = 0.0f, float reverseMix = 0.45f) {
-    (void)noiseLPF;
-    const float clampedDistTone = std::clamp((distToneBias - 1.5f) * 0.35f, -1.0f, 1.0f);
-    const float clampedDistType = std::clamp(std::round(distType * 0.6f), 0.0f, 3.0f);
-    const float reverbDecayMs = std::clamp(reverbDecayScale * 420.0f, 80.0f, 2200.0f);
-    const float reverbGateMs = std::clamp(reverbGateScale * 65.0f, 0.0f, 550.0f);
+struct PresetDef {
+    const char* name = "";
 
+    // Pre-strike flam / roll
+    int preBursts = 1;             // 1..5
+    float preSpread = 11.0f;       // 2..45 ms
+    float preDecay = 8.0f;         // 2..35 ms
+    float preJitter = 0.12f;       // 0..1
+    float flamSpread = 0.40f;      // 0..1
+    float preLevel = 0.55f;        // 0..1
+
+    // Voice & Tone Body
+    int voiceMode = 0;             // 0=DanceSnare, 1=ClubTom, 2=FmBell, 3=PrydaRimSmack
+    int toneNote = 9;              // 0..11 (0=C, 9=A)
+    int toneOctave = 3;            // 1..8
+    float toneFine = 0.0f;         // -50..50 ct
+    float toneFreq = 220.0f;       // 60..6000 Hz
+    float toneQ = 3.5f;            // 0.5..15
+    float toneDecay = 180.0f;      // 15..1200 ms
+    float tonePitchEnv = 12.0f;    // -24..36 st
+    float tonePitchDecay = 22.0f;  // 3..150 ms
+    float fmAmount = 0.30f;        // 0..1
+    float toneLevel = 0.85f;       // 0..1
+
+    // Snare Wires / Sizzle / Air
+    int noiseType = 0;             // 0=SnareWires, 1=WhiteSizzle, 2=VelvetAir, 3=MetallicRing
+    float noiseAttack = 0.0f;      // 0..20 ms
+    float noiseHold = 2.0f;        // 0..30 ms
+    float noiseDecay = 210.0f;     // 15..1200 ms
+    float noiseCurve = -0.35f;     // -1..1
+    float noiseHPF = 280.0f;       // 20..2500 Hz
+    float noiseLPF = 11000.0f;     // 800..20000 Hz
+    float noiseStereoWidth = 1.15f;// 0..2
+    float noiseLevel = 0.80f;      // 0..1
+
+    // Transient Strike
+    int clickType = 0;             // 0=Stick, 1=Mallet, 2=Rimshot, 3=Laser
+    float clickLevel = 0.50f;      // 0..1
+    float clickFreq = 3800.0f;     // 500..12000 Hz
+
+    // Impact Distortion
+    int distType = 0;              // 0=Tape, 1=Tube, 2=HardClip, 3=Wavefold
+    float distDrive = 0.14f;       // 0..1
+    float distTone = 0.0f;         // -1..1
+    float distMix = 0.22f;         // 0..1
+
+    // Compressor
+    float compThresh = -14.0f;     // -40..0 dB
+    float compRatio = 4.0f;        // 1..20
+    float compAttack = 5.0f;       // 0.1..50 ms
+    float compRelease = 80.0f;     // 10..500 ms
+    float compMakeup = 3.0f;       // 0..24 dB
+    float compMix = 1.0f;          // 0..1
+
+    // Limiter
+    float limiterCeiling = -0.3f;  // -12..0 dB
+    float limiterRelease = 20.0f;  // 5..100 ms
+    float limiterEnabled = 1.0f;   // 0 or 1
+
+    // Gated Trance Reverb
+    float reverbSize = 0.65f;      // 0.1..1
+    float reverbDecay = 480.0f;    // 50..2500 ms
+    float reverbDamp = 0.38f;      // 0..1
+    float reverbGate = 180.0f;     // 0..600 ms
+    float reverbMix = 0.32f;       // 0..1
+
+    // Reverse & Sync
+    int reverseMode = 0;           // 0=Off, 1=Beat End, 2=Beat 4 Auto, 3=1/2 Beat, 4=1/4 Beat
+    float reverseMix = 0.50f;      // 0..1
+
+    // Global / Master
+    int midiMode = 0;              // 0=Fixed (Root), 1=Note Tracking
+    float stereoWidth = 1.0f;      // 0..2
+    float outputGain = 0.0f;       // -36..12 dB
+};
+
+FactoryPreset makePreset(const PresetDef& p) {
     return FactoryPreset{
-        name,
+        p.name,
         {
-            { kPreBursts, preBursts },
-            { kPreSpread, preSpread },
-            { kPreDecay, std::clamp(preSpread * 0.85f, 3.0f, 30.0f) },
-            { kPreJitter, preJitter },
-            { kFlamSpread, flamPanSpread },
-            { kPreLevel, preLevel },
-            { kVoiceMode, voiceMode },
-            { kFmAmount, fmAmount },
-            { kToneFreq, toneFreq },
-            { kToneNote, toneNote },
-            { kToneOctave, toneOctave },
-            { kToneFine, toneFine },
-            { kToneQ, toneQ },
-            { kTonePitchEnv, pitchDrop },
-            { kTonePitchDecay, pitchDropTime },
-            { kToneDecay, toneDecay },
-            { kToneLevel, toneLevel },
-            { kMidiMode, noteTrack },
-            { kClickType, clickType },
-            { kClickFreq, clickFreq },
-            { kClickLevel, clickLevel },
-            { kNoiseType, noiseType },
-            { kNoiseAttack, 0.0f },
-            { kNoiseHold, 2.0f },
-            { kNoiseDecay, noiseDecay },
-            { kNoiseCurve, -0.35f },
-            { kNoiseHPF, std::clamp(noiseHPF * 0.25f, 40.0f, 2200.0f) },
-            { kNoiseLPF, std::clamp(noiseLPFOverride * 1.6f, 2500.0f, 19000.0f) },
-            { kNoiseStereoWidth, std::clamp(noiseStereoWidth * 1.5f, 0.2f, 1.9f) },
-            { kNoiseLevel, noiseLevel },
-            { kStereoWidth, std::clamp(0.75f + noiseStereoWidth * 0.55f, 0.5f, 1.6f) },
-            { kDistType, clampedDistType },
-            { kDistDrive, distDrive },
-            { kDistMix, distMix },
-            { kDistTone, clampedDistTone },
-            { kCompThresh, compThresh },
-            { kCompRatio, compRatio },
-            { kCompAttack, compAttack },
-            { kCompRelease, compRelease },
-            { kCompMakeup, compMakeup },
-            { kCompMix, 1.0f },
-            { kLimiterCeiling, limiterCeiling },
-            { kLimiterRelease, 20.0f },
-            { kLimiterEnabled, 1.0f },
-            { kReverbSize, revSize },
-            { kReverbDecay, reverbDecayMs },
-            { kReverbDamp, revDamp },
-            { kReverbGate, reverbGateMs },
-            { kReverbMix, revMix },
-            { kReverseMode, reverseMode },
-            { kReverseMix, reverseMix },
-            { kOutputGain, masterGain },
+            { kPreBursts, static_cast<float>(p.preBursts) },
+            { kPreSpread, p.preSpread },
+            { kPreDecay, p.preDecay },
+            { kPreJitter, p.preJitter },
+            { kFlamSpread, p.flamSpread },
+            { kPreLevel, p.preLevel },
+            { kVoiceMode, static_cast<float>(p.voiceMode) },
+            { kToneNote, static_cast<float>(p.toneNote) },
+            { kToneOctave, static_cast<float>(p.toneOctave) },
+            { kToneFine, p.toneFine },
+            { kToneFreq, p.toneFreq },
+            { kToneQ, p.toneQ },
+            { kToneDecay, p.toneDecay },
+            { kTonePitchEnv, p.tonePitchEnv },
+            { kTonePitchDecay, p.tonePitchDecay },
+            { kFmAmount, p.fmAmount },
+            { kToneLevel, p.toneLevel },
+            { kNoiseType, static_cast<float>(p.noiseType) },
+            { kNoiseAttack, p.noiseAttack },
+            { kNoiseHold, p.noiseHold },
+            { kNoiseDecay, p.noiseDecay },
+            { kNoiseCurve, p.noiseCurve },
+            { kNoiseHPF, p.noiseHPF },
+            { kNoiseLPF, p.noiseLPF },
+            { kNoiseStereoWidth, p.noiseStereoWidth },
+            { kNoiseLevel, p.noiseLevel },
+            { kClickType, static_cast<float>(p.clickType) },
+            { kClickLevel, p.clickLevel },
+            { kClickFreq, p.clickFreq },
+            { kDistType, static_cast<float>(p.distType) },
+            { kDistDrive, p.distDrive },
+            { kDistTone, p.distTone },
+            { kDistMix, p.distMix },
+            { kCompThresh, p.compThresh },
+            { kCompRatio, p.compRatio },
+            { kCompAttack, p.compAttack },
+            { kCompRelease, p.compRelease },
+            { kCompMakeup, p.compMakeup },
+            { kCompMix, p.compMix },
+            { kLimiterCeiling, p.limiterCeiling },
+            { kLimiterRelease, p.limiterRelease },
+            { kLimiterEnabled, p.limiterEnabled },
+            { kReverbSize, p.reverbSize },
+            { kReverbDecay, p.reverbDecay },
+            { kReverbDamp, p.reverbDamp },
+            { kReverbGate, p.reverbGate },
+            { kReverbMix, p.reverbMix },
+            { kReverseMode, static_cast<float>(p.reverseMode) },
+            { kReverseMix, p.reverseMix },
+            { kMidiMode, static_cast<float>(p.midiMode) },
+            { kStereoWidth, p.stereoWidth },
+            { kOutputGain, p.outputGain },
         }
     };
 }
@@ -90,524 +147,966 @@ FactoryPreset makePreset(
 } // namespace
 
 const std::vector<FactoryPreset>& factoryPresets() {
-    // VoiceMode: 0 = Dance Snare, 1 = Club Tom, 2 = FM Bell / Chime, 3 = Pryda Rim Smack
-    // ClickType: 0 = Stick, 1 = Mallet, 2 = Rimshot, 3 = Laser
-    // NoiseType: 0 = Snare Wires, 1 = White Sizzle, 2 = Velvet Air, 3 = Metallic Ring
     static const std::vector<FactoryPreset> kPresets = {
         // =========================================================================
         // SN 01 - SN 24: TUNABLE DANCE & TRANCE SNARES (24 Presets)
         // =========================================================================
-        makePreset("SN 01 Velvet Snare Smack",
-            2.0f, 9.0f, 165.0f, 1.0f, 0.62f, 0.14f, 0.0f, 0.15f,
-            220.0f, 9.0f, 3.0f, 0.0f, 10.0f, 24.0f, 155.0f, 0.78f, 0.0f,
-            0.0f, 3400.0f, 0.45f, 0.0f, 1200.0f, 3.2f, 0.76f, 0.75f, 0.35f,
-            0.0f, 1.8f, 1800.0f, 2.5f, 0.22f, 0.38f, 7500.0f,
-            -13.0f, 4.0f, 4.0f, 80.0f, 2.5f, -0.3f, 0.58f, 0.42f, 0.22f, 0.0f),
 
-        makePreset("SN 02 Melodic Group Therapy Snare",
-            3.0f, 11.5f, 195.0f, 1.08f, 0.65f, 0.18f, 0.0f, 0.12f,
-            196.0f, 7.0f, 3.0f, 0.0f, 11.0f, 28.0f, 175.0f, 0.80f, 0.0f,
-            2.0f, 3600.0f, 0.52f, 0.0f, 1300.0f, 3.0f, 0.80f, 0.82f, 0.48f,
-            1.0f, 1.5f, 2100.0f, 3.2f, 0.26f, 0.42f, 8200.0f,
-            -14.0f, 4.5f, 3.5f, 95.0f, 3.0f, -0.3f, 0.65f, 0.35f, 0.26f, 0.5f),
+        makePreset(PresetDef{
+            .name = "SN 01 Anjuna Snare Smack",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.6f,
+            .toneDecay = 185.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.22f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 210.0f, .noiseCurve = -0.35f, .noiseHPF = 280.0f, .noiseLPF = 11500.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.82f,
+            .clickType = 0, .clickLevel = 0.54f, .clickFreq = 3800.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.05f, .distMix = 0.25f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.5f, .compRelease = 80.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.65f, .reverbDecay = 480.0f, .reverbDamp = 0.35f, .reverbGate = 180.0f, .reverbMix = 0.28f,
+            .stereoWidth = 1.05f, .outputGain = 0.0f
+        }),
 
-        makePreset("SN 03 Progressive Arena Rim Smack",
-            1.0f, 4.5f, 310.0f, 1.45f, 0.55f, 0.08f, 3.0f, 0.35f,
-            440.0f, 9.0f, 4.0f, 0.0f, 7.0f, 16.0f, 195.0f, 0.84f, 0.0f,
-            2.0f, 3800.0f, 0.75f, 0.0f, 1600.0f, 4.2f, 0.85f, 0.92f, 0.60f,
-            1.0f, 3.2f, 2400.0f, 4.0f, 0.35f, 0.48f, 9000.0f,
-            -16.0f, 6.0f, 2.0f, 120.0f, 4.0f, -0.2f, 0.82f, 0.25f, 0.38f, 1.2f),
+        makePreset(PresetDef{
+            .name = "SN 02 Above & Beyond Group Therapy Snare",
+            .preBursts = 2, .preSpread = 11.5f, .preDecay = 8.5f, .preJitter = 0.12f, .flamSpread = 0.42f, .preLevel = 0.55f,
+            .voiceMode = 0, .toneNote = 7, .toneOctave = 3, .toneFreq = 196.0f, .toneQ = 3.4f,
+            .toneDecay = 205.0f, .tonePitchEnv = 11.0f, .tonePitchDecay = 24.0f, .fmAmount = 0.20f, .toneLevel = 0.85f,
+            .noiseType = 2, .noiseDecay = 235.0f, .noiseCurve = -0.30f, .noiseHPF = 250.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.30f, .noiseLevel = 0.84f,
+            .clickType = 2, .clickLevel = 0.52f, .clickFreq = 3600.0f,
+            .distType = 1, .distDrive = 0.18f, .distTone = 0.08f, .distMix = 0.28f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 4.0f, .compRelease = 90.0f, .compMakeup = 3.4f,
+            .reverbSize = 0.72f, .reverbDecay = 560.0f, .reverbDamp = 0.30f, .reverbGate = 210.0f, .reverbMix = 0.32f,
+            .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 04 Analog Tight Pocket Snare",
-            1.0f, 5.5f, 130.0f, 0.92f, 0.52f, 0.09f, 0.0f, 0.18f,
-            185.0f, 6.0f, 3.0f, 0.0f, 13.0f, 20.0f, 135.0f, 0.82f, 0.0f,
-            0.0f, 3100.0f, 0.54f, 0.0f, 1100.0f, 2.9f, 0.68f, 0.62f, 0.25f,
-            1.0f, 1.4f, 1500.0f, 1.8f, 0.30f, 0.45f, 6400.0f,
-            -14.0f, 4.8f, 2.8f, 65.0f, 3.0f, -0.3f, 0.44f, 0.52f, 0.14f, 0.5f),
+        makePreset(PresetDef{
+            .name = "SN 03 Pryda Arena Rim Smack",
+            .voiceMode = 3, .toneNote = 9, .toneOctave = 3, .toneFreq = 1650.0f, .toneQ = 4.6f,
+            .toneDecay = 230.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.36f, .toneLevel = 0.90f,
+            .noiseType = 0, .noiseDecay = 280.0f, .noiseCurve = -0.25f, .noiseHPF = 320.0f, .noiseLPF = 13000.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.86f,
+            .clickType = 2, .clickLevel = 0.68f, .clickFreq = 4200.0f,
+            .distType = 1, .distDrive = 0.28f, .distTone = 0.12f, .distMix = 0.38f,
+            .compThresh = -16.0f, .compRatio = 5.5f, .compAttack = 3.2f, .compRelease = 100.0f, .compMakeup = 4.2f,
+            .reverbSize = 0.80f, .reverbDecay = 650.0f, .reverbDamp = 0.25f, .reverbGate = 240.0f, .reverbMix = 0.36f,
+            .stereoWidth = 1.25f, .outputGain = 1.0f
+        }),
 
-        makePreset("SN 05 Stadium Snap Rim Snare",
-            2.0f, 7.5f, 150.0f, 0.96f, 0.58f, 0.12f, 3.0f, 0.28f,
-            392.0f, 7.0f, 4.0f, 0.0f, 9.0f, 18.0f, 145.0f, 0.78f, 0.0f,
-            2.0f, 3900.0f, 0.68f, 0.0f, 1500.0f, 3.8f, 0.70f, 0.75f, 0.45f,
-            0.0f, 2.8f, 2300.0f, 2.8f, 0.26f, 0.40f, 8000.0f,
-            -13.5f, 4.5f, 3.0f, 75.0f, 2.8f, -0.3f, 0.55f, 0.40f, 0.20f, 0.4f),
+        makePreset(PresetDef{
+            .name = "SN 04 Bayer Analog Tight Snare",
+            .voiceMode = 0, .toneNote = 6, .toneOctave = 3, .toneFreq = 185.0f, .toneQ = 3.2f,
+            .toneDecay = 150.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 19.0f, .fmAmount = 0.18f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 160.0f, .noiseCurve = -0.40f, .noiseHPF = 320.0f, .noiseLPF = 10500.0f,
+            .noiseStereoWidth = 1.05f, .noiseLevel = 0.80f,
+            .clickType = 0, .clickLevel = 0.56f, .clickFreq = 3400.0f,
+            .distType = 0, .distDrive = 0.22f, .distTone = -0.05f, .distMix = 0.30f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 3.5f, .compRelease = 70.0f, .compMakeup = 3.5f,
+            .reverbSize = 0.55f, .reverbDecay = 380.0f, .reverbDamp = 0.45f, .reverbGate = 140.0f, .reverbMix = 0.20f,
+            .stereoWidth = 1.0f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 06 Summer Progressive Snare",
-            3.0f, 12.0f, 185.0f, 1.05f, 0.60f, 0.18f, 0.0f, 0.14f,
-            207.65f, 8.0f, 3.0f, 0.0f, 10.0f, 25.0f, 165.0f, 0.76f, 0.0f,
-            0.0f, 3500.0f, 0.48f, 2.0f, 1400.0f, 3.1f, 0.78f, 0.84f, 0.52f,
-            0.0f, 1.6f, 2000.0f, 3.4f, 0.22f, 0.36f, 8500.0f,
-            -13.0f, 4.0f, 3.8f, 88.0f, 2.6f, -0.3f, 0.62f, 0.36f, 0.24f, 0.4f),
+        makePreset(PresetDef{
+            .name = "SN 05 Bluestone Snap Rim Snare",
+            .preBursts = 2, .preSpread = 8.0f, .preDecay = 6.0f, .preJitter = 0.10f, .flamSpread = 0.35f, .preLevel = 0.52f,
+            .voiceMode = 3, .toneNote = 8, .toneOctave = 3, .toneFreq = 1800.0f, .toneQ = 4.8f,
+            .toneDecay = 170.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.30f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 180.0f, .noiseCurve = -0.35f, .noiseHPF = 350.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.82f,
+            .clickType = 2, .clickLevel = 0.65f, .clickFreq = 4400.0f,
+            .distType = 0, .distDrive = 0.20f, .distTone = 0.08f, .distMix = 0.28f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.8f, .compRelease = 75.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.62f, .reverbDecay = 450.0f, .reverbDamp = 0.36f, .reverbGate = 160.0f, .reverbMix = 0.26f,
+            .stereoWidth = 1.10f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 07 Sun & Moon Anthem Snare",
-            3.0f, 13.5f, 210.0f, 1.18f, 0.64f, 0.16f, 0.0f, 0.20f,
-            220.0f, 9.0f, 3.0f, 0.0f, 12.0f, 26.0f, 185.0f, 0.80f, 0.0f,
-            2.0f, 3700.0f, 0.56f, 0.0f, 1450.0f, 3.3f, 0.82f, 0.86f, 0.55f,
-            1.0f, 2.0f, 2200.0f, 3.8f, 0.32f, 0.46f, 8800.0f,
-            -15.0f, 5.0f, 3.0f, 100.0f, 3.5f, -0.2f, 0.68f, 0.32f, 0.28f, 0.8f),
+        makePreset(PresetDef{
+            .name = "SN 06 Myon & Shane 54 Summer Snare",
+            .preBursts = 2, .preSpread = 12.0f, .preDecay = 8.5f, .preJitter = 0.14f, .flamSpread = 0.45f, .preLevel = 0.54f,
+            .voiceMode = 0, .toneNote = 8, .toneOctave = 3, .toneFreq = 207.65f, .toneQ = 3.3f,
+            .toneDecay = 190.0f, .tonePitchEnv = 11.0f, .tonePitchDecay = 24.0f, .fmAmount = 0.22f, .toneLevel = 0.84f,
+            .noiseType = 1, .noiseDecay = 225.0f, .noiseCurve = -0.32f, .noiseHPF = 290.0f, .noiseLPF = 13500.0f,
+            .noiseStereoWidth = 1.30f, .noiseLevel = 0.84f,
+            .clickType = 0, .clickLevel = 0.52f, .clickFreq = 3900.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.12f, .distMix = 0.24f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.5f, .compRelease = 85.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.68f, .reverbDecay = 520.0f, .reverbDamp = 0.32f, .reverbGate = 190.0f, .reverbMix = 0.30f,
+            .stereoWidth = 1.15f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 08 Retro Funk Electro Snare",
-            1.0f, 4.0f, 145.0f, 0.94f, 0.55f, 0.10f, 0.0f, 0.32f,
-            246.94f, 11.0f, 3.0f, 0.0f, 15.0f, 22.0f, 150.0f, 0.84f, 0.0f,
-            3.0f, 4100.0f, 0.58f, 1.0f, 1300.0f, 3.4f, 0.72f, 0.68f, 0.38f,
-            2.0f, 2.2f, 1750.0f, 2.6f, 0.38f, 0.50f, 7400.0f,
-            -14.5f, 5.2f, 2.5f, 70.0f, 3.2f, -0.3f, 0.46f, 0.46f, 0.16f, 0.6f),
+        makePreset(PresetDef{
+            .name = "SN 07 Sun & Moon Push the Button Snare",
+            .preBursts = 3, .preSpread = 13.0f, .preDecay = 9.0f, .preJitter = 0.15f, .flamSpread = 0.50f, .preLevel = 0.60f,
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.5f,
+            .toneDecay = 220.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 25.0f, .fmAmount = 0.26f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 250.0f, .noiseCurve = -0.30f, .noiseHPF = 260.0f, .noiseLPF = 12500.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.88f,
+            .clickType = 2, .clickLevel = 0.58f, .clickFreq = 3800.0f,
+            .distType = 1, .distDrive = 0.24f, .distTone = 0.10f, .distMix = 0.34f,
+            .compThresh = -15.5f, .compRatio = 5.2f, .compAttack = 3.5f, .compRelease = 95.0f, .compMakeup = 3.8f,
+            .reverbSize = 0.78f, .reverbDecay = 640.0f, .reverbDamp = 0.28f, .reverbGate = 240.0f, .reverbMix = 0.35f,
+            .stereoWidth = 1.20f, .outputGain = 0.8f
+        }),
 
-        makePreset("SN 09 Euphoric Always Alive Snare",
-            3.0f, 10.5f, 200.0f, 1.15f, 0.62f, 0.15f, 0.0f, 0.16f,
-            233.08f, 10.0f, 3.0f, 0.0f, 11.0f, 24.0f, 170.0f, 0.76f, 0.0f,
-            0.0f, 3800.0f, 0.52f, 1.0f, 1550.0f, 3.2f, 0.84f, 0.86f, 0.54f,
-            0.0f, 1.8f, 2400.0f, 4.2f, 0.24f, 0.38f, 9200.0f,
-            -13.5f, 4.2f, 3.5f, 92.0f, 2.8f, -0.3f, 0.64f, 0.30f, 0.26f, 0.6f),
+        makePreset(PresetDef{
+            .name = "SN 08 Zo Funk Electro Snare",
+            .voiceMode = 0, .toneNote = 11, .toneOctave = 3, .toneFreq = 246.94f, .toneQ = 3.6f,
+            .toneDecay = 160.0f, .tonePitchEnv = 18.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.38f, .toneLevel = 0.90f,
+            .noiseType = 1, .noiseDecay = 165.0f, .noiseCurve = -0.42f, .noiseHPF = 340.0f, .noiseLPF = 11000.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.80f,
+            .clickType = 3, .clickLevel = 0.62f, .clickFreq = 4800.0f,
+            .distType = 3, .distDrive = 0.28f, .distTone = 0.10f, .distMix = 0.35f,
+            .compThresh = -16.0f, .compRatio = 6.0f, .compAttack = 2.5f, .compRelease = 65.0f, .compMakeup = 4.0f,
+            .reverbSize = 0.52f, .reverbDecay = 360.0f, .reverbDamp = 0.42f, .reverbGate = 130.0f, .reverbMix = 0.18f,
+            .stereoWidth = 1.05f, .outputGain = 0.6f
+        }),
 
-        makePreset("SN 10 Tech Degenerate Punch Snare",
-            1.0f, 4.0f, 155.0f, 0.96f, 0.58f, 0.08f, 0.0f, 0.28f,
-            220.0f, 9.0f, 3.0f, 0.0f, 14.0f, 19.0f, 155.0f, 0.85f, 0.0f,
-            2.0f, 4200.0f, 0.64f, 0.0f, 1500.0f, 3.6f, 0.78f, 0.72f, 0.42f,
-            2.0f, 2.6f, 2100.0f, 3.6f, 0.42f, 0.54f, 8200.0f,
-            -15.5f, 5.8f, 2.0f, 68.0f, 3.8f, -0.2f, 0.48f, 0.42f, 0.16f, 1.0f),
+        makePreset(PresetDef{
+            .name = "SN 09 Daniel Kandi Always Alive Snare",
+            .preBursts = 2, .preSpread = 10.5f, .preDecay = 8.0f, .preJitter = 0.12f, .flamSpread = 0.42f, .preLevel = 0.54f,
+            .voiceMode = 0, .toneNote = 10, .toneOctave = 3, .toneFreq = 233.08f, .toneQ = 3.4f,
+            .toneDecay = 185.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.22f, .toneLevel = 0.85f,
+            .noiseType = 2, .noiseDecay = 230.0f, .noiseCurve = -0.32f, .noiseHPF = 310.0f, .noiseLPF = 13500.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.86f,
+            .clickType = 0, .clickLevel = 0.54f, .clickFreq = 4000.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.06f, .distMix = 0.26f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.74f, .reverbDecay = 580.0f, .reverbDamp = 0.28f, .reverbGate = 220.0f, .reverbMix = 0.32f,
+            .stereoWidth = 1.20f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 11 Flashover Electro Snare",
-            2.0f, 7.0f, 175.0f, 1.02f, 0.60f, 0.11f, 0.0f, 0.36f,
-            207.65f, 8.0f, 3.0f, 0.0f, 15.0f, 24.0f, 168.0f, 0.84f, 0.0f,
-            3.0f, 3900.0f, 0.58f, 1.0f, 1350.0f, 3.4f, 0.76f, 0.76f, 0.46f,
-            2.0f, 2.2f, 1850.0f, 3.2f, 0.40f, 0.52f, 7800.0f,
-            -15.0f, 5.2f, 2.6f, 80.0f, 3.4f, -0.2f, 0.54f, 0.38f, 0.20f, 0.8f),
+        makePreset(PresetDef{
+            .name = "SN 10 Sean Tyas Degenerate Punch Snare",
+            .voiceMode = 0, .toneNote = 7, .toneOctave = 3, .toneFreq = 196.0f, .toneQ = 3.6f,
+            .toneDecay = 140.0f, .tonePitchEnv = 16.0f, .tonePitchDecay = 16.0f, .fmAmount = 0.28f, .toneLevel = 0.90f,
+            .noiseType = 0, .noiseDecay = 145.0f, .noiseCurve = -0.45f, .noiseHPF = 360.0f, .noiseLPF = 11500.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.84f,
+            .clickType = 2, .clickLevel = 0.65f, .clickFreq = 4500.0f,
+            .distType = 2, .distDrive = 0.30f, .distTone = -0.05f, .distMix = 0.36f,
+            .compThresh = -16.0f, .compRatio = 6.0f, .compAttack = 2.2f, .compRelease = 55.0f, .compMakeup = 4.2f,
+            .reverbSize = 0.50f, .reverbDecay = 340.0f, .reverbDamp = 0.44f, .reverbGate = 120.0f, .reverbMix = 0.18f,
+            .stereoWidth = 1.05f, .outputGain = 0.6f
+        }),
 
-        makePreset("SN 12 Out of the Blue 909 Snare",
-            1.0f, 5.0f, 180.0f, 1.04f, 0.56f, 0.10f, 0.0f, 0.10f,
-            196.0f, 7.0f, 3.0f, 0.0f, 12.0f, 25.0f, 170.0f, 0.80f, 0.0f,
-            0.0f, 3200.0f, 0.50f, 1.0f, 1200.0f, 2.8f, 0.80f, 0.68f, 0.36f,
-            1.0f, 1.6f, 1700.0f, 3.4f, 0.25f, 0.40f, 8000.0f,
-            -13.5f, 4.4f, 3.2f, 85.0f, 2.8f, -0.3f, 0.56f, 0.38f, 0.20f, 0.5f),
+        makePreset(PresetDef{
+            .name = "SN 11 Ferry Corsten Flashover Electro Snare",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.8f,
+            .toneDecay = 175.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 20.0f, .fmAmount = 0.28f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 190.0f, .noiseCurve = -0.38f, .noiseHPF = 300.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.82f,
+            .clickType = 2, .clickLevel = 0.58f, .clickFreq = 4100.0f,
+            .distType = 1, .distDrive = 0.26f, .distTone = 0.08f, .distMix = 0.32f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 3.5f, .compRelease = 75.0f, .compMakeup = 3.6f,
+            .reverbSize = 0.62f, .reverbDecay = 460.0f, .reverbDamp = 0.35f, .reverbGate = 160.0f, .reverbMix = 0.24f,
+            .stereoWidth = 1.10f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 13 Armada Mainstage Snare",
-            3.0f, 11.0f, 205.0f, 1.12f, 0.64f, 0.15f, 0.0f, 0.22f,
-            220.0f, 9.0f, 3.0f, 0.0f, 12.0f, 25.0f, 175.0f, 0.80f, 0.0f,
-            2.0f, 3800.0f, 0.58f, 0.0f, 1450.0f, 3.3f, 0.82f, 0.86f, 0.55f,
-            1.0f, 2.0f, 2100.0f, 3.8f, 0.30f, 0.44f, 8600.0f,
-            -14.5f, 4.8f, 3.0f, 92.0f, 3.2f, -0.2f, 0.66f, 0.34f, 0.26f, 0.8f),
+        makePreset(PresetDef{
+            .name = "SN 12 System F Out of the Blue 909 Snare",
+            .voiceMode = 0, .toneNote = 7, .toneOctave = 3, .toneFreq = 196.0f, .toneQ = 3.2f,
+            .toneDecay = 175.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.20f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 205.0f, .noiseCurve = -0.36f, .noiseHPF = 260.0f, .noiseLPF = 11000.0f,
+            .noiseStereoWidth = 1.12f, .noiseLevel = 0.82f,
+            .clickType = 0, .clickLevel = 0.52f, .clickFreq = 3600.0f,
+            .distType = 0, .distDrive = 0.15f, .distTone = 0.02f, .distMix = 0.22f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.5f, .compRelease = 80.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.68f, .reverbDecay = 520.0f, .reverbDamp = 0.34f, .reverbGate = 190.0f, .reverbMix = 0.30f,
+            .stereoWidth = 1.10f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 14 ASOT 138 Uplifting Snare",
-            3.0f, 12.5f, 215.0f, 1.18f, 0.66f, 0.16f, 0.0f, 0.18f,
-            233.08f, 10.0f, 3.0f, 0.0f, 11.0f, 26.0f, 172.0f, 0.76f, 0.0f,
-            0.0f, 3900.0f, 0.52f, 1.0f, 1600.0f, 3.2f, 0.86f, 0.88f, 0.58f,
-            0.0f, 1.8f, 2300.0f, 4.2f, 0.26f, 0.40f, 9200.0f,
-            -14.0f, 4.5f, 3.4f, 96.0f, 3.0f, -0.3f, 0.68f, 0.30f, 0.28f, 0.6f),
+        makePreset(PresetDef{
+            .name = "SN 13 Armada Mainstage Snare",
+            .preBursts = 2, .preSpread = 10.0f, .preDecay = 7.5f, .preJitter = 0.12f, .flamSpread = 0.45f, .preLevel = 0.56f,
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.5f,
+            .toneDecay = 215.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.25f, .toneLevel = 0.88f,
+            .noiseType = 1, .noiseDecay = 260.0f, .noiseCurve = -0.28f, .noiseHPF = 280.0f, .noiseLPF = 14000.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.88f,
+            .clickType = 2, .clickLevel = 0.62f, .clickFreq = 4200.0f,
+            .distType = 1, .distDrive = 0.24f, .distTone = 0.10f, .distMix = 0.32f,
+            .compThresh = -15.0f, .compRatio = 5.2f, .compAttack = 3.5f, .compRelease = 90.0f, .compMakeup = 3.8f,
+            .reverbSize = 0.80f, .reverbDecay = 640.0f, .reverbDamp = 0.26f, .reverbGate = 240.0f, .reverbMix = 0.35f,
+            .stereoWidth = 1.25f, .outputGain = 0.8f
+        }),
 
-        makePreset("SN 15 Subculture Tech-Trance Snare",
-            1.0f, 4.0f, 145.0f, 0.94f, 0.56f, 0.08f, 0.0f, 0.32f,
-            220.0f, 9.0f, 3.0f, 0.0f, 14.0f, 18.0f, 148.0f, 0.84f, 0.0f,
-            2.0f, 4300.0f, 0.66f, 0.0f, 1550.0f, 3.7f, 0.76f, 0.70f, 0.40f,
-            2.0f, 2.8f, 2200.0f, 3.6f, 0.44f, 0.55f, 8200.0f,
-            -15.5f, 5.8f, 2.0f, 66.0f, 3.8f, -0.2f, 0.46f, 0.44f, 0.14f, 1.0f),
+        makePreset(PresetDef{
+            .name = "SN 14 ASOT 138 Uplifting Snare",
+            .voiceMode = 0, .toneNote = 11, .toneOctave = 3, .toneFreq = 246.94f, .toneQ = 3.5f,
+            .toneDecay = 190.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.24f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 220.0f, .noiseCurve = -0.34f, .noiseHPF = 300.0f, .noiseLPF = 13000.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.84f,
+            .clickType = 0, .clickLevel = 0.55f, .clickFreq = 4200.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.08f, .distMix = 0.26f,
+            .compThresh = -14.0f, .compRatio = 4.6f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.72f, .reverbDecay = 560.0f, .reverbDamp = 0.30f, .reverbGate = 200.0f, .reverbMix = 0.30f,
+            .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 16 Coldharbour Dark Rim Smack",
-            2.0f, 8.0f, 165.0f, 0.98f, 0.60f, 0.11f, 3.0f, 0.38f,
-            349.23f, 5.0f, 4.0f, 0.0f, 8.0f, 17.0f, 152.0f, 0.80f, 0.0f,
-            2.0f, 3600.0f, 0.70f, 3.0f, 1300.0f, 4.2f, 0.70f, 0.76f, 0.48f,
-            1.0f, 2.8f, 1950.0f, 2.4f, 0.42f, 0.54f, 6800.0f,
-            -15.0f, 5.4f, 2.4f, 76.0f, 3.4f, -0.2f, 0.56f, 0.46f, 0.22f, 0.8f),
+        makePreset(PresetDef{
+            .name = "SN 15 Subculture Tech-Trance Snare",
+            .voiceMode = 0, .toneNote = 5, .toneOctave = 3, .toneFreq = 174.61f, .toneQ = 3.4f,
+            .toneDecay = 145.0f, .tonePitchEnv = 15.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.22f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 155.0f, .noiseCurve = -0.42f, .noiseHPF = 340.0f, .noiseLPF = 11000.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.82f,
+            .clickType = 2, .clickLevel = 0.60f, .clickFreq = 3900.0f,
+            .distType = 2, .distDrive = 0.26f, .distTone = -0.08f, .distMix = 0.32f,
+            .compThresh = -15.5f, .compRatio = 5.5f, .compAttack = 2.8f, .compRelease = 65.0f, .compMakeup = 3.8f,
+            .reverbSize = 0.54f, .reverbDecay = 380.0f, .reverbDamp = 0.42f, .reverbGate = 140.0f, .reverbMix = 0.20f,
+            .stereoWidth = 1.05f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 17 FSOE 140 Anthem Snare",
-            4.0f, 13.0f, 225.0f, 1.22f, 0.68f, 0.18f, 0.0f, 0.20f,
-            246.94f, 11.0f, 3.0f, 0.0f, 12.0f, 28.0f, 185.0f, 0.78f, 0.0f,
-            2.0f, 4000.0f, 0.56f, 1.0f, 1650.0f, 3.3f, 0.88f, 0.92f, 0.62f,
-            1.0f, 2.0f, 2400.0f, 4.4f, 0.28f, 0.42f, 9400.0f,
-            -14.5f, 4.8f, 3.2f, 105.0f, 3.2f, -0.2f, 0.72f, 0.28f, 0.30f, 0.8f),
+        makePreset(PresetDef{
+            .name = "SN 16 Coldharbour Dark Rim Smack",
+            .voiceMode = 3, .toneNote = 4, .toneOctave = 3, .toneFreq = 1450.0f, .toneQ = 4.2f,
+            .toneDecay = 190.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 19.0f, .fmAmount = 0.30f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 190.0f, .noiseCurve = -0.38f, .noiseHPF = 350.0f, .noiseLPF = 9800.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.82f,
+            .clickType = 2, .clickLevel = 0.65f, .clickFreq = 3600.0f,
+            .distType = 1, .distDrive = 0.25f, .distTone = -0.12f, .distMix = 0.32f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 3.5f, .compRelease = 80.0f, .compMakeup = 3.6f,
+            .reverbSize = 0.60f, .reverbDecay = 450.0f, .reverbDamp = 0.40f, .reverbGate = 160.0f, .reverbMix = 0.22f,
+            .stereoWidth = 1.10f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 18 Berlin Club Trance Snare",
-            1.0f, 5.0f, 150.0f, 0.96f, 0.55f, 0.09f, 0.0f, 0.24f,
-            207.65f, 8.0f, 3.0f, 0.0f, 13.0f, 21.0f, 155.0f, 0.82f, 0.0f,
-            0.0f, 3500.0f, 0.54f, 0.0f, 1250.0f, 3.1f, 0.74f, 0.66f, 0.34f,
-            1.0f, 2.0f, 1800.0f, 2.8f, 0.34f, 0.46f, 7500.0f,
-            -14.5f, 5.0f, 2.6f, 72.0f, 3.2f, -0.3f, 0.48f, 0.44f, 0.16f, 0.6f),
+        makePreset(PresetDef{
+            .name = "SN 17 FSOE 140 Anthem Snare",
+            .preBursts = 4, .preSpread = 12.0f, .preDecay = 8.0f, .preJitter = 0.14f, .flamSpread = 0.55f, .preLevel = 0.65f,
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.6f,
+            .toneDecay = 225.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 24.0f, .fmAmount = 0.26f, .toneLevel = 0.88f,
+            .noiseType = 0, .noiseDecay = 260.0f, .noiseCurve = -0.30f, .noiseHPF = 270.0f, .noiseLPF = 13000.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.88f,
+            .clickType = 2, .clickLevel = 0.64f, .clickFreq = 4200.0f,
+            .distType = 1, .distDrive = 0.25f, .distTone = 0.10f, .distMix = 0.35f,
+            .compThresh = -16.0f, .compRatio = 5.5f, .compAttack = 3.2f, .compRelease = 95.0f, .compMakeup = 4.0f,
+            .reverbSize = 0.82f, .reverbDecay = 680.0f, .reverbDamp = 0.26f, .reverbGate = 250.0f, .reverbMix = 0.36f,
+            .stereoWidth = 1.25f, .outputGain = 0.9f
+        }),
 
-        makePreset("SN 19 Garuda Big Room Snare",
-            2.0f, 8.5f, 195.0f, 1.08f, 0.62f, 0.12f, 0.0f, 0.28f,
-            220.0f, 9.0f, 3.0f, 0.0f, 14.0f, 24.0f, 182.0f, 0.85f, 0.0f,
-            2.0f, 3800.0f, 0.62f, 0.0f, 1400.0f, 3.4f, 0.84f, 0.84f, 0.54f,
-            1.0f, 2.4f, 2000.0f, 3.6f, 0.38f, 0.50f, 8400.0f,
-            -15.5f, 5.5f, 2.5f, 90.0f, 3.6f, -0.2f, 0.62f, 0.34f, 0.24f, 1.0f),
+        makePreset(PresetDef{
+            .name = "SN 18 Vandit Berlin Club Snare",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.4f,
+            .toneDecay = 160.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 20.0f, .fmAmount = 0.22f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 180.0f, .noiseCurve = -0.38f, .noiseHPF = 310.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.82f,
+            .clickType = 0, .clickLevel = 0.54f, .clickFreq = 3900.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.04f, .distMix = 0.25f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.8f, .compRelease = 75.0f, .compMakeup = 3.4f,
+            .reverbSize = 0.60f, .reverbDecay = 440.0f, .reverbDamp = 0.36f, .reverbGate = 150.0f, .reverbMix = 0.22f,
+            .stereoWidth = 1.10f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 20 Wake Your Mind Snare",
-            2.0f, 9.0f, 175.0f, 1.02f, 0.60f, 0.13f, 0.0f, 0.26f,
-            207.65f, 8.0f, 3.0f, 0.0f, 12.0f, 23.0f, 165.0f, 0.82f, 0.0f,
-            2.0f, 3700.0f, 0.58f, 0.0f, 1350.0f, 3.3f, 0.76f, 0.76f, 0.46f,
-            1.0f, 2.0f, 1950.0f, 3.0f, 0.34f, 0.46f, 8000.0f,
-            -14.5f, 4.8f, 2.8f, 82.0f, 3.2f, -0.3f, 0.54f, 0.38f, 0.20f, 0.6f),
+        makePreset(PresetDef{
+            .name = "SN 19 Garuda Big Room Snare",
+            .preBursts = 2, .preSpread = 9.5f, .preDecay = 7.0f, .preJitter = 0.11f, .flamSpread = 0.40f, .preLevel = 0.54f,
+            .voiceMode = 0, .toneNote = 7, .toneOctave = 3, .toneFreq = 196.0f, .toneQ = 3.5f,
+            .toneDecay = 195.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.24f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 225.0f, .noiseCurve = -0.32f, .noiseHPF = 290.0f, .noiseLPF = 12500.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.84f,
+            .clickType = 2, .clickLevel = 0.56f, .clickFreq = 4000.0f,
+            .distType = 0, .distDrive = 0.22f, .distTone = 0.08f, .distMix = 0.28f,
+            .compThresh = -14.8f, .compRatio = 5.0f, .compAttack = 3.6f, .compRelease = 85.0f, .compMakeup = 3.5f,
+            .reverbSize = 0.70f, .reverbDecay = 540.0f, .reverbDamp = 0.32f, .reverbGate = 200.0f, .reverbMix = 0.30f,
+            .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 21 Euphonic Uplifting Snare",
-            3.0f, 10.5f, 190.0f, 1.06f, 0.60f, 0.16f, 0.0f, 0.16f,
-            220.0f, 9.0f, 3.0f, 0.0f, 11.0f, 24.0f, 165.0f, 0.76f, 0.0f,
-            0.0f, 3600.0f, 0.50f, 2.0f, 1450.0f, 3.1f, 0.80f, 0.82f, 0.50f,
-            0.0f, 1.6f, 2100.0f, 3.6f, 0.22f, 0.36f, 8600.0f,
-            -13.5f, 4.2f, 3.5f, 86.0f, 2.8f, -0.3f, 0.60f, 0.34f, 0.22f, 0.5f),
+        makePreset(PresetDef{
+            .name = "SN 20 Wake Your Mind Snare",
+            .voiceMode = 0, .toneNote = 8, .toneOctave = 3, .toneFreq = 207.65f, .toneQ = 3.4f,
+            .toneDecay = 185.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.22f, .toneLevel = 0.85f,
+            .noiseType = 2, .noiseDecay = 215.0f, .noiseCurve = -0.34f, .noiseHPF = 280.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.84f,
+            .clickType = 0, .clickLevel = 0.52f, .clickFreq = 3800.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.05f, .distMix = 0.24f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.65f, .reverbDecay = 480.0f, .reverbDamp = 0.35f, .reverbGate = 180.0f, .reverbMix = 0.26f,
+            .stereoWidth = 1.12f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 22 Positiva 99 Ibiza Snare",
-            2.0f, 8.0f, 185.0f, 1.04f, 0.58f, 0.14f, 0.0f, 0.12f,
-            196.0f, 7.0f, 3.0f, 0.0f, 11.0f, 24.0f, 168.0f, 0.78f, 0.0f,
-            0.0f, 3300.0f, 0.48f, 1.0f, 1250.0f, 2.9f, 0.78f, 0.72f, 0.42f,
-            0.0f, 1.8f, 1800.0f, 3.2f, 0.24f, 0.38f, 7800.0f,
-            -13.5f, 4.2f, 3.2f, 84.0f, 2.8f, -0.3f, 0.56f, 0.38f, 0.20f, 0.5f),
+        makePreset(PresetDef{
+            .name = "SN 21 Euphonic Uplifting Snare",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.3f,
+            .toneDecay = 195.0f, .tonePitchEnv = 11.0f, .tonePitchDecay = 24.0f, .fmAmount = 0.20f, .toneLevel = 0.85f,
+            .noiseType = 0, .noiseDecay = 225.0f, .noiseCurve = -0.32f, .noiseHPF = 270.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.84f,
+            .clickType = 0, .clickLevel = 0.52f, .clickFreq = 3700.0f,
+            .distType = 0, .distDrive = 0.15f, .distTone = 0.04f, .distMix = 0.22f,
+            .compThresh = -13.8f, .compRatio = 4.4f, .compAttack = 4.2f, .compRelease = 85.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.70f, .reverbDecay = 540.0f, .reverbDamp = 0.32f, .reverbGate = 210.0f, .reverbMix = 0.30f,
+            .stereoWidth = 1.15f, .outputGain = 0.4f
+        }),
 
-        makePreset("SN 23 Note-Tracked Melodic Snare Roll",
-            1.0f, 4.0f, 150.0f, 0.94f, 0.55f, 0.08f, 0.0f, 0.22f,
-            220.0f, 9.0f, 3.0f, 0.0f, 8.0f, 18.0f, 185.0f, 0.88f, 1.0f,
-            0.0f, 3500.0f, 0.48f, 0.0f, 1300.0f, 3.6f, 0.65f, 0.68f, 0.38f,
-            0.0f, 2.2f, 1800.0f, 2.8f, 0.24f, 0.38f, 8000.0f,
-            -13.5f, 4.2f, 3.0f, 74.0f, 2.8f, -0.3f, 0.48f, 0.42f, 0.16f, 0.4f),
+        makePreset(PresetDef{
+            .name = "SN 22 Positiva 99 Ibiza Snare",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.2f,
+            .toneDecay = 200.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.22f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 240.0f, .noiseCurve = -0.30f, .noiseHPF = 250.0f, .noiseLPF = 11500.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.85f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 3500.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.02f, .distMix = 0.24f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.5f, .compRelease = 85.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.75f, .reverbDecay = 600.0f, .reverbDamp = 0.30f, .reverbGate = 230.0f, .reverbMix = 0.35f,
+            .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
 
-        makePreset("SN 24 Clean Studio Reference Snare",
-            1.0f, 4.0f, 155.0f, 1.00f, 0.50f, 0.05f, 0.0f, 0.10f,
-            220.0f, 9.0f, 3.0f, 0.0f, 9.0f, 20.0f, 155.0f, 0.78f, 0.0f,
-            0.0f, 3200.0f, 0.45f, 0.0f, 1150.0f, 2.8f, 0.72f, 0.55f, 0.20f,
-            0.0f, 1.5f, 1800.0f, 1.0f, 0.08f, 0.15f, 7500.0f,
-            -11.0f, 3.0f, 4.5f, 70.0f, 1.5f, -0.3f, 0.38f, 0.50f, 0.08f, 0.0f),
+        makePreset(PresetDef{
+            .name = "SN 23 Note-Tracked Melodic Snare Roll",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.4f,
+            .toneDecay = 140.0f, .tonePitchEnv = 10.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.20f, .toneLevel = 0.86f,
+            .noiseType = 0, .noiseDecay = 150.0f, .noiseCurve = -0.40f, .noiseHPF = 320.0f, .noiseLPF = 11500.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.80f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 3800.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.05f, .distMix = 0.22f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.0f, .compRelease = 70.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.52f, .reverbDecay = 360.0f, .reverbDamp = 0.40f, .reverbGate = 120.0f, .reverbMix = 0.20f,
+            .midiMode = 1, .stereoWidth = 1.05f, .outputGain = 0.4f
+        }),
 
-        // =========================================================================
-        // BL 01 - BL 24: FM BELLS, CHIMES & METALLIC HITS (24 Presets)
-        // =========================================================================
-        makePreset("BL 01 Tri-State Crystal Bell",
-            1.0f, 3.0f, 260.0f, 1.35f, 0.50f, 0.06f, 2.0f, 0.62f,
-            880.0f, 9.0f, 5.0f, 0.0f, 2.0f, 12.0f, 420.0f, 0.90f, 1.0f,
-            1.0f, 5200.0f, 0.42f, 3.0f, 2600.0f, 5.2f, 0.28f, 0.88f, 0.55f,
-            0.0f, 1.8f, 2800.0f, 4.2f, 0.14f, 0.25f, 10000.0f,
-            -12.0f, 3.2f, 5.0f, 110.0f, 2.0f, -0.3f, 0.76f, 0.22f, 0.34f, 0.0f),
-
-        makePreset("BL 02 Balearic Ocean Chime",
-            2.0f, 8.0f, 290.0f, 1.45f, 0.55f, 0.12f, 2.0f, 0.48f,
-            1046.5f, 0.0f, 6.0f, 0.0f, 1.5f, 10.0f, 480.0f, 0.88f, 1.0f,
-            1.0f, 5800.0f, 0.38f, 3.0f, 2800.0f, 4.8f, 0.22f, 0.92f, 0.62f,
-            0.0f, 1.4f, 3200.0f, 4.5f, 0.10f, 0.20f, 10500.0f,
-            -11.5f, 3.0f, 6.0f, 125.0f, 1.8f, -0.3f, 0.82f, 0.18f, 0.38f, 0.0f),
-
-        makePreset("BL 03 Deep Glass Bell",
-            1.0f, 4.0f, 230.0f, 1.20f, 0.50f, 0.10f, 2.0f, 0.54f,
-            659.25f, 4.0f, 5.0f, 0.0f, 3.0f, 14.0f, 360.0f, 0.90f, 1.0f,
-            1.0f, 4400.0f, 0.44f, 3.0f, 2200.0f, 5.0f, 0.24f, 0.82f, 0.48f,
-            0.0f, 1.6f, 2400.0f, 3.2f, 0.18f, 0.30f, 8600.0f,
-            -12.5f, 3.5f, 4.5f, 95.0f, 2.2f, -0.3f, 0.68f, 0.28f, 0.28f, 0.0f),
-
-        makePreset("BL 04 Euphoric 138 Pluck Bell",
-            1.0f, 3.5f, 270.0f, 1.40f, 0.52f, 0.08f, 2.0f, 0.66f,
-            1174.66f, 2.0f, 6.0f, 0.0f, 2.0f, 11.0f, 450.0f, 0.90f, 1.0f,
-            1.0f, 6000.0f, 0.46f, 3.0f, 2700.0f, 5.4f, 0.26f, 0.90f, 0.60f,
-            0.0f, 2.0f, 3100.0f, 4.6f, 0.16f, 0.28f, 10200.0f,
-            -12.0f, 3.4f, 4.8f, 115.0f, 2.2f, -0.3f, 0.78f, 0.20f, 0.35f, 0.2f),
-
-        makePreset("BL 05 Venice Beach Sunset Chime",
-            2.0f, 9.0f, 250.0f, 1.30f, 0.54f, 0.12f, 2.0f, 0.52f,
-            987.77f, 11.0f, 5.0f, 0.0f, 2.0f, 12.0f, 410.0f, 0.88f, 1.0f,
-            1.0f, 5400.0f, 0.40f, 3.0f, 2500.0f, 5.0f, 0.24f, 0.88f, 0.56f,
-            0.0f, 1.8f, 2900.0f, 4.0f, 0.14f, 0.24f, 9800.0f,
-            -12.0f, 3.2f, 5.0f, 108.0f, 2.0f, -0.3f, 0.72f, 0.24f, 0.32f, 0.0f),
-
-        makePreset("BL 06 Childish Gambit FM Bell",
-            1.0f, 3.0f, 220.0f, 1.15f, 0.50f, 0.07f, 2.0f, 0.74f,
-            783.99f, 7.0f, 5.0f, 0.0f, 3.5f, 15.0f, 350.0f, 0.90f, 1.0f,
-            2.0f, 4800.0f, 0.50f, 3.0f, 2400.0f, 5.6f, 0.30f, 0.82f, 0.50f,
-            1.0f, 2.2f, 2600.0f, 3.8f, 0.22f, 0.34f, 9400.0f,
-            -12.5f, 3.6f, 4.2f, 98.0f, 2.4f, -0.3f, 0.64f, 0.26f, 0.26f, 0.2f),
-
-        makePreset("BL 07 Lift High Acid Bell",
-            1.0f, 3.0f, 210.0f, 1.12f, 0.50f, 0.06f, 2.0f, 0.82f,
-            880.0f, 9.0f, 5.0f, 0.0f, 5.0f, 14.0f, 330.0f, 0.90f, 1.0f,
-            3.0f, 5200.0f, 0.54f, 3.0f, 2500.0f, 6.2f, 0.34f, 0.84f, 0.54f,
-            3.0f, 2.8f, 3000.0f, 4.2f, 0.34f, 0.45f, 9600.0f,
-            -14.0f, 4.5f, 3.0f, 90.0f, 3.0f, -0.3f, 0.60f, 0.26f, 0.24f, 0.5f),
-
-        makePreset("BL 08 Tytanium Metallic Cowbell",
-            1.0f, 2.5f, 165.0f, 0.98f, 0.48f, 0.05f, 2.0f, 0.68f,
-            587.33f, 2.0f, 5.0f, 0.0f, 3.0f, 12.0f, 240.0f, 0.92f, 1.0f,
-            2.0f, 4400.0f, 0.58f, 3.0f, 2100.0f, 5.8f, 0.32f, 0.72f, 0.42f,
-            2.0f, 3.0f, 2200.0f, 3.2f, 0.32f, 0.44f, 8500.0f,
-            -14.0f, 4.6f, 2.8f, 76.0f, 3.0f, -0.3f, 0.48f, 0.36f, 0.16f, 0.6f),
-
-        makePreset("BL 09 Celestial Heaven Bell",
-            2.0f, 9.5f, 320.0f, 1.50f, 0.56f, 0.12f, 2.0f, 0.56f,
-            1318.51f, 4.0f, 6.0f, 0.0f, 1.5f, 10.0f, 520.0f, 0.90f, 1.0f,
-            1.0f, 6200.0f, 0.42f, 3.0f, 2900.0f, 5.2f, 0.24f, 0.95f, 0.66f,
-            0.0f, 1.8f, 3400.0f, 4.8f, 0.12f, 0.22f, 10600.0f,
-            -11.5f, 3.2f, 5.5f, 130.0f, 2.0f, -0.3f, 0.86f, 0.16f, 0.42f, 0.2f),
-
-        makePreset("BL 10 Punk Metallic Bell Smack",
-            1.0f, 3.5f, 185.0f, 1.04f, 0.52f, 0.08f, 2.0f, 0.78f,
-            659.25f, 4.0f, 5.0f, 0.0f, 6.0f, 16.0f, 275.0f, 0.90f, 1.0f,
-            2.0f, 4600.0f, 0.60f, 3.0f, 2300.0f, 5.8f, 0.38f, 0.78f, 0.48f,
-            2.0f, 2.8f, 2500.0f, 3.6f, 0.36f, 0.48f, 9000.0f,
-            -14.5f, 4.8f, 2.8f, 84.0f, 3.2f, -0.3f, 0.54f, 0.32f, 0.20f, 0.6f),
-
-        makePreset("BL 11 Kyoto Ritual Bell",
-            1.0f, 3.0f, 300.0f, 1.42f, 0.50f, 0.07f, 2.0f, 0.70f,
-            523.25f, 0.0f, 5.0f, 0.0f, 2.5f, 14.0f, 490.0f, 0.92f, 1.0f,
-            1.0f, 4200.0f, 0.48f, 3.0f, 2200.0f, 5.6f, 0.26f, 0.90f, 0.58f,
-            0.0f, 2.2f, 2200.0f, 3.8f, 0.18f, 0.30f, 9200.0f,
-            -12.5f, 3.4f, 4.8f, 120.0f, 2.2f, -0.3f, 0.80f, 0.22f, 0.36f, 0.2f),
-
-        makePreset("BL 12 Who's Afraid 138 Ride Bell",
-            1.0f, 2.5f, 200.0f, 1.08f, 0.48f, 0.06f, 2.0f, 0.76f,
-            1567.98f, 7.0f, 6.0f, 0.0f, 2.0f, 10.0f, 315.0f, 0.88f, 1.0f,
-            2.0f, 6400.0f, 0.54f, 3.0f, 3000.0f, 6.0f, 0.34f, 0.82f, 0.52f,
-            1.0f, 2.4f, 3600.0f, 4.6f, 0.24f, 0.36f, 10400.0f,
-            -13.5f, 4.2f, 3.2f, 88.0f, 2.8f, -0.3f, 0.58f, 0.26f, 0.22f, 0.4f),
-
-        makePreset("BL 13 Black Hole Cosmic Bell",
-            2.0f, 9.0f, 290.0f, 1.38f, 0.54f, 0.11f, 2.0f, 0.64f,
-            987.77f, 11.0f, 5.0f, 0.0f, 2.0f, 12.0f, 470.0f, 0.90f, 1.0f,
-            1.0f, 5600.0f, 0.44f, 3.0f, 2600.0f, 5.4f, 0.26f, 0.92f, 0.62f,
-            0.0f, 2.0f, 2900.0f, 4.4f, 0.16f, 0.28f, 10000.0f,
-            -12.0f, 3.4f, 5.0f, 118.0f, 2.2f, -0.3f, 0.78f, 0.20f, 0.36f, 0.2f),
-
-        makePreset("BL 14 Classic Rave Cowbell",
-            1.0f, 2.5f, 155.0f, 0.94f, 0.48f, 0.05f, 2.0f, 0.62f,
-            587.33f, 2.0f, 5.0f, 0.0f, 3.5f, 11.0f, 220.0f, 0.92f, 1.0f,
-            2.0f, 4200.0f, 0.60f, 3.0f, 2000.0f, 5.6f, 0.30f, 0.68f, 0.38f,
-            2.0f, 3.2f, 2100.0f, 3.0f, 0.34f, 0.46f, 8200.0f,
-            -14.0f, 4.8f, 2.5f, 70.0f, 3.0f, -0.3f, 0.44f, 0.40f, 0.14f, 0.6f),
-
-        makePreset("BL 15 Nordic Pluck Bell",
-            1.0f, 3.5f, 230.0f, 1.18f, 0.50f, 0.08f, 2.0f, 0.58f,
-            783.99f, 7.0f, 5.0f, 0.0f, 3.0f, 14.0f, 370.0f, 0.90f, 1.0f,
-            1.0f, 5000.0f, 0.46f, 3.0f, 2400.0f, 5.2f, 0.26f, 0.86f, 0.54f,
-            0.0f, 2.0f, 2700.0f, 4.0f, 0.16f, 0.28f, 9800.0f,
-            -12.5f, 3.5f, 4.4f, 102.0f, 2.2f, -0.3f, 0.68f, 0.24f, 0.28f, 0.2f),
-
-        makePreset("BL 16 Solaris Shimmer Bell",
-            2.0f, 8.5f, 280.0f, 1.36f, 0.54f, 0.12f, 2.0f, 0.50f,
-            1174.66f, 2.0f, 6.0f, 0.0f, 1.5f, 11.0f, 460.0f, 0.88f, 1.0f,
-            1.0f, 5800.0f, 0.40f, 3.0f, 2700.0f, 5.0f, 0.24f, 0.92f, 0.64f,
-            0.0f, 1.6f, 3100.0f, 4.6f, 0.12f, 0.22f, 10400.0f,
-            -12.0f, 3.2f, 5.2f, 118.0f, 2.0f, -0.3f, 0.78f, 0.20f, 0.36f, 0.2f),
-
-        makePreset("BL 17 Enhanced Progressive Chime",
-            1.0f, 4.0f, 245.0f, 1.24f, 0.50f, 0.09f, 2.0f, 0.56f,
-            880.0f, 9.0f, 5.0f, 0.0f, 2.5f, 13.0f, 395.0f, 0.90f, 1.0f,
-            1.0f, 5100.0f, 0.44f, 3.0f, 2450.0f, 5.1f, 0.25f, 0.86f, 0.55f,
-            0.0f, 1.9f, 2800.0f, 4.1f, 0.15f, 0.26f, 9900.0f,
-            -12.2f, 3.3f, 4.8f, 106.0f, 2.1f, -0.3f, 0.70f, 0.24f, 0.30f, 0.1f),
-
-        makePreset("BL 18 Minimal Pluck Bell Ping",
-            1.0f, 2.0f, 175.0f, 0.98f, 0.46f, 0.05f, 2.0f, 0.44f,
-            698.46f, 5.0f, 5.0f, 0.0f, 4.0f, 14.0f, 265.0f, 0.90f, 1.0f,
-            0.0f, 4500.0f, 0.48f, 3.0f, 2150.0f, 4.8f, 0.22f, 0.78f, 0.46f,
-            0.0f, 2.2f, 2400.0f, 3.4f, 0.18f, 0.30f, 9200.0f,
-            -13.0f, 3.8f, 3.6f, 82.0f, 2.4f, -0.3f, 0.56f, 0.30f, 0.22f, 0.2f),
-
-        makePreset("BL 19 Silk Music Sunset Bell",
-            2.0f, 7.5f, 265.0f, 1.30f, 0.52f, 0.11f, 2.0f, 0.46f,
-            783.99f, 7.0f, 5.0f, 0.0f, 2.0f, 12.0f, 435.0f, 0.88f, 1.0f,
-            1.0f, 4800.0f, 0.38f, 3.0f, 2350.0f, 4.7f, 0.20f, 0.88f, 0.58f,
-            0.0f, 1.6f, 2600.0f, 3.6f, 0.12f, 0.22f, 9400.0f,
-            -11.8f, 3.1f, 5.2f, 112.0f, 1.9f, -0.3f, 0.74f, 0.24f, 0.32f, 0.0f),
-
-        makePreset("BL 20 Goa 909 Ride Bell",
-            1.0f, 2.0f, 195.0f, 1.04f, 0.48f, 0.06f, 2.0f, 0.72f,
-            1396.91f, 5.0f, 6.0f, 0.0f, 2.5f, 11.0f, 305.0f, 0.90f, 1.0f,
-            2.0f, 6100.0f, 0.56f, 3.0f, 2850.0f, 5.9f, 0.32f, 0.80f, 0.50f,
-            1.0f, 2.6f, 3400.0f, 4.4f, 0.26f, 0.38f, 10100.0f,
-            -13.5f, 4.2f, 3.0f, 86.0f, 2.8f, -0.3f, 0.54f, 0.28f, 0.20f, 0.4f),
-
-        makePreset("BL 21 Berlin Industrial Anvil Bell",
-            1.0f, 3.0f, 210.0f, 1.08f, 0.52f, 0.07f, 2.0f, 0.88f,
-            493.88f, 11.0f, 4.0f, 0.0f, 6.5f, 18.0f, 320.0f, 0.92f, 1.0f,
-            2.0f, 4300.0f, 0.64f, 3.0f, 2050.0f, 6.2f, 0.40f, 0.82f, 0.52f,
-            3.0f, 3.2f, 2100.0f, 3.4f, 0.44f, 0.56f, 8400.0f,
-            -15.0f, 5.2f, 2.4f, 88.0f, 3.5f, -0.2f, 0.60f, 0.32f, 0.24f, 0.8f),
-
-        makePreset("BL 22 Café del Mar Harmonic Chime",
-            2.0f, 10.0f, 310.0f, 1.44f, 0.54f, 0.14f, 2.0f, 0.42f,
-            1046.50f, 0.0f, 6.0f, 0.0f, 1.0f, 10.0f, 500.0f, 0.88f, 1.0f,
-            1.0f, 5500.0f, 0.36f, 3.0f, 2650.0f, 4.6f, 0.18f, 0.94f, 0.66f,
-            0.0f, 1.5f, 3000.0f, 4.4f, 0.08f, 0.16f, 10400.0f,
-            -11.5f, 3.0f, 5.8f, 128.0f, 1.8f, -0.3f, 0.84f, 0.18f, 0.40f, 0.0f),
-
-        makePreset("BL 23 Melodic Keyboard FM Bell",
-            1.0f, 2.0f, 240.0f, 1.20f, 0.48f, 0.05f, 2.0f, 0.58f,
-            880.0f, 9.0f, 5.0f, 0.0f, 1.5f, 10.0f, 390.0f, 0.92f, 1.0f,
-            1.0f, 5000.0f, 0.42f, 3.0f, 2400.0f, 5.0f, 0.22f, 0.84f, 0.52f,
-            0.0f, 1.8f, 2800.0f, 4.0f, 0.14f, 0.24f, 9800.0f,
-            -12.0f, 3.2f, 4.8f, 104.0f, 2.0f, -0.3f, 0.68f, 0.24f, 0.28f, 0.0f),
-
-        makePreset("BL 24 Beat End Reverse Bell",
-            3.0f, 16.0f, 280.0f, 1.35f, 0.62f, 0.18f, 2.0f, 0.65f,
-            987.77f, 11.0f, 5.0f, 0.0f, 4.0f, 22.0f, 450.0f, 0.90f, 1.0f,
-            1.0f, 5400.0f, 0.44f, 3.0f, 2550.0f, 5.3f, 0.28f, 0.92f, 0.64f,
-            0.0f, 2.0f, 2900.0f, 4.2f, 0.18f, 0.30f, 10000.0f,
-            -12.5f, 3.6f, 4.5f, 114.0f, 2.2f, -0.3f, 0.78f, 0.20f, 0.36f, 0.2f,
-            1.0f, 0.65f),
+        makePreset(PresetDef{
+            .name = "SN 24 Clean Studio Reference Snare",
+            .voiceMode = 0, .toneNote = 9, .toneOctave = 3, .toneFreq = 220.0f, .toneQ = 3.0f,
+            .toneDecay = 180.0f, .tonePitchEnv = 10.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.20f, .toneLevel = 0.85f,
+            .noiseType = 0, .noiseDecay = 200.0f, .noiseCurve = -0.35f, .noiseHPF = 260.0f, .noiseLPF = 11000.0f,
+            .noiseStereoWidth = 1.0f, .noiseLevel = 0.80f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 3600.0f,
+            .distType = 0, .distDrive = 0.0f, .distTone = 0.0f, .distMix = 0.0f,
+            .compThresh = -12.0f, .compRatio = 3.0f, .compAttack = 6.0f, .compRelease = 90.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.50f, .reverbDecay = 300.0f, .reverbDamp = 0.40f, .reverbGate = 0.0f, .reverbMix = 0.0f,
+            .stereoWidth = 1.0f, .outputGain = 0.0f
+        }),
 
         // =========================================================================
-        // TM 01 - TM 24: CLUB, MELODIC & PSY-TECH TOM-TOMS (24 Presets)
+        // BL 01 - BL 24: FM BELLS & CHIMES (24 Presets)
         // =========================================================================
-        makePreset("TM 01 Progressive Groove Tom",
-            1.0f, 3.5f, 120.0f, 1.05f, 0.45f, 0.10f, 1.0f, 0.18f,
-            110.0f, 9.0f, 2.0f, 0.0f, 14.0f, 36.0f, 240.0f, 0.92f, 1.0f,
-            1.0f, 1800.0f, 0.48f, 2.0f, 700.0f, 2.6f, 0.22f, 0.55f, 0.30f,
-            1.0f, 1.2f, 900.0f, 1.5f, 0.28f, 0.40f, 5200.0f,
-            -13.5f, 4.2f, 4.5f, 85.0f, 2.8f, -0.3f, 0.44f, 0.48f, 0.14f, 0.5f),
 
-        makePreset("TM 02 Euphoric Melodic Tom Fill",
-            1.0f, 4.0f, 115.0f, 1.02f, 0.46f, 0.09f, 1.0f, 0.14f,
-            146.83f, 2.0f, 3.0f, 0.0f, 13.0f, 32.0f, 225.0f, 0.90f, 1.0f,
-            1.0f, 2100.0f, 0.46f, 2.0f, 800.0f, 2.7f, 0.20f, 0.68f, 0.45f,
-            0.0f, 1.6f, 1100.0f, 2.0f, 0.22f, 0.34f, 5800.0f,
-            -13.0f, 4.0f, 4.2f, 80.0f, 2.5f, -0.3f, 0.48f, 0.44f, 0.16f, 0.4f),
+        makePreset(PresetDef{
+            .name = "BL 01 Tri-State Crystal Bell",
+            .voiceMode = 2, .toneNote = 0, .toneOctave = 6, .toneFreq = 1046.5f, .toneQ = 4.0f,
+            .toneDecay = 650.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 10.0f, .fmAmount = 0.45f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 380.0f, .noiseCurve = -0.30f, .noiseHPF = 800.0f, .noiseLPF = 16000.0f,
+            .noiseStereoWidth = 1.50f, .noiseLevel = 0.40f,
+            .clickType = 0, .clickLevel = 0.42f, .clickFreq = 6500.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.15f, .distMix = 0.15f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.0f, .compRelease = 120.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.85f, .reverbDecay = 1400.0f, .reverbDamp = 0.20f, .reverbGate = 0.0f, .reverbMix = 0.42f,
+            .midiMode = 1, .stereoWidth = 1.25f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 03 Psy-Tech Laser Tom",
-            1.0f, 3.0f, 105.0f, 0.98f, 0.44f, 0.06f, 1.0f, 0.34f,
-            130.81f, 0.0f, 3.0f, 0.0f, 22.0f, 28.0f, 205.0f, 0.94f, 1.0f,
-            3.0f, 3200.0f, 0.62f, 1.0f, 1100.0f, 3.4f, 0.24f, 0.62f, 0.38f,
-            2.0f, 2.4f, 1400.0f, 2.8f, 0.38f, 0.48f, 6600.0f,
-            -15.0f, 5.2f, 2.5f, 72.0f, 3.4f, -0.2f, 0.38f, 0.48f, 0.12f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 02 OceanLab Balearic Chime",
+            .voiceMode = 2, .toneNote = 4, .toneOctave = 6, .toneFreq = 1318.5f, .toneQ = 4.2f,
+            .toneDecay = 720.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 8.0f, .fmAmount = 0.50f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 420.0f, .noiseCurve = -0.25f, .noiseHPF = 750.0f, .noiseLPF = 16500.0f,
+            .noiseStereoWidth = 1.60f, .noiseLevel = 0.38f,
+            .clickType = 1, .clickLevel = 0.38f, .clickFreq = 5400.0f,
+            .distType = 0, .distDrive = 0.06f, .distTone = 0.12f, .distMix = 0.12f,
+            .compThresh = -11.5f, .compRatio = 3.0f, .compAttack = 6.0f, .compRelease = 130.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.90f, .reverbDecay = 1600.0f, .reverbDamp = 0.18f, .reverbGate = 0.0f, .reverbMix = 0.46f,
+            .midiMode = 1, .stereoWidth = 1.30f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 04 Rotterdam Stadium Floor Tom",
-            1.0f, 3.5f, 150.0f, 1.18f, 0.48f, 0.08f, 1.0f, 0.20f,
-            98.0f, 7.0f, 2.0f, 0.0f, 15.0f, 42.0f, 290.0f, 0.94f, 1.0f,
-            1.0f, 1650.0f, 0.52f, 2.0f, 650.0f, 2.8f, 0.26f, 0.74f, 0.48f,
-            1.0f, 1.6f, 850.0f, 2.2f, 0.34f, 0.46f, 5400.0f,
-            -15.0f, 5.0f, 3.8f, 98.0f, 3.4f, -0.2f, 0.62f, 0.38f, 0.24f, 1.0f),
+        makePreset(PresetDef{
+            .name = "BL 03 Anjunadeep Glass Bell",
+            .voiceMode = 2, .toneNote = 9, .toneOctave = 5, .toneFreq = 880.0f, .toneQ = 3.8f,
+            .toneDecay = 550.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 12.0f, .fmAmount = 0.32f, .toneLevel = 0.88f,
+            .noiseType = 2, .noiseDecay = 320.0f, .noiseCurve = -0.35f, .noiseHPF = 600.0f, .noiseLPF = 14000.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.32f,
+            .clickType = 1, .clickLevel = 0.45f, .clickFreq = 4200.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.05f, .distMix = 0.14f,
+            .compThresh = -12.0f, .compRatio = 3.0f, .compAttack = 5.5f, .compRelease = 110.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.75f, .reverbDecay = 1100.0f, .reverbDamp = 0.35f, .reverbGate = 0.0f, .reverbMix = 0.36f,
+            .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 05 Coldharbour Deep Rolling Tom",
-            1.0f, 3.0f, 130.0f, 1.08f, 0.45f, 0.08f, 1.0f, 0.22f,
-            87.31f, 5.0f, 2.0f, 0.0f, 14.0f, 38.0f, 265.0f, 0.94f, 1.0f,
-            1.0f, 1500.0f, 0.48f, 2.0f, 600.0f, 2.7f, 0.22f, 0.58f, 0.36f,
-            1.0f, 1.4f, 800.0f, 1.4f, 0.34f, 0.46f, 4800.0f,
-            -14.5f, 4.8f, 4.0f, 90.0f, 3.2f, -0.2f, 0.46f, 0.48f, 0.16f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 04 Kandiman 138 Euphoric Bell",
+            .voiceMode = 2, .toneNote = 2, .toneOctave = 6, .toneFreq = 1174.66f, .toneQ = 4.5f,
+            .toneDecay = 600.0f, .tonePitchEnv = 2.5f, .tonePitchDecay = 10.0f, .fmAmount = 0.58f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 360.0f, .noiseCurve = -0.28f, .noiseHPF = 850.0f, .noiseLPF = 17000.0f,
+            .noiseStereoWidth = 1.55f, .noiseLevel = 0.42f,
+            .clickType = 0, .clickLevel = 0.48f, .clickFreq = 7000.0f,
+            .distType = 0, .distDrive = 0.12f, .distTone = 0.18f, .distMix = 0.18f,
+            .compThresh = -12.5f, .compRatio = 3.5f, .compAttack = 4.8f, .compRelease = 115.0f, .compMakeup = 2.2f,
+            .reverbSize = 0.82f, .reverbDecay = 1350.0f, .reverbDamp = 0.22f, .reverbGate = 0.0f, .reverbMix = 0.40f,
+            .midiMode = 1, .stereoWidth = 1.25f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 06 Cairo Tribal Tom",
-            1.0f, 3.5f, 125.0f, 1.04f, 0.48f, 0.10f, 1.0f, 0.24f,
-            123.47f, 11.0f, 2.0f, 0.0f, 15.0f, 34.0f, 240.0f, 0.92f, 1.0f,
-            1.0f, 2000.0f, 0.54f, 2.0f, 800.0f, 2.9f, 0.24f, 0.70f, 0.44f,
-            1.0f, 2.0f, 1050.0f, 2.2f, 0.30f, 0.42f, 5800.0f,
-            -14.0f, 4.6f, 3.6f, 84.0f, 3.0f, -0.3f, 0.52f, 0.42f, 0.18f, 0.6f),
+        makePreset(PresetDef{
+            .name = "BL 05 Venice Beach Sunset Chime",
+            .preBursts = 2, .preSpread = 14.0f, .preDecay = 10.0f, .preJitter = 0.12f, .flamSpread = 0.55f, .preLevel = 0.45f,
+            .voiceMode = 2, .toneNote = 11, .toneOctave = 5, .toneFreq = 987.77f, .toneQ = 4.0f,
+            .toneDecay = 680.0f, .tonePitchEnv = 1.8f, .tonePitchDecay = 9.0f, .fmAmount = 0.48f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 400.0f, .noiseCurve = -0.25f, .noiseHPF = 780.0f, .noiseLPF = 16000.0f,
+            .noiseStereoWidth = 1.55f, .noiseLevel = 0.40f,
+            .clickType = 1, .clickLevel = 0.40f, .clickFreq = 5800.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.10f, .distMix = 0.14f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.0f, .compRelease = 120.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.88f, .reverbDecay = 1500.0f, .reverbDamp = 0.20f, .reverbGate = 0.0f, .reverbMix = 0.44f,
+            .midiMode = 1, .stereoWidth = 1.30f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 07 High Contrast Tribal Tom",
-            1.0f, 3.5f, 130.0f, 1.06f, 0.48f, 0.10f, 1.0f, 0.22f,
-            116.54f, 10.0f, 2.0f, 0.0f, 15.0f, 36.0f, 250.0f, 0.92f, 1.0f,
-            1.0f, 1900.0f, 0.52f, 2.0f, 750.0f, 2.8f, 0.24f, 0.66f, 0.42f,
-            1.0f, 1.8f, 950.0f, 2.0f, 0.32f, 0.44f, 5600.0f,
-            -14.0f, 4.6f, 3.8f, 86.0f, 3.0f, -0.3f, 0.50f, 0.44f, 0.16f, 0.6f),
+        makePreset(PresetDef{
+            .name = "BL 06 Childish Gambit FM Bell",
+            .voiceMode = 2, .toneNote = 7, .toneOctave = 5, .toneFreq = 783.99f, .toneQ = 4.2f,
+            .toneDecay = 420.0f, .tonePitchEnv = 4.5f, .tonePitchDecay = 14.0f, .fmAmount = 0.62f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 280.0f, .noiseCurve = -0.35f, .noiseHPF = 720.0f, .noiseLPF = 15000.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.38f,
+            .clickType = 2, .clickLevel = 0.50f, .clickFreq = 5200.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.08f, .distMix = 0.22f,
+            .compThresh = -13.0f, .compRatio = 3.8f, .compAttack = 4.0f, .compRelease = 95.0f, .compMakeup = 2.5f,
+            .reverbSize = 0.70f, .reverbDecay = 750.0f, .reverbDamp = 0.28f, .reverbGate = 240.0f, .reverbMix = 0.28f,
+            .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 08 Gatecrasher 2000 Synth Tom",
-            1.0f, 3.0f, 115.0f, 1.00f, 0.46f, 0.08f, 1.0f, 0.28f,
-            138.59f, 1.0f, 3.0f, 0.0f, 18.0f, 30.0f, 220.0f, 0.92f, 1.0f,
-            3.0f, 2800.0f, 0.56f, 1.0f, 1000.0f, 3.2f, 0.24f, 0.68f, 0.44f,
-            1.0f, 2.2f, 1250.0f, 2.4f, 0.32f, 0.44f, 6200.0f,
-            -14.0f, 4.6f, 3.2f, 78.0f, 3.0f, -0.3f, 0.46f, 0.44f, 0.16f, 0.6f),
+        makePreset(PresetDef{
+            .name = "BL 07 Lift High Acid Bell",
+            .voiceMode = 2, .toneNote = 9, .toneOctave = 5, .toneFreq = 880.0f, .toneQ = 4.8f,
+            .toneDecay = 380.0f, .tonePitchEnv = 5.0f, .tonePitchDecay = 14.0f, .fmAmount = 0.75f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 260.0f, .noiseCurve = -0.38f, .noiseHPF = 800.0f, .noiseLPF = 16000.0f,
+            .noiseStereoWidth = 1.30f, .noiseLevel = 0.38f,
+            .clickType = 3, .clickLevel = 0.54f, .clickFreq = 5800.0f,
+            .distType = 3, .distDrive = 0.32f, .distTone = 0.15f, .distMix = 0.40f,
+            .compThresh = -14.5f, .compRatio = 4.5f, .compAttack = 3.0f, .compRelease = 85.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.65f, .reverbDecay = 620.0f, .reverbDamp = 0.32f, .reverbGate = 200.0f, .reverbMix = 0.26f,
+            .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
 
-        makePreset("TM 09 Deep Warm Percussive Tom",
-            1.0f, 3.0f, 120.0f, 1.04f, 0.45f, 0.10f, 1.0f, 0.12f,
-            103.83f, 8.0f, 2.0f, 0.0f, 12.0f, 34.0f, 235.0f, 0.90f, 1.0f,
-            1.0f, 1600.0f, 0.44f, 2.0f, 625.0f, 2.5f, 0.18f, 0.62f, 0.38f,
-            0.0f, 1.2f, 850.0f, 1.2f, 0.20f, 0.32f, 4900.0f,
-            -13.0f, 3.8f, 4.6f, 84.0f, 2.4f, -0.3f, 0.54f, 0.46f, 0.18f, 0.4f),
+        makePreset(PresetDef{
+            .name = "BL 08 Tytanium Metallic Cowbell",
+            .voiceMode = 2, .toneNote = 2, .toneOctave = 5, .toneFreq = 587.33f, .toneQ = 4.5f,
+            .toneDecay = 280.0f, .tonePitchEnv = 3.0f, .tonePitchDecay = 12.0f, .fmAmount = 0.65f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 200.0f, .noiseCurve = -0.40f, .noiseHPF = 650.0f, .noiseLPF = 14000.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.36f,
+            .clickType = 2, .clickLevel = 0.58f, .clickFreq = 4600.0f,
+            .distType = 2, .distDrive = 0.24f, .distTone = 0.05f, .distMix = 0.30f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 3.2f, .compRelease = 75.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.55f, .reverbDecay = 480.0f, .reverbDamp = 0.38f, .reverbGate = 160.0f, .reverbMix = 0.22f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.5f
+        }),
 
-        makePreset("TM 10 Muranyi Electro Tom",
-            1.0f, 2.5f, 120.0f, 1.02f, 0.46f, 0.06f, 1.0f, 0.26f,
-            110.0f, 9.0f, 2.0f, 0.0f, 16.0f, 32.0f, 230.0f, 0.94f, 1.0f,
-            2.0f, 2400.0f, 0.58f, 1.0f, 900.0f, 3.0f, 0.24f, 0.70f, 0.44f,
-            1.0f, 2.2f, 1050.0f, 2.4f, 0.36f, 0.48f, 5900.0f,
-            -14.5f, 5.0f, 3.2f, 82.0f, 3.2f, -0.2f, 0.52f, 0.40f, 0.18f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 09 Gouryella Heaven Bell",
+            .voiceMode = 2, .toneNote = 4, .toneOctave = 6, .toneFreq = 1318.51f, .toneQ = 4.5f,
+            .toneDecay = 850.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 8.0f, .fmAmount = 0.52f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 450.0f, .noiseCurve = -0.22f, .noiseHPF = 850.0f, .noiseLPF = 17500.0f,
+            .noiseStereoWidth = 1.65f, .noiseLevel = 0.42f,
+            .clickType = 1, .clickLevel = 0.42f, .clickFreq = 6200.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.12f, .distMix = 0.15f,
+            .compThresh = -11.5f, .compRatio = 3.0f, .compAttack = 6.0f, .compRelease = 140.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.95f, .reverbDecay = 1900.0f, .reverbDamp = 0.15f, .reverbGate = 0.0f, .reverbMix = 0.50f,
+            .midiMode = 1, .stereoWidth = 1.35f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 11 Rock Your Body Tom",
-            1.0f, 3.0f, 110.0f, 0.98f, 0.46f, 0.07f, 1.0f, 0.30f,
-            130.81f, 0.0f, 3.0f, 0.0f, 17.0f, 28.0f, 215.0f, 0.92f, 1.0f,
-            3.0f, 2900.0f, 0.56f, 1.0f, 1050.0f, 3.2f, 0.26f, 0.66f, 0.42f,
-            2.0f, 2.4f, 1200.0f, 2.6f, 0.38f, 0.50f, 6400.0f,
-            -14.5f, 5.0f, 2.8f, 76.0f, 3.2f, -0.2f, 0.44f, 0.44f, 0.14f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 10 Punk Metallic Bell Smack",
+            .voiceMode = 2, .toneNote = 4, .toneOctave = 5, .toneFreq = 659.25f, .toneQ = 4.5f,
+            .toneDecay = 340.0f, .tonePitchEnv = 6.0f, .tonePitchDecay = 15.0f, .fmAmount = 0.70f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 240.0f, .noiseCurve = -0.38f, .noiseHPF = 700.0f, .noiseLPF = 15000.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.40f,
+            .clickType = 2, .clickLevel = 0.60f, .clickFreq = 4800.0f,
+            .distType = 2, .distDrive = 0.34f, .distTone = 0.08f, .distMix = 0.40f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 2.8f, .compRelease = 80.0f, .compMakeup = 3.6f,
+            .reverbSize = 0.60f, .reverbDecay = 520.0f, .reverbDamp = 0.35f, .reverbGate = 180.0f, .reverbMix = 0.24f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.6f
+        }),
 
-        makePreset("TM 12 Simmons 80s Trance Synth Tom",
-            1.0f, 2.5f, 135.0f, 1.04f, 0.46f, 0.06f, 1.0f, 0.24f,
-            146.83f, 2.0f, 3.0f, 0.0f, 20.0f, 34.0f, 245.0f, 0.92f, 1.0f,
-            3.0f, 2600.0f, 0.54f, 1.0f, 950.0f, 3.0f, 0.28f, 0.72f, 0.46f,
-            1.0f, 2.0f, 1150.0f, 2.4f, 0.28f, 0.40f, 6000.0f,
-            -14.0f, 4.5f, 3.4f, 84.0f, 3.0f, -0.3f, 0.56f, 0.40f, 0.20f, 0.6f),
+        makePreset(PresetDef{
+            .name = "BL 11 Kyoto Ritual Bell",
+            .voiceMode = 2, .toneNote = 0, .toneOctave = 4, .toneFreq = 261.63f, .toneQ = 4.2f,
+            .toneDecay = 900.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 12.0f, .fmAmount = 0.40f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 480.0f, .noiseCurve = -0.25f, .noiseHPF = 450.0f, .noiseLPF = 12000.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.35f,
+            .clickType = 1, .clickLevel = 0.48f, .clickFreq = 2800.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.02f, .distMix = 0.15f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.5f, .compRelease = 130.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.88f, .reverbDecay = 1700.0f, .reverbDamp = 0.24f, .reverbGate = 0.0f, .reverbMix = 0.42f,
+            .midiMode = 1, .stereoWidth = 1.25f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 13 Subculture 140 Rolling Bass Tom",
-            1.0f, 2.0f, 110.0f, 1.00f, 0.42f, 0.05f, 1.0f, 0.20f,
-            82.41f, 4.0f, 2.0f, 0.0f, 14.0f, 30.0f, 225.0f, 0.95f, 1.0f,
-            1.0f, 1550.0f, 0.50f, 2.0f, 575.0f, 2.7f, 0.20f, 0.48f, 0.28f,
-            1.0f, 1.6f, 780.0f, 1.6f, 0.36f, 0.48f, 4800.0f,
-            -15.0f, 5.2f, 3.2f, 78.0f, 3.4f, -0.2f, 0.34f, 0.52f, 0.10f, 0.9f),
+        makePreset(PresetDef{
+            .name = "BL 12 Who's Afraid 138 Ride Bell",
+            .voiceMode = 2, .toneNote = 7, .toneOctave = 6, .toneFreq = 1567.98f, .toneQ = 4.6f,
+            .toneDecay = 320.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 10.0f, .fmAmount = 0.68f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 220.0f, .noiseCurve = -0.38f, .noiseHPF = 950.0f, .noiseLPF = 18000.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.42f,
+            .clickType = 2, .clickLevel = 0.55f, .clickFreq = 7200.0f,
+            .distType = 1, .distDrive = 0.15f, .distTone = 0.12f, .distMix = 0.22f,
+            .compThresh = -13.0f, .compRatio = 4.0f, .compAttack = 3.5f, .compRelease = 85.0f, .compMakeup = 2.6f,
+            .reverbSize = 0.64f, .reverbDecay = 560.0f, .reverbDamp = 0.28f, .reverbGate = 180.0f, .reverbMix = 0.25f,
+            .midiMode = 1, .stereoWidth = 1.20f, .outputGain = 0.4f
+        }),
 
-        makePreset("TM 14 Red Rocks Canyon Tom",
-            2.0f, 6.5f, 160.0f, 1.22f, 0.54f, 0.12f, 1.0f, 0.20f,
-            98.0f, 7.0f, 2.0f, 0.0f, 15.0f, 40.0f, 300.0f, 0.94f, 1.0f,
-            1.0f, 1750.0f, 0.54f, 2.0f, 700.0f, 2.8f, 0.26f, 0.82f, 0.54f,
-            1.0f, 1.8f, 900.0f, 2.4f, 0.32f, 0.44f, 5600.0f,
-            -14.5f, 4.8f, 3.8f, 102.0f, 3.2f, -0.2f, 0.72f, 0.34f, 0.28f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 13 Black Hole Cosmic Bell",
+            .voiceMode = 2, .toneNote = 11, .toneOctave = 5, .toneFreq = 987.77f, .toneQ = 4.4f,
+            .toneDecay = 750.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 10.0f, .fmAmount = 0.55f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 420.0f, .noiseCurve = -0.26f, .noiseHPF = 820.0f, .noiseLPF = 16500.0f,
+            .noiseStereoWidth = 1.65f, .noiseLevel = 0.42f,
+            .clickType = 1, .clickLevel = 0.44f, .clickFreq = 5800.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.10f, .distMix = 0.15f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.2f, .compRelease = 125.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.90f, .reverbDecay = 1600.0f, .reverbDamp = 0.20f, .reverbGate = 0.0f, .reverbMix = 0.45f,
+            .midiMode = 1, .stereoWidth = 1.30f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 15 Armada Progressive Groove Tom",
-            1.0f, 3.0f, 118.0f, 1.02f, 0.45f, 0.08f, 1.0f, 0.16f,
-            110.0f, 9.0f, 2.0f, 0.0f, 13.0f, 32.0f, 230.0f, 0.92f, 1.0f,
-            1.0f, 1850.0f, 0.48f, 2.0f, 725.0f, 2.6f, 0.20f, 0.60f, 0.36f,
-            0.0f, 1.5f, 920.0f, 1.8f, 0.26f, 0.38f, 5300.0f,
-            -13.5f, 4.2f, 4.0f, 82.0f, 2.8f, -0.3f, 0.46f, 0.46f, 0.15f, 0.5f),
+        makePreset(PresetDef{
+            .name = "BL 14 Bonzai Rave Cowbell",
+            .voiceMode = 2, .toneNote = 2, .toneOctave = 5, .toneFreq = 587.33f, .toneQ = 4.4f,
+            .toneDecay = 250.0f, .tonePitchEnv = 3.5f, .tonePitchDecay = 11.0f, .fmAmount = 0.60f, .toneLevel = 0.92f,
+            .noiseType = 3, .noiseDecay = 180.0f, .noiseCurve = -0.42f, .noiseHPF = 600.0f, .noiseLPF = 13500.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.36f,
+            .clickType = 2, .clickLevel = 0.60f, .clickFreq = 4400.0f,
+            .distType = 1, .distDrive = 0.28f, .distTone = 0.08f, .distMix = 0.32f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.0f, .compRelease = 70.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.52f, .reverbDecay = 420.0f, .reverbDamp = 0.40f, .reverbGate = 150.0f, .reverbMix = 0.20f,
+            .midiMode = 1, .stereoWidth = 1.08f, .outputGain = 0.6f
+        }),
 
-        makePreset("TM 16 Berlin Octapad Tom",
-            1.0f, 3.0f, 110.0f, 0.98f, 0.45f, 0.07f, 1.0f, 0.18f,
-            164.81f, 4.0f, 3.0f, 0.0f, 14.0f, 28.0f, 210.0f, 0.90f, 1.0f,
-            0.0f, 2300.0f, 0.52f, 2.0f, 875.0f, 2.8f, 0.22f, 0.68f, 0.42f,
-            0.0f, 1.8f, 1180.0f, 2.2f, 0.24f, 0.36f, 6000.0f,
-            -13.5f, 4.2f, 3.6f, 76.0f, 2.8f, -0.3f, 0.46f, 0.44f, 0.16f, 0.5f),
+        makePreset(PresetDef{
+            .name = "BL 15 Aalto Pluck Bell",
+            .voiceMode = 2, .toneNote = 6, .toneOctave = 5, .toneFreq = 739.99f, .toneQ = 4.0f,
+            .toneDecay = 320.0f, .tonePitchEnv = 2.5f, .tonePitchDecay = 11.0f, .fmAmount = 0.42f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 210.0f, .noiseCurve = -0.38f, .noiseHPF = 650.0f, .noiseLPF = 14500.0f,
+            .noiseStereoWidth = 1.30f, .noiseLevel = 0.32f,
+            .clickType = 1, .clickLevel = 0.52f, .clickFreq = 4500.0f,
+            .distType = 0, .distDrive = 0.12f, .distTone = 0.06f, .distMix = 0.18f,
+            .compThresh = -12.5f, .compRatio = 3.5f, .compAttack = 4.2f, .compRelease = 85.0f, .compMakeup = 2.4f,
+            .reverbSize = 0.65f, .reverbDecay = 620.0f, .reverbDamp = 0.32f, .reverbGate = 200.0f, .reverbMix = 0.26f,
+            .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 17 Psy Zapper Tom",
-            1.0f, 2.0f, 95.0f, 0.94f, 0.42f, 0.05f, 1.0f, 0.38f,
-            146.83f, 2.0f, 3.0f, 0.0f, 24.0f, 24.0f, 190.0f, 0.94f, 1.0f,
-            3.0f, 3500.0f, 0.66f, 1.0f, 1200.0f, 3.6f, 0.24f, 0.64f, 0.40f,
-            2.0f, 2.6f, 1450.0f, 3.0f, 0.40f, 0.52f, 6800.0f,
-            -15.0f, 5.4f, 2.2f, 68.0f, 3.5f, -0.2f, 0.36f, 0.48f, 0.12f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 16 Solaris Shimmer Bell",
+            .voiceMode = 2, .toneNote = 9, .toneOctave = 6, .toneFreq = 1760.0f, .toneQ = 4.6f,
+            .toneDecay = 700.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 8.0f, .fmAmount = 0.48f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 480.0f, .noiseCurve = -0.24f, .noiseHPF = 850.0f, .noiseLPF = 17000.0f,
+            .noiseStereoWidth = 1.60f, .noiseLevel = 0.40f,
+            .clickType = 1, .clickLevel = 0.38f, .clickFreq = 6400.0f,
+            .distType = 0, .distDrive = 0.06f, .distTone = 0.12f, .distMix = 0.12f,
+            .compThresh = -11.5f, .compRatio = 3.0f, .compAttack = 6.0f, .compRelease = 130.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.88f, .reverbDecay = 1550.0f, .reverbDamp = 0.18f, .reverbGate = 0.0f, .reverbMix = 0.44f,
+            .midiMode = 1, .stereoWidth = 1.30f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 18 Ligaya High Melodic Tom",
-            1.0f, 3.5f, 115.0f, 1.02f, 0.46f, 0.08f, 1.0f, 0.16f,
-            196.0f, 7.0f, 3.0f, 0.0f, 12.0f, 28.0f, 225.0f, 0.90f, 1.0f,
-            1.0f, 2400.0f, 0.48f, 2.0f, 925.0f, 2.8f, 0.20f, 0.74f, 0.48f,
-            0.0f, 1.8f, 1300.0f, 2.4f, 0.22f, 0.34f, 6200.0f,
-            -13.0f, 4.0f, 3.8f, 80.0f, 2.6f, -0.3f, 0.54f, 0.40f, 0.18f, 0.4f),
+        makePreset(PresetDef{
+            .name = "BL 17 Enhanced Progressive Chime",
+            .voiceMode = 2, .toneNote = 7, .toneOctave = 5, .toneFreq = 783.99f, .toneQ = 4.0f,
+            .toneDecay = 560.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 10.0f, .fmAmount = 0.45f, .toneLevel = 0.88f,
+            .noiseType = 3, .noiseDecay = 340.0f, .noiseCurve = -0.30f, .noiseHPF = 720.0f, .noiseLPF = 15000.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.36f,
+            .clickType = 0, .clickLevel = 0.44f, .clickFreq = 5400.0f,
+            .distType = 0, .distDrive = 0.10f, .distTone = 0.08f, .distMix = 0.16f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.0f, .compRelease = 110.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.78f, .reverbDecay = 1150.0f, .reverbDamp = 0.26f, .reverbGate = 0.0f, .reverbMix = 0.35f,
+            .midiMode = 1, .stereoWidth = 1.20f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 19 Electro Progressive Tight Tom",
-            1.0f, 2.0f, 100.0f, 0.94f, 0.42f, 0.05f, 1.0f, 0.14f,
-            110.0f, 9.0f, 2.0f, 0.0f, 13.0f, 26.0f, 195.0f, 0.92f, 1.0f,
-            0.0f, 1950.0f, 0.50f, 2.0f, 750.0f, 2.6f, 0.18f, 0.50f, 0.28f,
-            1.0f, 1.6f, 950.0f, 1.8f, 0.26f, 0.38f, 5400.0f,
-            -13.5f, 4.4f, 3.2f, 70.0f, 2.8f, -0.3f, 0.36f, 0.50f, 0.10f, 0.5f),
+        makePreset(PresetDef{
+            .name = "BL 18 Mau5 Pluck Bell Ping",
+            .voiceMode = 2, .toneNote = 0, .toneOctave = 6, .toneFreq = 1046.5f, .toneQ = 3.8f,
+            .toneDecay = 260.0f, .tonePitchEnv = 2.0f, .tonePitchDecay = 8.0f, .fmAmount = 0.38f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 160.0f, .noiseCurve = -0.44f, .noiseHPF = 750.0f, .noiseLPF = 14000.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.28f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 5800.0f,
+            .distType = 0, .distDrive = 0.10f, .distTone = 0.04f, .distMix = 0.15f,
+            .compThresh = -12.5f, .compRatio = 3.5f, .compAttack = 4.0f, .compRelease = 70.0f, .compMakeup = 2.2f,
+            .reverbSize = 0.50f, .reverbDecay = 350.0f, .reverbDamp = 0.40f, .reverbGate = 120.0f, .reverbMix = 0.16f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 20 Ibiza Terrace Bongo-Tom",
-            1.0f, 3.5f, 105.0f, 0.96f, 0.46f, 0.10f, 1.0f, 0.20f,
-            174.61f, 5.0f, 3.0f, 0.0f, 11.0f, 24.0f, 200.0f, 0.90f, 1.0f,
-            1.0f, 2500.0f, 0.52f, 2.0f, 950.0f, 2.9f, 0.20f, 0.68f, 0.44f,
-            0.0f, 2.2f, 1350.0f, 2.2f, 0.22f, 0.34f, 6000.0f,
-            -13.0f, 4.0f, 3.4f, 74.0f, 2.6f, -0.3f, 0.46f, 0.42f, 0.16f, 0.4f),
+        makePreset(PresetDef{
+            .name = "BL 19 Silk Music Sunset Bell",
+            .voiceMode = 2, .toneNote = 4, .toneOctave = 5, .toneFreq = 659.25f, .toneQ = 3.8f,
+            .toneDecay = 620.0f, .tonePitchEnv = 1.8f, .tonePitchDecay = 10.0f, .fmAmount = 0.36f, .toneLevel = 0.88f,
+            .noiseType = 2, .noiseDecay = 380.0f, .noiseCurve = -0.28f, .noiseHPF = 650.0f, .noiseLPF = 14500.0f,
+            .noiseStereoWidth = 1.45f, .noiseLevel = 0.34f,
+            .clickType = 1, .clickLevel = 0.42f, .clickFreq = 3800.0f,
+            .distType = 0, .distDrive = 0.06f, .distTone = 0.05f, .distMix = 0.12f,
+            .compThresh = -11.8f, .compRatio = 3.0f, .compAttack = 5.5f, .compRelease = 120.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.84f, .reverbDecay = 1300.0f, .reverbDamp = 0.25f, .reverbGate = 0.0f, .reverbMix = 0.38f,
+            .midiMode = 1, .stereoWidth = 1.25f, .outputGain = 0.0f
+        }),
 
-        makePreset("TM 21 Sub-Bass 808 Boom Tom",
-            1.0f, 2.0f, 165.0f, 1.24f, 0.44f, 0.05f, 1.0f, 0.12f,
-            65.41f, 0.0f, 2.0f, 0.0f, 16.0f, 44.0f, 340.0f, 0.96f, 1.0f,
-            1.0f, 1400.0f, 0.46f, 2.0f, 525.0f, 2.5f, 0.16f, 0.42f, 0.22f,
-            1.0f, 1.2f, 700.0f, 1.2f, 0.34f, 0.46f, 4400.0f,
-            -15.0f, 5.0f, 4.2f, 105.0f, 3.4f, -0.2f, 0.36f, 0.52f, 0.10f, 1.0f),
+        makePreset(PresetDef{
+            .name = "BL 20 Goa 909 Ride Bell",
+            .voiceMode = 2, .toneNote = 6, .toneOctave = 6, .toneFreq = 1479.98f, .toneQ = 4.4f,
+            .toneDecay = 340.0f, .tonePitchEnv = 2.5f, .tonePitchDecay = 10.0f, .fmAmount = 0.65f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 240.0f, .noiseCurve = -0.36f, .noiseHPF = 900.0f, .noiseLPF = 17500.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.40f,
+            .clickType = 3, .clickLevel = 0.52f, .clickFreq = 6800.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.12f, .distMix = 0.25f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 3.5f, .compRelease = 85.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.65f, .reverbDecay = 580.0f, .reverbDamp = 0.30f, .reverbGate = 190.0f, .reverbMix = 0.26f,
+            .midiMode = 1, .stereoWidth = 1.20f, .outputGain = 0.4f
+        }),
 
-        makePreset("TM 22 Stadium Big Flam Tom",
-            3.0f, 11.0f, 145.0f, 1.15f, 0.58f, 0.14f, 1.0f, 0.22f,
-            110.0f, 9.0f, 2.0f, 0.0f, 15.0f, 36.0f, 280.0f, 0.94f, 1.0f,
-            2.0f, 2100.0f, 0.56f, 2.0f, 800.0f, 2.9f, 0.26f, 0.80f, 0.52f,
-            1.0f, 1.8f, 980.0f, 2.4f, 0.34f, 0.46f, 5800.0f,
-            -14.5f, 4.8f, 3.6f, 94.0f, 3.2f, -0.2f, 0.64f, 0.36f, 0.24f, 0.8f),
+        makePreset(PresetDef{
+            .name = "BL 21 Berlin Industrial Anvil Bell",
+            .voiceMode = 2, .toneNote = 2, .toneOctave = 4, .toneFreq = 293.66f, .toneQ = 4.8f,
+            .toneDecay = 460.0f, .tonePitchEnv = 4.0f, .tonePitchDecay = 14.0f, .fmAmount = 0.82f, .toneLevel = 0.94f,
+            .noiseType = 3, .noiseDecay = 320.0f, .noiseCurve = -0.32f, .noiseHPF = 550.0f, .noiseLPF = 14000.0f,
+            .noiseStereoWidth = 1.35f, .noiseLevel = 0.45f,
+            .clickType = 2, .clickLevel = 0.70f, .clickFreq = 4800.0f,
+            .distType = 3, .distDrive = 0.38f, .distTone = 0.14f, .distMix = 0.45f,
+            .compThresh = -16.0f, .compRatio = 5.5f, .compAttack = 2.5f, .compRelease = 90.0f, .compMakeup = 4.0f,
+            .reverbSize = 0.72f, .reverbDecay = 720.0f, .reverbDamp = 0.30f, .reverbGate = 220.0f, .reverbMix = 0.30f,
+            .midiMode = 1, .stereoWidth = 1.20f, .outputGain = 0.8f
+        }),
 
-        makePreset("TM 23 Note-Tracked Keyboard Tom Rack",
-            1.0f, 2.5f, 115.0f, 1.00f, 0.44f, 0.06f, 1.0f, 0.16f,
-            110.0f, 9.0f, 2.0f, 0.0f, 12.0f, 30.0f, 230.0f, 0.92f, 1.0f,
-            1.0f, 1900.0f, 0.48f, 2.0f, 750.0f, 2.7f, 0.20f, 0.64f, 0.40f,
-            0.0f, 1.6f, 1000.0f, 2.0f, 0.24f, 0.36f, 5600.0f,
-            -13.0f, 4.0f, 3.8f, 80.0f, 2.6f, -0.3f, 0.46f, 0.44f, 0.16f, 0.4f),
+        makePreset(PresetDef{
+            .name = "BL 22 Café del Mar Harmonic Chime",
+            .voiceMode = 2, .toneNote = 9, .toneOctave = 5, .toneFreq = 880.0f, .toneQ = 4.2f,
+            .toneDecay = 820.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 8.0f, .fmAmount = 0.44f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 480.0f, .noiseCurve = -0.22f, .noiseHPF = 700.0f, .noiseLPF = 16000.0f,
+            .noiseStereoWidth = 1.60f, .noiseLevel = 0.40f,
+            .clickType = 1, .clickLevel = 0.40f, .clickFreq = 4800.0f,
+            .distType = 0, .distDrive = 0.06f, .distTone = 0.08f, .distMix = 0.12f,
+            .compThresh = -11.5f, .compRatio = 3.0f, .compAttack = 6.0f, .compRelease = 135.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.92f, .reverbDecay = 1800.0f, .reverbDamp = 0.18f, .reverbGate = 0.0f, .reverbMix = 0.48f,
+            .midiMode = 1, .stereoWidth = 1.30f, .outputGain = 0.2f
+        }),
 
-        makePreset("TM 24 Beat 4 Reverse Tom Pickup",
-            3.0f, 15.5f, 140.0f, 1.12f, 0.58f, 0.16f, 1.0f, 0.24f,
-            123.47f, 11.0f, 2.0f, 0.0f, 16.0f, 36.0f, 270.0f, 0.92f, 1.0f,
-            1.0f, 2000.0f, 0.52f, 2.0f, 800.0f, 2.8f, 0.26f, 0.82f, 0.54f,
-            1.0f, 1.8f, 1020.0f, 2.2f, 0.30f, 0.42f, 5800.0f,
-            -14.0f, 4.6f, 3.8f, 92.0f, 3.0f, -0.3f, 0.60f, 0.38f, 0.22f, 0.6f,
-            2.0f, 0.60f),
+        makePreset(PresetDef{
+            .name = "BL 23 Melodic Keyboard FM Bell",
+            .voiceMode = 2, .toneNote = 0, .toneOctave = 5, .toneFreq = 523.25f, .toneQ = 4.0f,
+            .toneDecay = 520.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 9.0f, .fmAmount = 0.46f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 300.0f, .noiseCurve = -0.32f, .noiseHPF = 750.0f, .noiseLPF = 15500.0f,
+            .noiseStereoWidth = 1.40f, .noiseLevel = 0.35f,
+            .clickType = 0, .clickLevel = 0.44f, .clickFreq = 5200.0f,
+            .distType = 0, .distDrive = 0.08f, .distTone = 0.06f, .distMix = 0.15f,
+            .compThresh = -12.0f, .compRatio = 3.2f, .compAttack = 5.0f, .compRelease = 105.0f, .compMakeup = 2.0f,
+            .reverbSize = 0.75f, .reverbDecay = 950.0f, .reverbDamp = 0.26f, .reverbGate = 0.0f, .reverbMix = 0.32f,
+            .midiMode = 1, .stereoWidth = 1.20f, .outputGain = 0.0f
+        }),
+
+        makePreset(PresetDef{
+            .name = "BL 24 Beat End Reverse Bell",
+            .voiceMode = 2, .toneNote = 4, .toneOctave = 6, .toneFreq = 1318.51f, .toneQ = 4.2f,
+            .toneDecay = 650.0f, .tonePitchEnv = 1.5f, .tonePitchDecay = 8.0f, .fmAmount = 0.50f, .toneLevel = 0.90f,
+            .noiseType = 3, .noiseDecay = 380.0f, .noiseCurve = -0.28f, .noiseHPF = 800.0f, .noiseLPF = 16000.0f,
+            .noiseStereoWidth = 1.50f, .noiseLevel = 0.40f,
+            .clickType = 1, .clickLevel = 0.40f, .clickFreq = 5600.0f,
+            .distType = 0, .distDrive = 0.10f, .distTone = 0.10f, .distMix = 0.16f,
+            .compThresh = -12.5f, .compRatio = 3.4f, .compAttack = 5.0f, .compRelease = 115.0f, .compMakeup = 2.2f,
+            .reverbSize = 0.85f, .reverbDecay = 1400.0f, .reverbDamp = 0.22f, .reverbGate = 0.0f, .reverbMix = 0.40f,
+            .reverseMode = 1, .reverseMix = 0.60f, .midiMode = 1, .stereoWidth = 1.25f, .outputGain = 0.2f
+        }),
+
+        // =========================================================================
+        // TM 01 - TM 24: CLUB TOM-TOMS (24 Presets)
+        // =========================================================================
+
+        makePreset(PresetDef{
+            .name = "TM 01 Anjunabeats Groove Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.5f,
+            .toneDecay = 260.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 28.0f, .fmAmount = 0.35f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 90.0f, .noiseCurve = -0.45f, .noiseHPF = 200.0f, .noiseLPF = 6500.0f,
+            .noiseStereoWidth = 0.95f, .noiseLevel = 0.25f,
+            .clickType = 1, .clickLevel = 0.50f, .clickFreq = 1800.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = -0.05f, .distMix = 0.24f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 5.0f, .compRelease = 85.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.55f, .reverbDecay = 380.0f, .reverbDamp = 0.45f, .reverbGate = 140.0f, .reverbMix = 0.18f,
+            .stereoWidth = 1.0f, .outputGain = 0.0f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 02 Kandi Melodic Tom Fill",
+            .voiceMode = 1, .toneNote = 0, .toneOctave = 3, .toneFreq = 130.81f, .toneQ = 3.6f,
+            .toneDecay = 310.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 32.0f, .fmAmount = 0.40f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 110.0f, .noiseCurve = -0.40f, .noiseHPF = 220.0f, .noiseLPF = 7200.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.48f, .clickFreq = 2200.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.02f, .distMix = 0.22f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.8f, .compRelease = 90.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.65f, .reverbDecay = 480.0f, .reverbDamp = 0.38f, .reverbGate = 180.0f, .reverbMix = 0.24f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 03 Sean Tyas Psy-Tech Laser Tom",
+            .voiceMode = 1, .toneNote = 7, .toneOctave = 2, .toneFreq = 98.0f, .toneQ = 3.8f,
+            .toneDecay = 190.0f, .tonePitchEnv = 24.0f, .tonePitchDecay = 18.0f, .fmAmount = 0.50f, .toneLevel = 0.94f,
+            .noiseType = 1, .noiseDecay = 95.0f, .noiseCurve = -0.48f, .noiseHPF = 300.0f, .noiseLPF = 8500.0f,
+            .noiseStereoWidth = 1.05f, .noiseLevel = 0.32f,
+            .clickType = 3, .clickLevel = 0.62f, .clickFreq = 3800.0f,
+            .distType = 2, .distDrive = 0.32f, .distTone = 0.05f, .distMix = 0.36f,
+            .compThresh = -16.0f, .compRatio = 6.0f, .compAttack = 2.5f, .compRelease = 65.0f, .compMakeup = 4.0f,
+            .reverbSize = 0.48f, .reverbDecay = 320.0f, .reverbDamp = 0.45f, .reverbGate = 110.0f, .reverbMix = 0.15f,
+            .stereoWidth = 1.05f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 04 Rotterdam Stadium Floor Tom",
+            .voiceMode = 1, .toneNote = 5, .toneOctave = 2, .toneFreq = 87.31f, .toneQ = 3.5f,
+            .toneDecay = 380.0f, .tonePitchEnv = 16.0f, .tonePitchDecay = 35.0f, .fmAmount = 0.38f, .toneLevel = 0.94f,
+            .noiseType = 2, .noiseDecay = 120.0f, .noiseCurve = -0.38f, .noiseHPF = 180.0f, .noiseLPF = 6000.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.55f, .clickFreq = 1600.0f,
+            .distType = 1, .distDrive = 0.26f, .distTone = -0.05f, .distMix = 0.32f,
+            .compThresh = -15.0f, .compRatio = 5.2f, .compAttack = 4.0f, .compRelease = 100.0f, .compMakeup = 4.0f,
+            .reverbSize = 0.80f, .reverbDecay = 650.0f, .reverbDamp = 0.32f, .reverbGate = 220.0f, .reverbMix = 0.28f,
+            .stereoWidth = 1.15f, .outputGain = 0.8f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 05 Coldharbour Deep Rolling Tom",
+            .voiceMode = 1, .toneNote = 2, .toneOctave = 2, .toneFreq = 73.42f, .toneQ = 3.4f,
+            .toneDecay = 240.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 25.0f, .fmAmount = 0.32f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 85.0f, .noiseCurve = -0.45f, .noiseHPF = 190.0f, .noiseLPF = 5800.0f,
+            .noiseStereoWidth = 0.95f, .noiseLevel = 0.22f,
+            .clickType = 1, .clickLevel = 0.48f, .clickFreq = 1500.0f,
+            .distType = 1, .distDrive = 0.20f, .distTone = -0.15f, .distMix = 0.26f,
+            .compThresh = -14.2f, .compRatio = 4.6f, .compAttack = 4.5f, .compRelease = 80.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.52f, .reverbDecay = 360.0f, .reverbDamp = 0.48f, .reverbGate = 130.0f, .reverbMix = 0.16f,
+            .stereoWidth = 1.0f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 06 Aly & Fila Cairo Tribal Tom",
+            .preBursts = 2, .preSpread = 10.0f, .preDecay = 7.0f, .preJitter = 0.12f, .flamSpread = 0.40f, .preLevel = 0.50f,
+            .voiceMode = 1, .toneNote = 7, .toneOctave = 2, .toneFreq = 98.0f, .toneQ = 3.6f,
+            .toneDecay = 250.0f, .tonePitchEnv = 15.0f, .tonePitchDecay = 26.0f, .fmAmount = 0.36f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 95.0f, .noiseCurve = -0.42f, .noiseHPF = 210.0f, .noiseLPF = 6800.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.26f,
+            .clickType = 1, .clickLevel = 0.54f, .clickFreq = 2100.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.02f, .distMix = 0.24f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.2f, .compRelease = 85.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.62f, .reverbDecay = 450.0f, .reverbDamp = 0.38f, .reverbGate = 160.0f, .reverbMix = 0.22f,
+            .stereoWidth = 1.10f, .outputGain = 0.4f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 07 High Contrast Tribal Tom",
+            .preBursts = 3, .preSpread = 12.0f, .preDecay = 8.5f, .preJitter = 0.14f, .flamSpread = 0.50f, .preLevel = 0.58f,
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.5f,
+            .toneDecay = 280.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 28.0f, .fmAmount = 0.36f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 105.0f, .noiseCurve = -0.40f, .noiseHPF = 220.0f, .noiseLPF = 7000.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.28f,
+            .clickType = 0, .clickLevel = 0.52f, .clickFreq = 2400.0f,
+            .distType = 1, .distDrive = 0.22f, .distTone = 0.06f, .distMix = 0.28f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.8f, .compRelease = 90.0f, .compMakeup = 3.4f,
+            .reverbSize = 0.75f, .reverbDecay = 550.0f, .reverbDamp = 0.32f, .reverbGate = 190.0f, .reverbMix = 0.26f,
+            .stereoWidth = 1.15f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 08 Gatecrasher 2000 Synth Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.8f,
+            .toneDecay = 270.0f, .tonePitchEnv = 18.0f, .tonePitchDecay = 30.0f, .fmAmount = 0.44f, .toneLevel = 0.92f,
+            .noiseType = 1, .noiseDecay = 110.0f, .noiseCurve = -0.42f, .noiseHPF = 250.0f, .noiseLPF = 8000.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.30f,
+            .clickType = 3, .clickLevel = 0.56f, .clickFreq = 3200.0f,
+            .distType = 0, .distDrive = 0.22f, .distTone = 0.08f, .distMix = 0.28f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.8f, .compRelease = 85.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.68f, .reverbDecay = 500.0f, .reverbDamp = 0.35f, .reverbGate = 180.0f, .reverbMix = 0.24f,
+            .stereoWidth = 1.10f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 09 Anjunadeep Warm Percussive Tom",
+            .voiceMode = 1, .toneNote = 0, .toneOctave = 3, .toneFreq = 130.81f, .toneQ = 3.3f,
+            .toneDecay = 290.0f, .tonePitchEnv = 9.0f, .tonePitchDecay = 28.0f, .fmAmount = 0.25f, .toneLevel = 0.88f,
+            .noiseType = 2, .noiseDecay = 100.0f, .noiseCurve = -0.42f, .noiseHPF = 200.0f, .noiseLPF = 6200.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.24f,
+            .clickType = 1, .clickLevel = 0.46f, .clickFreq = 1600.0f,
+            .distType = 0, .distDrive = 0.12f, .distTone = -0.05f, .distMix = 0.18f,
+            .compThresh = -13.0f, .compRatio = 3.8f, .compAttack = 5.5f, .compRelease = 90.0f, .compMakeup = 2.5f,
+            .reverbSize = 0.64f, .reverbDecay = 480.0f, .reverbDamp = 0.40f, .reverbGate = 160.0f, .reverbMix = 0.22f,
+            .stereoWidth = 1.05f, .outputGain = 0.0f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 10 Prydz Muranyi Electro Tom",
+            .voiceMode = 1, .toneNote = 6, .toneOctave = 2, .toneFreq = 92.5f, .toneQ = 3.6f,
+            .toneDecay = 210.0f, .tonePitchEnv = 15.0f, .tonePitchDecay = 22.0f, .fmAmount = 0.38f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 90.0f, .noiseCurve = -0.46f, .noiseHPF = 240.0f, .noiseLPF = 7200.0f,
+            .noiseStereoWidth = 1.05f, .noiseLevel = 0.26f,
+            .clickType = 0, .clickLevel = 0.54f, .clickFreq = 2600.0f,
+            .distType = 0, .distDrive = 0.24f, .distTone = 0.04f, .distMix = 0.28f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 3.5f, .compRelease = 75.0f, .compMakeup = 3.5f,
+            .reverbSize = 0.50f, .reverbDecay = 340.0f, .reverbDamp = 0.44f, .reverbGate = 120.0f, .reverbMix = 0.15f,
+            .stereoWidth = 1.05f, .outputGain = 0.4f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 11 Ferry Corsten Rock Your Body Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.7f,
+            .toneDecay = 260.0f, .tonePitchEnv = 17.0f, .tonePitchDecay = 26.0f, .fmAmount = 0.42f, .toneLevel = 0.92f,
+            .noiseType = 1, .noiseDecay = 100.0f, .noiseCurve = -0.42f, .noiseHPF = 260.0f, .noiseLPF = 7800.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.28f,
+            .clickType = 2, .clickLevel = 0.58f, .clickFreq = 2800.0f,
+            .distType = 1, .distDrive = 0.28f, .distTone = 0.08f, .distMix = 0.32f,
+            .compThresh = -15.0f, .compRatio = 5.2f, .compAttack = 3.5f, .compRelease = 80.0f, .compMakeup = 3.6f,
+            .reverbSize = 0.62f, .reverbDecay = 450.0f, .reverbDamp = 0.36f, .reverbGate = 170.0f, .reverbMix = 0.22f,
+            .stereoWidth = 1.10f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 12 Simmons 80s Trance Synth Tom",
+            .voiceMode = 1, .toneNote = 7, .toneOctave = 2, .toneFreq = 98.0f, .toneQ = 3.8f,
+            .toneDecay = 320.0f, .tonePitchEnv = 22.0f, .tonePitchDecay = 32.0f, .fmAmount = 0.45f, .toneLevel = 0.94f,
+            .noiseType = 1, .noiseDecay = 130.0f, .noiseCurve = -0.40f, .noiseHPF = 280.0f, .noiseLPF = 8200.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.32f,
+            .clickType = 3, .clickLevel = 0.60f, .clickFreq = 3600.0f,
+            .distType = 0, .distDrive = 0.22f, .distTone = 0.08f, .distMix = 0.28f,
+            .compThresh = -14.8f, .compRatio = 5.0f, .compAttack = 3.6f, .compRelease = 85.0f, .compMakeup = 3.4f,
+            .reverbSize = 0.70f, .reverbDecay = 520.0f, .reverbDamp = 0.34f, .reverbGate = 190.0f, .reverbMix = 0.25f,
+            .stereoWidth = 1.10f, .outputGain = 0.6f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 13 Subculture 140 Rolling Bass Tom",
+            .voiceMode = 1, .toneNote = 0, .toneOctave = 2, .toneFreq = 65.41f, .toneQ = 3.4f,
+            .toneDecay = 340.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 30.0f, .fmAmount = 0.32f, .toneLevel = 0.94f,
+            .noiseType = 2, .noiseDecay = 80.0f, .noiseCurve = -0.48f, .noiseHPF = 180.0f, .noiseLPF = 5500.0f,
+            .noiseStereoWidth = 0.90f, .noiseLevel = 0.20f,
+            .clickType = 1, .clickLevel = 0.46f, .clickFreq = 1400.0f,
+            .distType = 2, .distDrive = 0.22f, .distTone = -0.10f, .distMix = 0.28f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 3.5f,
+            .reverbSize = 0.50f, .reverbDecay = 320.0f, .reverbDamp = 0.50f, .reverbGate = 130.0f, .reverbMix = 0.14f,
+            .stereoWidth = 0.95f, .outputGain = 0.4f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 14 Above & Beyond Red Rocks Canyon Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.5f,
+            .toneDecay = 330.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 30.0f, .fmAmount = 0.36f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 120.0f, .noiseCurve = -0.38f, .noiseHPF = 210.0f, .noiseLPF = 6800.0f,
+            .noiseStereoWidth = 1.30f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.50f, .clickFreq = 2000.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.04f, .distMix = 0.22f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.5f, .compRelease = 95.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.90f, .reverbDecay = 950.0f, .reverbDamp = 0.25f, .reverbGate = 320.0f, .reverbMix = 0.36f,
+            .stereoWidth = 1.25f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 15 Armada Progressive Groove Tom",
+            .voiceMode = 1, .toneNote = 7, .toneOctave = 2, .toneFreq = 98.0f, .toneQ = 3.5f,
+            .toneDecay = 240.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 24.0f, .fmAmount = 0.32f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 85.0f, .noiseCurve = -0.45f, .noiseHPF = 200.0f, .noiseLPF = 6400.0f,
+            .noiseStereoWidth = 1.05f, .noiseLevel = 0.24f,
+            .clickType = 0, .clickLevel = 0.48f, .clickFreq = 2200.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.02f, .distMix = 0.22f,
+            .compThresh = -13.8f, .compRatio = 4.4f, .compAttack = 4.2f, .compRelease = 80.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.55f, .reverbDecay = 380.0f, .reverbDamp = 0.42f, .reverbGate = 140.0f, .reverbMix = 0.18f,
+            .stereoWidth = 1.05f, .outputGain = 0.0f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 16 Vandit Paul's Octapad Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.6f,
+            .toneDecay = 260.0f, .tonePitchEnv = 14.0f, .tonePitchDecay = 26.0f, .fmAmount = 0.36f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 95.0f, .noiseCurve = -0.42f, .noiseHPF = 210.0f, .noiseLPF = 6600.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.26f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 2200.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = 0.04f, .distMix = 0.24f,
+            .compThresh = -14.0f, .compRatio = 4.5f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 3.0f,
+            .reverbSize = 0.60f, .reverbDecay = 420.0f, .reverbDamp = 0.38f, .reverbGate = 160.0f, .reverbMix = 0.20f,
+            .stereoWidth = 1.08f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 17 Astrix & Tyas Psy Zapper Tom",
+            .voiceMode = 1, .toneNote = 4, .toneOctave = 2, .toneFreq = 82.41f, .toneQ = 3.8f,
+            .toneDecay = 180.0f, .tonePitchEnv = 26.0f, .tonePitchDecay = 16.0f, .fmAmount = 0.52f, .toneLevel = 0.94f,
+            .noiseType = 1, .noiseDecay = 90.0f, .noiseCurve = -0.50f, .noiseHPF = 320.0f, .noiseLPF = 9000.0f,
+            .noiseStereoWidth = 1.05f, .noiseLevel = 0.32f,
+            .clickType = 3, .clickLevel = 0.65f, .clickFreq = 4200.0f,
+            .distType = 2, .distDrive = 0.34f, .distTone = 0.08f, .distMix = 0.38f,
+            .compThresh = -16.0f, .compRatio = 6.0f, .compAttack = 2.2f, .compRelease = 60.0f, .compMakeup = 4.2f,
+            .reverbSize = 0.46f, .reverbDecay = 300.0f, .reverbDamp = 0.46f, .reverbGate = 110.0f, .reverbMix = 0.15f,
+            .stereoWidth = 1.05f, .outputGain = 0.6f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 18 Gouryella Ligaya High Melodic Tom",
+            .voiceMode = 1, .toneNote = 0, .toneOctave = 4, .toneFreq = 261.63f, .toneQ = 3.6f,
+            .toneDecay = 340.0f, .tonePitchEnv = 11.0f, .tonePitchDecay = 28.0f, .fmAmount = 0.38f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 110.0f, .noiseCurve = -0.38f, .noiseHPF = 250.0f, .noiseLPF = 7500.0f,
+            .noiseStereoWidth = 1.20f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.48f, .clickFreq = 2600.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.06f, .distMix = 0.22f,
+            .compThresh = -13.5f, .compRatio = 4.0f, .compAttack = 4.5f, .compRelease = 90.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.70f, .reverbDecay = 600.0f, .reverbDamp = 0.34f, .reverbGate = 200.0f, .reverbMix = 0.26f,
+            .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 19 Mau5 Progressive Tight Tom",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.5f,
+            .toneDecay = 180.0f, .tonePitchEnv = 13.0f, .tonePitchDecay = 20.0f, .fmAmount = 0.30f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 75.0f, .noiseCurve = -0.48f, .noiseHPF = 220.0f, .noiseLPF = 6000.0f,
+            .noiseStereoWidth = 0.95f, .noiseLevel = 0.20f,
+            .clickType = 0, .clickLevel = 0.50f, .clickFreq = 2400.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.0f, .distMix = 0.20f,
+            .compThresh = -15.0f, .compRatio = 4.8f, .compAttack = 3.0f, .compRelease = 70.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.50f, .reverbDecay = 300.0f, .reverbDamp = 0.40f, .reverbGate = 0.0f, .reverbMix = 0.0f,
+            .stereoWidth = 1.0f, .outputGain = 0.0f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 20 Ibiza Terrace Bongo-Tom",
+            .voiceMode = 1, .toneNote = 2, .toneOctave = 4, .toneFreq = 293.66f, .toneQ = 3.8f,
+            .toneDecay = 210.0f, .tonePitchEnv = 10.0f, .tonePitchDecay = 20.0f, .fmAmount = 0.34f, .toneLevel = 0.88f,
+            .noiseType = 2, .noiseDecay = 95.0f, .noiseCurve = -0.42f, .noiseHPF = 260.0f, .noiseLPF = 8000.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.52f, .clickFreq = 2800.0f,
+            .distType = 0, .distDrive = 0.14f, .distTone = 0.05f, .distMix = 0.20f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.0f, .compRelease = 80.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.60f, .reverbDecay = 440.0f, .reverbDamp = 0.38f, .reverbGate = 150.0f, .reverbMix = 0.20f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 21 Sub-Bass 808 Boom Tom",
+            .voiceMode = 1, .toneNote = 0, .toneOctave = 2, .toneFreq = 65.41f, .toneQ = 3.2f,
+            .toneDecay = 650.0f, .tonePitchEnv = 18.0f, .tonePitchDecay = 38.0f, .fmAmount = 0.15f, .toneLevel = 0.95f,
+            .noiseType = 2, .noiseDecay = 60.0f, .noiseCurve = -0.50f, .noiseHPF = 150.0f, .noiseLPF = 4500.0f,
+            .noiseStereoWidth = 0.85f, .noiseLevel = 0.15f,
+            .clickType = 1, .clickLevel = 0.44f, .clickFreq = 1200.0f,
+            .distType = 0, .distDrive = 0.18f, .distTone = -0.10f, .distMix = 0.22f,
+            .compThresh = -15.0f, .compRatio = 4.5f, .compAttack = 5.0f, .compRelease = 100.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.50f, .reverbDecay = 300.0f, .reverbDamp = 0.40f, .reverbGate = 0.0f, .reverbMix = 0.0f,
+            .stereoWidth = 0.90f, .outputGain = 0.5f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 22 Ilan Bluestone Big Flam Tom",
+            .preBursts = 3, .preSpread = 14.0f, .preDecay = 9.5f, .preJitter = 0.12f, .flamSpread = 0.55f, .preLevel = 0.62f,
+            .voiceMode = 1, .toneNote = 7, .toneOctave = 2, .toneFreq = 98.0f, .toneQ = 3.6f,
+            .toneDecay = 300.0f, .tonePitchEnv = 15.0f, .tonePitchDecay = 28.0f, .fmAmount = 0.38f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 110.0f, .noiseCurve = -0.38f, .noiseHPF = 210.0f, .noiseLPF = 7200.0f,
+            .noiseStereoWidth = 1.25f, .noiseLevel = 0.28f,
+            .clickType = 1, .clickLevel = 0.54f, .clickFreq = 2200.0f,
+            .distType = 1, .distDrive = 0.25f, .distTone = 0.06f, .distMix = 0.30f,
+            .compThresh = -15.0f, .compRatio = 5.0f, .compAttack = 3.5f, .compRelease = 90.0f, .compMakeup = 3.5f,
+            .reverbSize = 0.82f, .reverbDecay = 680.0f, .reverbDamp = 0.30f, .reverbGate = 240.0f, .reverbMix = 0.28f,
+            .stereoWidth = 1.20f, .outputGain = 0.6f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 23 Note-Tracked Keyboard Tom Rack",
+            .voiceMode = 1, .toneNote = 9, .toneOctave = 2, .toneFreq = 110.0f, .toneQ = 3.5f,
+            .toneDecay = 280.0f, .tonePitchEnv = 12.0f, .tonePitchDecay = 26.0f, .fmAmount = 0.35f, .toneLevel = 0.90f,
+            .noiseType = 2, .noiseDecay = 95.0f, .noiseCurve = -0.42f, .noiseHPF = 220.0f, .noiseLPF = 6800.0f,
+            .noiseStereoWidth = 1.10f, .noiseLevel = 0.24f,
+            .clickType = 1, .clickLevel = 0.48f, .clickFreq = 2000.0f,
+            .distType = 0, .distDrive = 0.16f, .distTone = 0.02f, .distMix = 0.22f,
+            .compThresh = -13.5f, .compRatio = 4.2f, .compAttack = 4.2f, .compRelease = 80.0f, .compMakeup = 2.8f,
+            .reverbSize = 0.60f, .reverbDecay = 440.0f, .reverbDamp = 0.38f, .reverbGate = 160.0f, .reverbMix = 0.20f,
+            .midiMode = 1, .stereoWidth = 1.10f, .outputGain = 0.2f
+        }),
+
+        makePreset(PresetDef{
+            .name = "TM 24 Beat 4 Reverse Tom Pickup",
+            .voiceMode = 1, .toneNote = 11, .toneOctave = 2, .toneFreq = 123.47f, .toneQ = 3.6f,
+            .toneDecay = 290.0f, .tonePitchEnv = 16.0f, .tonePitchDecay = 32.0f, .fmAmount = 0.40f, .toneLevel = 0.92f,
+            .noiseType = 2, .noiseDecay = 100.0f, .noiseCurve = -0.40f, .noiseHPF = 230.0f, .noiseLPF = 7200.0f,
+            .noiseStereoWidth = 1.15f, .noiseLevel = 0.26f,
+            .clickType = 1, .clickLevel = 0.52f, .clickFreq = 2200.0f,
+            .distType = 1, .distDrive = 0.22f, .distTone = 0.05f, .distMix = 0.28f,
+            .compThresh = -14.5f, .compRatio = 4.8f, .compAttack = 3.8f, .compRelease = 85.0f, .compMakeup = 3.2f,
+            .reverbSize = 0.68f, .reverbDecay = 520.0f, .reverbDamp = 0.34f, .reverbGate = 200.0f, .reverbMix = 0.25f,
+            .reverseMode = 2, .reverseMix = 0.55f, .midiMode = 1, .stereoWidth = 1.15f, .outputGain = 0.4f
+        })
     };
     return kPresets;
 }

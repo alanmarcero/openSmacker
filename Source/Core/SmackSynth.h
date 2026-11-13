@@ -156,16 +156,12 @@ private:
     AllpassDiffuser diffR1_;
     AllpassDiffuser diffR2_;
     AllpassDiffuser diffR3_;
-    std::vector<float> delayL1_;
-    std::vector<float> delayL2_;
-    std::vector<float> delayL3_;
-    std::vector<float> delayR1_;
-    std::vector<float> delayR2_;
-    std::vector<float> delayR3_;
-    int writeL1_ = 0, writeL2_ = 0, writeL3_ = 0;
-    int writeR1_ = 0, writeR2_ = 0, writeR3_ = 0;
-    float dampStateL1_ = 0.0f, dampStateL2_ = 0.0f;
-    float dampStateR1_ = 0.0f, dampStateR2_ = 0.0f;
+    std::array<std::vector<float>, 4> delayL_{};
+    std::array<std::vector<float>, 4> delayR_{};
+    std::array<int, 4> writeL_{};
+    std::array<int, 4> writeR_{};
+    std::array<float, 4> dampStateL_{};
+    std::array<float, 4> dampStateR_{};
     float hpfStateL_ = 0.0f, hpfStateR_ = 0.0f;
     double lfoPhaseL_ = 0.0;
     double lfoPhaseR_ = 0.0;
@@ -191,7 +187,7 @@ public:
         int semitoneOffset = 0) noexcept;
 
 private:
-    [[nodiscard]] float generateNoiseSample(NoiseType type, float tunedHz) noexcept;
+    [[nodiscard]] StereoFrame generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv) noexcept;
 
     double sampleRate_ = 48000.0;
     bool isPlaying_ = false;
@@ -212,9 +208,15 @@ private:
     float phaseFund_ = 0.0f;
     float phaseMode2_ = 0.0f;
     float phaseMode3_ = 0.0f;
-    float phaseMod_ = 0.0f;
-    float metalPhaseA_ = 0.0f;
-    float metalPhaseB_ = 0.0f;
+    float phaseMode4_ = 0.0f;
+    float phaseMod1_ = 0.0f;
+    float phaseMod2_ = 0.0f;
+    float phaseFundR_ = 0.0f;
+    float phaseMode2R_ = 0.0f;
+    std::array<float, 4> metalPhasesL_{};
+    std::array<float, 4> metalPhasesR_{};
+    float clickPhase_ = 0.0f;
+    float clickPhase2_ = 0.0f;
 
     // Filter states
     BiquadState shellFilterL_{};
@@ -227,12 +229,17 @@ private:
     // Filter cache
     float lastHPF_ = -1.0f;
     float lastLPF_ = -1.0f;
+    float lastShellFreq_ = -1.0f;
+    float lastShellQ_ = -1.0f;
     float b0_h_ = 0.0f, b1_h_ = 0.0f, b2_h_ = 0.0f, a1_h_ = 0.0f, a2_h_ = 0.0f;
     float b0_l_ = 0.0f, b1_l_ = 0.0f, b2_l_ = 0.0f, a1_l_ = 0.0f, a2_l_ = 0.0f;
+    float b0_s_ = 0.0f, b1_s_ = 0.0f, b2_s_ = 0.0f, a1_s_ = 0.0f, a2_s_ = 0.0f;
 
-    // PRNG seed for deterministic and jittered noise
-    uint32_t prngState_ = 0x2468ACE1;
-    float wireState0_ = 0.0f, wireState1_ = 0.0f;
+    // PRNG seed for deterministic and jittered stereo noise
+    uint32_t prngStateL_ = 0x2468ACE1;
+    uint32_t prngStateR_ = 0x1357BDF0;
+    float wireStateL_ = 0.0f, wireStateR_ = 0.0f;
+    float velvetStateL_ = 0.0f, velvetStateR_ = 0.0f;
 
     // Gated Reverb
     GatedStereoReverb reverb_;
