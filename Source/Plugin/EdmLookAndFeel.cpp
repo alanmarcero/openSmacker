@@ -5,8 +5,8 @@ namespace opensmacker::ui {
 
 namespace {
 
-constexpr float kArcThickness = 3.5f;
-constexpr float kCornerRadius = 4.5f;
+constexpr float kArcThickness = 2.8f;
+constexpr float kCornerRadius = 5.0f;
 constexpr float kControlFontSize = 12.0f;
 
 } // namespace
@@ -15,8 +15,8 @@ EdmLookAndFeel::EdmLookAndFeel() {
     setColour(juce::ResizableWindow::backgroundColourId, theme::kBackground);
     setColour(juce::Label::textColourId, theme::kText);
     setColour(juce::Slider::textBoxTextColourId, theme::kText);
-    setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff1e2b3c));
-    setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff090f17));
+    setColour(juce::Slider::textBoxOutlineColourId, theme::kPanelEdge);
+    setColour(juce::Slider::textBoxBackgroundColourId, theme::kInk);
     setColour(juce::Slider::textBoxHighlightColourId, theme::kTrack);
     setColour(juce::ComboBox::backgroundColourId, theme::kKnobBody);
     setColour(juce::ComboBox::textColourId, theme::kText);
@@ -79,8 +79,8 @@ void EdmLookAndFeel::drawRotarySlider(
     g.fillEllipse(body.translated(0.0f, 2.5f));
 
     g.setGradientFill(juce::ColourGradient(
-        juce::Colour(0xff233146), centre.x, body.getY(),
-        juce::Colour(0xff0b121c), centre.x, body.getBottom(), false));
+        theme::kKnobBody.brighter(0.22f), centre.x, body.getY(),
+        theme::kInk, centre.x, body.getBottom(), false));
     g.fillEllipse(body);
     g.setColour(theme::kPanelEdge.brighter(0.3f));
     g.drawEllipse(body, 1.0f);
@@ -88,10 +88,10 @@ void EdmLookAndFeel::drawRotarySlider(
     const float capRadius = bodyRadius * 0.45f;
     const auto cap = juce::Rectangle<float>(capRadius * 2.0f, capRadius * 2.0f).withCentre(centre);
     g.setGradientFill(juce::ColourGradient(
-        juce::Colour(0xff16202e), centre.x, cap.getY(),
-        juce::Colour(0xff080d14), centre.x, cap.getBottom(), false));
+        theme::kSteel.brighter(0.1f), centre.x, cap.getY(),
+        theme::kInk, centre.x, cap.getBottom(), false));
     g.fillEllipse(cap);
-    g.setColour(juce::Colour(0xff2b3d54));
+    g.setColour(theme::kPanelEdge.brighter(0.2f));
     g.drawEllipse(cap, 0.8f);
 
     const auto tip = centre.getPointOnCircumference(bodyRadius - 2.0f, valueAngle);
@@ -184,8 +184,8 @@ juce::Label* EdmLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     auto* l = LookAndFeel_V4::createSliderTextBox(slider);
     l->setFont(juce::FontOptions(11.0f, juce::Font::bold));
     l->setJustificationType(juce::Justification::centred);
-    l->setColour(juce::Label::backgroundColourId, juce::Colour(0xff090f17));
-    l->setColour(juce::Label::outlineColourId, juce::Colour(0xff1e2b3c));
+    l->setColour(juce::Label::backgroundColourId, theme::kInk);
+    l->setColour(juce::Label::outlineColourId, theme::kPanelEdge);
     return l;
 }
 

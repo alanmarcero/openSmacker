@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SmackEngine.h"
+#include "Presets.h"
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 
@@ -33,6 +34,8 @@ public:
 
     void triggerAudition() noexcept { auditionPending_.store(true); }
     [[nodiscard]] bool isSmackLockedIn() const noexcept { return displayLockedIn.load(); }
+    [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
+    void setSectionLocked(opensmacker::presets::Section section, bool locked);
 
     juce::AudioProcessorValueTreeState parameters;
 
@@ -49,4 +52,5 @@ private:
     opensmacker::core::SmackEngine engine_;
     std::atomic<bool> auditionPending_{ false };
     int currentProgram_ = 0;
+    std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
 };

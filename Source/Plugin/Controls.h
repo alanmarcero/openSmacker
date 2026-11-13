@@ -13,6 +13,7 @@ public:
     void resized() override;
     void bind(Apvts& state, const juce::String& parameterId);
     void setTooltip(const juce::String& text);
+    void setAdvancedMode(bool advanced);
     [[nodiscard]] juce::Slider& slider() noexcept { return slider_; }
 
 private:

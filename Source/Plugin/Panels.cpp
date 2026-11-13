@@ -197,253 +197,215 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(getLocalBounds().reduced(8, 28).withTrimmedBottom(28).toFloat().reduced(0.5f), 8.0f, 1.0f);
 }
 
-// ============================================================================
-// SmackSynthPanel
-// ============================================================================
+ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
+                             presets::Section section, juce::Colour accent)
+    : processor_(processor), title_(std::move(title)), section_(section), accent_(accent) {
+    lockButton_.setClickingTogglesState(false);
+    lockButton_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
+    lockButton_.setColour(juce::TextButton::textColourOffId, theme::kTextDim);
+    lockButton_.setTooltip("Keep this section's values when loading a preset. Controls remain editable.");
+    lockButton_.onClick = [this] {
+        processor_.setSectionLocked(section_, !processor_.isSectionLocked(section_));
+        repaint();
+    };
+    addAndMakeVisible(lockButton_);
+}
+
+void ParameterCard::addParameter(const juce::String& id, const juce::String& title) {
+    std::unique_ptr<juce::Component> component;
+    auto& state = processor_.parameters;
+    if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr) {
+        component = std::make_unique<Choice>(state, id, title, accent_);
+    } else if (dynamic_cast<juce::AudioParameterBool*>(state.getParameter(id)) != nullptr) {
+        component = std::make_unique<Toggle>(state, id, title, accent_);
+    } else {
+        component = std::make_unique<Knob>(state, id, title, accent_);
+    }
+    addAndMakeVisible(*component);
+    controls_.push_back(std::move(component));
+}
+
+void ParameterCard::setRows(std::vector<int> rows) {
+    rows_ = std::move(rows);
+    int total = 0;
+    for (const auto row : rows_)
+        total += row;
+    jassert(total == static_cast<int>(controls_.size()));
+    juce::ignoreUnused(total);
+}
+
+void ParameterCard::setAdvancedMode(bool advanced) {
+    advancedMode_ = advanced;
+    for (auto& control : controls_) {
+        if (auto* knob = dynamic_cast<Knob*>(control.get()))
+            knob->setAdvancedMode(advanced);
+    }
+    resized();
+}
+
+void ParameterCard::paint(juce::Graphics& g) {
+    const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
+    g.setColour(theme::kPanel);
+    g.fillRoundedRectangle(bounds, 8.0f);
+    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff111a27), bounds.getTopLeft(),
+        juce::Colour(0xff090d15), bounds.getBottomLeft(), false));
+    g.fillRoundedRectangle(bounds.reduced(0.5f), 8.0f);
+    g.setColour(theme::kPanelEdge);
+    g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
+    auto heading = getLocalBounds().removeFromTop(30).reduced(12, 2);
+    g.setColour(accent_);
+    g.fillRoundedRectangle(juce::Rectangle<float>(static_cast<float>(heading.getX()), static_cast<float>(heading.getY()) + 2.0f, 3.0f,
+        static_cast<float>(heading.getHeight() - 4)), 1.5f);
+    g.setColour(theme::kText);
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(94), juce::Justification::centredLeft, true);
+    const bool locked = processor_.isSectionLocked(section_);
+    lockButton_.setButtonText(locked ? "HELD" : "LOCK");
+    lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_.withAlpha(0.22f) : theme::kKnobBody);
+    lockButton_.setColour(juce::TextButton::textColourOffId, locked ? accent_ : theme::kTextDim);
+}
+
+void ParameterCard::resized() {
+    auto area = getLocalBounds();
+    auto header = area.removeFromTop(30).reduced(10, 3);
+    lockButton_.setBounds(header.removeFromRight(70));
+    area = area.reduced(8, 8);
+    const int gap = 4;
+    int y = area.getY();
+    size_t controlIndex = 0;
+    const int rowCount = std::max(1, static_cast<int>(rows_.size()));
+    const int rowHeight = std::max(1, (area.getHeight() - gap * (rowCount - 1)) / rowCount);
+    for (int row = 0; row < rowCount; ++row) {
+        const int columns = std::max(1, rows_[static_cast<size_t>(row)]);
+        const int cellWidth = std::max(1, (area.getWidth() - gap * (columns - 1)) / columns);
+        for (int column = 0; column < columns && controlIndex < controls_.size(); ++column, ++controlIndex)
+            controls_[controlIndex]->setBounds(area.getX() + column * (cellWidth + gap), y, cellWidth, rowHeight);
+        y += rowHeight + gap;
+    }
+}
 
 SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
-    : preBursts_(processor.parameters, opensmacker::params::kPreBursts, "Flam Hits", theme::kAccentCyan),
-      preSpread_(processor.parameters, opensmacker::params::kPreSpread, "Spread", theme::kAccentCyan),
-      flamSpread_(processor.parameters, opensmacker::params::kFlamSpread, "Flam Pan", theme::kAccentCyan),
-      preLevel_(processor.parameters, opensmacker::params::kPreLevel, "Flam Lvl", theme::kAccentCyan),
+    : voiceCard_(processor, "VOICE & TUNING  /  AMPLITUDE ENVELOPE", presets::Section::VoiceTuning, theme::kAccentAmber),
+      transientCard_(processor, "TRANSIENT STRIKE", presets::Section::Transient, theme::kAccentNeonGreen),
+      preStrikeCard_(processor, "PRE-STRIKE FLAMS", presets::Section::PreStrike, theme::kAccentCyan),
+      wiresCard_(processor, "WIRES, SIZZLE & AIR", presets::Section::WiresAir, theme::kAccentViolet) {
+    using namespace opensmacker::params;
+    const std::array<std::pair<const char*, const char*>, 16> voice{
+        std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" }, { kToneFine, "Fine ct" },
+        { kToneFreq, "Shell Hz" }, { kToneQ, "Shell Q" }, { kToneDecay, "Body Decay" }, { kTonePitchEnv, "Pitch Env" },
+        { kTonePitchDecay, "Pitch Time" }, { kFmAmount, "FM / Ring" }, { kToneLevel, "Body Level" }, { kLockPitch, "Lock Pitch" },
+        { kAmpAttack, "Amp Attack" }, { kAmpDecay, "Amp Decay" }, { kAmpSustain, "Amp Sustain" }, { kAmpRelease, "Amp Release" }
+    };
+    for (const auto& [id, title] : voice)
+        voiceCard_.addParameter(id, title);
+    voiceCard_.setRows({ 4, 4, 4, 4 });
 
-      voiceMode_(processor.parameters, opensmacker::params::kVoiceMode, "Drum Mode", theme::kAccentMagenta),
-      toneNote_(processor.parameters, opensmacker::params::kToneNote, "Root Note", theme::kAccentAmber),
-      toneOctave_(processor.parameters, opensmacker::params::kToneOctave, "Octave", theme::kAccentAmber),
-      toneFine_(processor.parameters, opensmacker::params::kToneFine, "Fine", theme::kAccentAmber),
-      lockPitchBtn_(processor.parameters, opensmacker::params::kLockPitch, "LOCK PITCH", theme::kAccentAmber),
-      toneQ_(processor.parameters, opensmacker::params::kToneQ, "Shell Q", theme::kAccentAmber),
-      toneDecay_(processor.parameters, opensmacker::params::kToneDecay, "Body Decay", theme::kAccentAmber),
-      tonePitchEnv_(processor.parameters, opensmacker::params::kTonePitchEnv, "Pitch Drop", theme::kAccentAmber),
-      fmAmount_(processor.parameters, opensmacker::params::kFmAmount, "FM / Ring", theme::kAccentMagenta),
-      toneLevel_(processor.parameters, opensmacker::params::kToneLevel, "Body Lvl", theme::kAccentAmber),
+    transientCard_.addParameter(kClickType, "Strike Type");
+    transientCard_.addParameter(kClickLevel, "Strike Level");
+    transientCard_.addParameter(kClickFreq, "Strike Freq");
+    transientCard_.setRows({ 3 });
 
-      noiseType_(processor.parameters, opensmacker::params::kNoiseType, "Wire Type", theme::kAccentViolet),
-      noiseDecay_(processor.parameters, opensmacker::params::kNoiseDecay, "Wire Decay", theme::kAccentViolet),
-      noiseHPF_(processor.parameters, opensmacker::params::kNoiseHPF, "HPF", theme::kAccentViolet),
-      noiseLPF_(processor.parameters, opensmacker::params::kNoiseLPF, "LPF", theme::kAccentViolet),
-      noiseWidth_(processor.parameters, opensmacker::params::kNoiseStereoWidth, "Wire Width", theme::kAccentViolet),
-      noiseLevel_(processor.parameters, opensmacker::params::kNoiseLevel, "Wire Lvl", theme::kAccentViolet),
+    const std::array<std::pair<const char*, const char*>, 6> pre{
+        std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spread ms" }, { kPreDecay, "Decay ms" },
+        { kPreJitter, "Humanize" }, { kFlamSpread, "Stereo Pan" }, { kPreLevel, "Level" }
+    };
+    for (const auto& [id, title] : pre)
+        preStrikeCard_.addParameter(id, title);
+    preStrikeCard_.setRows({ 6 });
 
-      clickType_(processor.parameters, opensmacker::params::kClickType, "Strike Type", theme::kAccentNeonGreen),
-      clickLevel_(processor.parameters, opensmacker::params::kClickLevel, "Strike Lvl", theme::kAccentNeonGreen),
-      clickFreq_(processor.parameters, opensmacker::params::kClickFreq, "Strike Freq", theme::kAccentNeonGreen) {
-    addAndMakeVisible(preBursts_);
-    addAndMakeVisible(preSpread_);
-    addAndMakeVisible(flamSpread_);
-    addAndMakeVisible(preLevel_);
+    const std::array<std::pair<const char*, const char*>, 9> air{
+        std::pair{ kNoiseType, "Layer" }, { kNoiseAttack, "Attack ms" }, { kNoiseHold, "Hold ms" },
+        { kNoiseDecay, "Decay ms" }, { kNoiseCurve, "Curve" }, { kNoiseHPF, "HPF" },
+        { kNoiseLPF, "LPF" }, { kNoiseStereoWidth, "Width" }, { kNoiseLevel, "Level" }
+    };
+    for (const auto& [id, title] : air)
+        wiresCard_.addParameter(id, title);
+    wiresCard_.setRows({ 5, 4 });
 
-    addAndMakeVisible(clickType_);
-    addAndMakeVisible(clickLevel_);
-    addAndMakeVisible(clickFreq_);
+    addAndMakeVisible(voiceCard_);
+    addAndMakeVisible(transientCard_);
+    addAndMakeVisible(preStrikeCard_);
+    addAndMakeVisible(wiresCard_);
+    setPage(0);
+}
 
-    addAndMakeVisible(voiceMode_);
-    addAndMakeVisible(toneNote_);
-    addAndMakeVisible(toneOctave_);
-    addAndMakeVisible(toneFine_);
-    addAndMakeVisible(lockPitchBtn_);
-    addAndMakeVisible(toneQ_);
-    addAndMakeVisible(toneDecay_);
-    addAndMakeVisible(tonePitchEnv_);
-    addAndMakeVisible(fmAmount_);
-    addAndMakeVisible(toneLevel_);
-
-    addAndMakeVisible(noiseType_);
-    addAndMakeVisible(noiseDecay_);
-    addAndMakeVisible(noiseHPF_);
-    addAndMakeVisible(noiseLPF_);
-    addAndMakeVisible(noiseWidth_);
-    addAndMakeVisible(noiseLevel_);
-
-    setAdvancedMode(false);
+void SmackSynthPanel::setPage(int page) {
+    page_ = juce::jlimit(0, 1, page);
+    voiceCard_.setVisible(page_ == 0);
+    transientCard_.setVisible(page_ == 0);
+    preStrikeCard_.setVisible(page_ == 1);
+    wiresCard_.setVisible(page_ == 1);
+    resized();
 }
 
 void SmackSynthPanel::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
-    flamSpread_.setVisible(advanced);
-    preLevel_.setVisible(advanced);
-    toneFine_.setVisible(advanced);
-    toneQ_.setVisible(advanced);
-    tonePitchEnv_.setVisible(advanced);
-    toneLevel_.setVisible(advanced);
-    noiseDecay_.setVisible(advanced);
-    noiseHPF_.setVisible(advanced);
-    noiseLPF_.setVisible(advanced);
-    noiseLevel_.setVisible(advanced);
-    clickFreq_.setVisible(advanced);
+    voiceCard_.setAdvancedMode(advanced);
+    transientCard_.setAdvancedMode(advanced);
+    preStrikeCard_.setAdvancedMode(advanced);
+    wiresCard_.setAdvancedMode(advanced);
     resized();
     repaint();
 }
 
-void SmackSynthPanel::paint(juce::Graphics& g) {
-    const juce::String title = advancedMode_
-        ? "Snare, Bell & Tom Synthesis (Advanced View)"
-        : "Snare, Bell & Tom Synthesis (Simple Mode)";
-    drawPanel(g, getLocalBounds(), title, theme::kAccentMagenta);
-
-    if (!tailSectionBounds_.isEmpty()) {
-        const auto tailRect = tailSectionBounds_.toFloat().reduced(1.0f);
-        drawGlow(g, tailRect, theme::kAccentAmber.withAlpha(0.12f));
-        g.setColour(theme::kBackground.brighter(0.04f));
-        g.fillRoundedRectangle(tailRect, 6.0f);
-        g.setColour(theme::kAccentAmber.withAlpha(0.85f));
-        g.drawRoundedRectangle(tailRect, 6.0f, 1.2f);
-
-        const auto badge = juce::Rectangle<float>(tailRect.getX() + 8.0f, tailRect.getY() + 3.0f, 290.0f, 14.0f);
-        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-        g.setColour(theme::kAccentAmber);
-        g.drawText("TUNABLE SNARE / TOM / BELL BODY & FM RING", badge, juce::Justification::centredLeft);
-    }
-
-    if (!attackSectionBounds_.isEmpty()) {
-        const auto attackRect = attackSectionBounds_.toFloat().reduced(1.0f);
-        g.setColour(theme::kBackground.brighter(0.02f));
-        g.fillRoundedRectangle(attackRect, 5.0f);
-        g.setColour(theme::kPanelEdge.withAlpha(0.7f));
-        g.drawRoundedRectangle(attackRect, 5.0f, 1.0f);
-
-        const auto badge = juce::Rectangle<float>(attackRect.getX() + 8.0f, attackRect.getY() + 3.0f, 220.0f, 14.0f);
-        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-        g.setColour(theme::kAccentCyan.withAlpha(0.85f));
-        g.drawText("STRIKE TRANSIENT, FLAM & WIRES", badge, juce::Justification::centredLeft);
-    }
-}
-
 void SmackSynthPanel::resized() {
-    auto area = getLocalBounds().reduced(8, 26);
-
-    if (!advancedMode_) {
-        const int rowHeight = area.getHeight() / 2;
-        attackSectionBounds_ = area.removeFromTop(rowHeight).reduced(0, 2);
-        auto row1Controls = attackSectionBounds_.withTrimmedTop(16);
-        layoutRow(row1Controls, { &preBursts_, &preSpread_, &clickType_, &clickLevel_, &noiseType_, &noiseWidth_ });
-
-        tailSectionBounds_ = area.reduced(0, 2);
-        auto row2Controls = tailSectionBounds_.withTrimmedTop(16);
-        layoutRow(row2Controls, { &voiceMode_, &toneNote_, &toneOctave_, &fmAmount_, &toneDecay_, &lockPitchBtn_ });
-        return;
+    auto area = getLocalBounds();
+    const int gap = 10;
+    if (page_ == 0) {
+        const int transHeight = std::max(190, area.getHeight() / 4);
+        voiceCard_.setBounds(area.removeFromTop(area.getHeight() - transHeight - gap));
+        area.removeFromTop(gap);
+        transientCard_.setBounds(area);
+    } else {
+        const int preHeight = std::max(250, area.getHeight() / 3);
+        preStrikeCard_.setBounds(area.removeFromTop(preHeight));
+        area.removeFromTop(gap);
+        wiresCard_.setBounds(area);
     }
-
-    const int rowHeight = area.getHeight() / 3;
-
-    // Row 1: Attack: Flam (left ~58%) & Stick/Mallet/Rim Strike (right ~42%)
-    attackSectionBounds_ = area.removeFromTop(rowHeight).reduced(0, 2);
-    auto row1 = attackSectionBounds_.withTrimmedTop(16);
-    auto flamArea = row1.removeFromLeft(static_cast<int>(static_cast<float>(row1.getWidth()) * 0.58f));
-    layoutRow(flamArea, { &preBursts_, &preSpread_, &flamSpread_, &preLevel_ });
-    layoutRow(row1, { &clickType_, &clickLevel_, &clickFreq_ });
-
-    // Row 2: Tunable Snare / Tom / Bell Body
-    tailSectionBounds_ = area.removeFromTop(rowHeight).reduced(0, 2);
-    auto row2 = tailSectionBounds_.withTrimmedTop(16);
-    layoutRow(row2, { &voiceMode_, &toneNote_, &toneOctave_, &toneFine_, &lockPitchBtn_, &fmAmount_, &toneQ_, &toneDecay_, &tonePitchEnv_, &toneLevel_ });
-
-    // Row 3: Snare Wires, Sizzle & Air
-    noiseSectionBounds_ = area.reduced(0, 2);
-    layoutRow(noiseSectionBounds_, { &noiseType_, &noiseDecay_, &noiseHPF_, &noiseLPF_, &noiseWidth_, &noiseLevel_ });
 }
-
-// ============================================================================
-// EffectsPanel
-// ============================================================================
 
 EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
-    : distType_(processor.parameters, opensmacker::params::kDistType, "Dist Type", theme::kAccentFlame),
-      distDrive_(processor.parameters, opensmacker::params::kDistDrive, "Drive", theme::kAccentFlame),
-      distTone_(processor.parameters, opensmacker::params::kDistTone, "Tone", theme::kAccentFlame),
-      distMix_(processor.parameters, opensmacker::params::kDistMix, "Dist Mix", theme::kAccentFlame),
+    : dynamicsCard_(processor, "SATURATION & DYNAMICS", presets::Section::SaturationDynamics, theme::kAccentFlame),
+      spaceCard_(processor, "SPACE & OUTPUT", presets::Section::SpaceOutput, theme::kAccentCyan) {
+    using namespace opensmacker::params;
+    const std::array<std::pair<const char*, const char*>, 13> dynamics{
+        std::pair{ kDistType, "Saturation" }, { kDistDrive, "Drive" }, { kDistTone, "Tone" }, { kDistMix, "Mix" },
+        { kCompThresh, "Comp Thresh" }, { kCompRatio, "Comp Ratio" }, { kCompAttack, "Comp Attack" },
+        { kCompRelease, "Comp Release" }, { kCompMakeup, "Makeup" }, { kCompMix, "Comp Mix" },
+        { kLimiterCeiling, "Limit Ceiling" }, { kLimiterRelease, "Limit Release" }, { kLimiterEnabled, "Limiter" }
+    };
+    for (const auto& [id, title] : dynamics)
+        dynamicsCard_.addParameter(id, title);
+    dynamicsCard_.setRows({ 4, 5, 4 });
 
-      compThresh_(processor.parameters, opensmacker::params::kCompThresh, "Threshold", theme::kAccentAmber),
-      compRatio_(processor.parameters, opensmacker::params::kCompRatio, "Ratio", theme::kAccentAmber),
-      compMakeup_(processor.parameters, opensmacker::params::kCompMakeup, "Makeup", theme::kAccentAmber),
-      compMix_(processor.parameters, opensmacker::params::kCompMix, "Comp Mix", theme::kAccentAmber),
-
-      limiterCeiling_(processor.parameters, opensmacker::params::kLimiterCeiling, "Ceiling", theme::kAccentNeonGreen),
-      limiterEnabled_(processor.parameters, opensmacker::params::kLimiterEnabled, "Limiter", theme::kAccentNeonGreen),
-
-      reverbSize_(processor.parameters, opensmacker::params::kReverbSize, "Size", theme::kAccentViolet),
-      reverbDecay_(processor.parameters, opensmacker::params::kReverbDecay, "Decay", theme::kAccentViolet),
-      reverbGate_(processor.parameters, opensmacker::params::kReverbGate, "Gate Time", theme::kAccentViolet),
-      reverbMix_(processor.parameters, opensmacker::params::kReverbMix, "Rev Mix", theme::kAccentViolet),
-
-      reverseMode_(processor.parameters, opensmacker::params::kReverseMode, "Rev Sync", theme::kAccentCyan),
-      reverseMix_(processor.parameters, opensmacker::params::kReverseMix, "Rev Mix", theme::kAccentCyan),
-      midiMode_(processor.parameters, opensmacker::params::kMidiMode, "MIDI Mode", theme::kTextDim),
-      lockInBtn_(processor.parameters, opensmacker::params::kLockIn, "LOCK WAV", theme::kAccentAmber),
-      masterWidth_(processor.parameters, opensmacker::params::kStereoWidth, "Width", theme::kAccentCyan),
-      outputGain_(processor.parameters, opensmacker::params::kOutputGain, "Output", theme::kAccentAmber) {
-    addAndMakeVisible(distType_);
-    addAndMakeVisible(distDrive_);
-    addAndMakeVisible(distTone_);
-    addAndMakeVisible(distMix_);
-
-    addAndMakeVisible(compThresh_);
-    addAndMakeVisible(compRatio_);
-    addAndMakeVisible(compMakeup_);
-    addAndMakeVisible(compMix_);
-
-    addAndMakeVisible(limiterCeiling_);
-    addAndMakeVisible(limiterEnabled_);
-
-    addAndMakeVisible(reverbSize_);
-    addAndMakeVisible(reverbDecay_);
-    addAndMakeVisible(reverbGate_);
-    addAndMakeVisible(reverbMix_);
-
-    addAndMakeVisible(reverseMode_);
-    addAndMakeVisible(reverseMix_);
-    addAndMakeVisible(midiMode_);
-    addAndMakeVisible(lockInBtn_);
-    addAndMakeVisible(masterWidth_);
-    addAndMakeVisible(outputGain_);
-
-    setAdvancedMode(false);
+    const std::array<std::pair<const char*, const char*>, 11> space{
+        std::pair{ kReverbSize, "Hall Size" }, { kReverbDecay, "Hall Decay" }, { kReverbDamp, "Damping" },
+        { kReverbGate, "Gate Time" }, { kReverbMix, "Hall Mix" }, { kReverseMode, "Reverse Sync" },
+        { kReverseMix, "Reverse Mix" }, { kMidiMode, "MIDI Pitch" }, { kLockIn, "Lock WAV" },
+        { kStereoWidth, "Master Width" }, { kOutputGain, "Output dB" }
+    };
+    for (const auto& [id, title] : space)
+        spaceCard_.addParameter(id, title);
+    spaceCard_.setRows({ 6, 5 });
+    addAndMakeVisible(dynamicsCard_);
+    addAndMakeVisible(spaceCard_);
 }
 
 void EffectsPanel::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
-    distType_.setVisible(advanced);
-    distTone_.setVisible(advanced);
-    compThresh_.setVisible(advanced);
-    compRatio_.setVisible(advanced);
-    compMakeup_.setVisible(advanced);
-    limiterCeiling_.setVisible(advanced);
-    reverbDecay_.setVisible(advanced);
-    reverseMode_.setVisible(advanced);
-    reverseMix_.setVisible(advanced);
-    midiMode_.setVisible(advanced);
+    dynamicsCard_.setAdvancedMode(advanced);
+    spaceCard_.setAdvancedMode(advanced);
     resized();
     repaint();
 }
 
-void EffectsPanel::paint(juce::Graphics& g) {
-    const juce::String title = advancedMode_
-        ? "Impact Saturation, Dynamics & Gated Space (Advanced View)"
-        : "Impact Saturation, Dynamics & Gated Space (Simple Mode)";
-    drawPanel(g, getLocalBounds(), title, theme::kAccentFlame);
-}
-
 void EffectsPanel::resized() {
-    auto area = getLocalBounds().reduced(8, 26);
-
-    if (!advancedMode_) {
-        const int rowHeight = area.getHeight() / 2;
-        auto row1 = area.removeFromTop(rowHeight);
-        layoutRow(row1, { &distDrive_, &distMix_, &compMix_, &limiterEnabled_ });
-        layoutRow(area, { &reverbSize_, &reverbMix_, &reverbGate_, &masterWidth_, &outputGain_, &lockInBtn_ });
-        return;
-    }
-
-    const int rowHeight = area.getHeight() / 2;
-
-    auto row1 = area.removeFromTop(rowHeight);
-    auto distArea = row1.removeFromLeft(static_cast<int>(static_cast<float>(row1.getWidth()) * 0.40f));
-    layoutRow(distArea, { &distType_, &distDrive_, &distTone_, &distMix_ });
-    layoutRow(row1, { &compThresh_, &compRatio_, &compMakeup_, &compMix_, &limiterCeiling_, &limiterEnabled_ });
-
-    auto revArea = area.removeFromLeft(static_cast<int>(static_cast<float>(area.getWidth()) * 0.40f));
-    layoutRow(revArea, { &reverbSize_, &reverbDecay_, &reverbGate_, &reverbMix_ });
-    layoutRow(area, { &reverseMode_, &reverseMix_, &midiMode_, &masterWidth_, &outputGain_, &lockInBtn_ });
+    auto area = getLocalBounds();
+    const int gap = 10;
+    const int dynamicsHeight = std::max(430, static_cast<int>(static_cast<float>(area.getHeight()) * 0.56f));
+    dynamicsCard_.setBounds(area.removeFromTop(dynamicsHeight));
+    area.removeFromTop(gap);
+    spaceCard_.setBounds(area);
 }
 
 } // namespace opensmacker::ui

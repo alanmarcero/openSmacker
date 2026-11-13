@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "Presets.h"
 #include <catch2/catch_test_macros.hpp>
+#include <array>
 #include <cmath>
 
 TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]") {
@@ -16,6 +17,10 @@ TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]")
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kVoiceMode) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kFmAmount) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kToneFreq) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpAttack) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpDecay) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpSustain) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpRelease) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kClickType) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kNoiseType) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kDistDrive) != nullptr);
@@ -69,7 +74,7 @@ TEST_CASE("OpenSmackerProcessor renders audio upon MIDI note-on", "[plugin]") {
 
 TEST_CASE("OpenSmackerProcessor saves and restores state information", "[plugin]") {
     OpenSmackerProcessor proc1;
-    proc1.setCurrentProgram(8); // SN 09 Euphoric Always Alive Snare
+    proc1.setCurrentProgram(8);
 
     juce::MemoryBlock block;
     proc1.getStateInformation(block);
@@ -83,10 +88,33 @@ TEST_CASE("OpenSmackerProcessor saves and restores state information", "[plugin]
     REQUIRE(std::abs(p1 - p2) < 0.001f);
 }
 
-TEST_CASE("OpenSmackerEditor instantiates and captures live Simple and Advanced screenshots", "[plugin][gui]") {
+TEST_CASE("Section locks preserve preset values and restore with the session", "[plugin][preset_lock]") {
+    OpenSmackerProcessor source;
+    auto setValue = [&source](const char* id, float value) {
+        auto* parameter = source.parameters.getParameter(id);
+        REQUIRE(parameter != nullptr);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    };
+
+    source.setSectionLocked(opensmacker::presets::Section::VoiceTuning, true);
+    setValue(opensmacker::params::kToneDecay, 777.0f);
+    setValue(opensmacker::params::kNoiseLevel, 0.01f);
+    source.setCurrentProgram(2);
+    REQUIRE(std::abs(source.parameters.getRawParameterValue(opensmacker::params::kToneDecay)->load() - 777.0f) < 1.0f);
+    REQUIRE(source.parameters.getRawParameterValue(opensmacker::params::kNoiseLevel)->load() > 0.4f);
+
+    juce::MemoryBlock state;
+    source.getStateInformation(state);
+    OpenSmackerProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    REQUIRE(restored.isSectionLocked(opensmacker::presets::Section::VoiceTuning));
+    REQUIRE_FALSE(restored.isSectionLocked(opensmacker::presets::Section::WiresAir));
+}
+
+TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
     OpenSmackerProcessor processor;
     processor.prepareToPlay(48000.0, 512);
-    processor.setCurrentProgram(1); // SN 02 Melodic Group Therapy Snare
+    processor.setCurrentProgram(1);
 
     // Trigger a hit so the live visualizer stage is active in the screenshot
     juce::AudioBuffer<float> buffer(2, 512);
@@ -97,41 +125,31 @@ TEST_CASE("OpenSmackerEditor instantiates and captures live Simple and Advanced 
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
     REQUIRE(editor->getWidth() == 1100);
-    REQUIRE(editor->getHeight() == 740);
-
-    // 1. Capture Simple Mode Screenshot
-    juce::Image simpleSnapshot = editor->createComponentSnapshot(editor->getLocalBounds());
-    REQUIRE(simpleSnapshot.isValid());
-    REQUIRE(simpleSnapshot.getWidth() == 1100);
-    REQUIRE(simpleSnapshot.getHeight() == 740);
+    REQUIRE(editor->getHeight() == 972);
 
     juce::File assetsDir = juce::File::getCurrentWorkingDirectory().getChildFile("assets");
     if (!assetsDir.exists()) {
         assetsDir = juce::File::getCurrentWorkingDirectory().getParentDirectory().getChildFile("assets");
     }
-    juce::File repoScreenshot = assetsDir.getChildFile("openSmacker-screenshot.png");
-    if (repoScreenshot.getParentDirectory().exists()) {
-        repoScreenshot.deleteFile();
-        juce::FileOutputStream stream(repoScreenshot);
-        if (stream.openedOk()) {
+    REQUIRE(assetsDir.exists());
+    const std::array<const char*, 3> pageNames{ "hit", "layers", "fx" };
+    for (int page = 0; page < 3; ++page) {
+        processor.setCurrentProgram(page * 24 + 1);
+        editor->setPage(page);
+        for (int mode = 0; mode < 2; ++mode) {
+            editor->setAdvancedView(mode == 1);
+            const auto snapshot = editor->createComponentSnapshot(editor->getLocalBounds());
+            REQUIRE(snapshot.isValid());
+            REQUIRE(snapshot.getWidth() == 1100);
+            REQUIRE(snapshot.getHeight() == 972);
+            const juce::String suffix = mode == 0 ? "" : "-advanced";
+            const juce::File screenshot = assetsDir.getChildFile(
+                "openSmacker-" + juce::String(pageNames[static_cast<size_t>(page)]) + suffix + ".png");
+            screenshot.deleteFile();
+            juce::FileOutputStream stream(screenshot);
+            REQUIRE(stream.openedOk());
             juce::PNGImageFormat png;
-            png.writeImageToStream(simpleSnapshot, stream);
-        }
-    }
-
-    // 2. Capture Advanced Mode Screenshot (showing BL 04 Euphoric 138 Pluck Bell)
-    processor.setCurrentProgram(27); // BL 04 Euphoric 138 Pluck Bell
-    editor->setAdvancedView(true);
-    juce::Image advSnapshot = editor->createComponentSnapshot(editor->getLocalBounds());
-    REQUIRE(advSnapshot.isValid());
-
-    juce::File advScreenshot = assetsDir.getChildFile("openSmacker-advanced-screenshot.png");
-    if (advScreenshot.getParentDirectory().exists()) {
-        advScreenshot.deleteFile();
-        juce::FileOutputStream stream(advScreenshot);
-        if (stream.openedOk()) {
-            juce::PNGImageFormat png;
-            png.writeImageToStream(advSnapshot, stream);
+            REQUIRE(png.writeImageToStream(snapshot, stream));
         }
     }
 }
@@ -159,7 +177,7 @@ TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset chang
 
     lockParam->setValueNotifyingHost(1.0f);
 
-    processor.setCurrentProgram(48); // TM 01 Progressive Groove Tom has octave 2 default
+    processor.setCurrentProgram(48);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 6.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFreq)->load() - 2400.0f) < 2.0f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneNote)->load() - 4.0f) < 0.05f);

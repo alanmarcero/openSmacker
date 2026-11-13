@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OpenSmacker VERSION 1.1.1 LANGUAGES C CXX)
+project(OpenSmacker VERSION 2.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,6 @@ if(OS_BUILD_PLUGIN)
     set_target_properties(SmackerAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     juce_add_plugin(OpenSmacker
-        VERSION "${PROJECT_VERSION}"
         COMPANY_NAME "Alan Marcero"
         BUNDLE_ID "com.alanmarcero.opensmacker"
         PRODUCT_NAME "openSmacker"

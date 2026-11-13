@@ -52,6 +52,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kFmAmount, 1 }, "FM / Overtone", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.30f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kToneLevel, 1 }, "Body Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kAmpAttack, 1 }, "Amp Attack", juce::NormalisableRange<float>(0.05f, 20.0f, 0.05f, 0.45f), 0.35f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kAmpDecay, 1 }, "Amp Decay", juce::NormalisableRange<float>(1.0f, 600.0f, 1.0f, 0.4f), 72.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kAmpSustain, 1 }, "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.70f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kAmpRelease, 1 }, "Amp Release", juce::NormalisableRange<float>(5.0f, 800.0f, 1.0f, 0.4f), 180.0f,
+        juce::AudioParameterFloatAttributes().withLabel("ms")));
 
     // Snare Wires, Sizzle & Air
     juce::StringArray noiseTypes{ "Snare Wires", "White Sizzle", "Velvet Air", "Metallic Ring" };
@@ -197,6 +208,10 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
         s.synth.fmAmount = *pFm;
     }
     s.synth.toneLevel = *apvts.getRawParameterValue(kToneLevel);
+    s.synth.ampAttackMs = *apvts.getRawParameterValue(kAmpAttack);
+    s.synth.ampDecayMs = *apvts.getRawParameterValue(kAmpDecay);
+    s.synth.ampSustain = *apvts.getRawParameterValue(kAmpSustain);
+    s.synth.ampReleaseMs = *apvts.getRawParameterValue(kAmpRelease);
 
     // Wires & Sizzle
     s.synth.noiseType = static_cast<opensmacker::core::NoiseType>(static_cast<int>(*apvts.getRawParameterValue(kNoiseType)));

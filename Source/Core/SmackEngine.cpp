@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace opensmacker::core {
 
@@ -23,19 +24,38 @@ void writeUint32LE(std::vector<uint8_t>& buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>((v >> 24) & 0xff));
 }
 
+uint16_t readUint16LE(const uint8_t* data) noexcept {
+    return static_cast<uint16_t>(data[0] | (static_cast<uint16_t>(data[1]) << 8));
+}
+
+uint32_t readUint32LE(const uint8_t* data) noexcept {
+    return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8)
+        | (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+}
+
 } // namespace
 
 void SmackWavCache::clear() noexcept {
     isLocked_ = false;
+    sampleRate_ = 48000.0;
     left_.clear();
     right_.clear();
 }
 
 void SmackWavCache::capture(const std::vector<float>& left, const std::vector<float>& right, double sampleRate) {
+    if (left.empty() || !std::isfinite(sampleRate) || sampleRate < 8000.0 || sampleRate > 384000.0) {
+        clear();
+        return;
+    }
     left_ = left;
-    right_ = right;
+    right_.resize(left.size());
+    for (size_t i = 0; i < left.size(); ++i) {
+        left_[i] = std::isfinite(left_[i]) ? left_[i] : 0.0f;
+        const float rightSample = i < right.size() ? right[i] : left_[i];
+        right_[i] = std::isfinite(rightSample) ? rightSample : 0.0f;
+    }
     sampleRate_ = sampleRate;
-    isLocked_ = !left_.empty();
+    isLocked_ = true;
 }
 
 std::vector<uint8_t> SmackWavCache::toWavBytes() const {
@@ -43,9 +63,11 @@ std::vector<uint8_t> SmackWavCache::toWavBytes() const {
         return {};
     }
 
+    if (left_.size() > (std::numeric_limits<uint32_t>::max() - 36u) / (2u * sizeof(float)))
+        return {};
     const uint32_t numFrames = static_cast<uint32_t>(left_.size());
     const uint16_t numChannels = 2;
-    const uint32_t sRate = static_cast<uint32_t>(sampleRate_);
+    const uint32_t sRate = static_cast<uint32_t>(std::clamp(sampleRate_, 8000.0, 384000.0));
     const uint16_t bitsPerSample = 32;
     const uint32_t dataBytes = numFrames * numChannels * sizeof(float);
     const uint32_t chunkSize = 36 + dataBytes;
@@ -84,6 +106,7 @@ std::vector<uint8_t> SmackWavCache::toWavBytes() const {
 }
 
 bool SmackWavCache::fromWavBytes(const std::vector<uint8_t>& wavBytes) {
+    clear();
     if (wavBytes.size() < 44) {
         return false;
     }
@@ -96,67 +119,78 @@ bool SmackWavCache::fromWavBytes(const std::vector<uint8_t>& wavBytes) {
     uint16_t numChannels = 0;
     uint32_t sRate = 48000;
     uint16_t formatTag = 0;
+    uint16_t bitsPerSample = 0;
     size_t dataOffset = 0;
     size_t dataSize = 0;
 
     while (offset + 8 <= wavBytes.size()) {
         char chunkId[5] = { 0 };
         std::memcpy(chunkId, wavBytes.data() + offset, 4);
-        uint32_t chunkSize = 0;
-        std::memcpy(&chunkSize, wavBytes.data() + offset + 4, 4);
+        const uint32_t chunkSize = readUint32LE(wavBytes.data() + offset + 4);
         offset += 8;
+        if (chunkSize > wavBytes.size() - offset)
+            return false;
 
         if (std::memcmp(chunkId, "fmt ", 4) == 0 && chunkSize >= 16) {
-            std::memcpy(&formatTag, wavBytes.data() + offset, 2);
-            std::memcpy(&numChannels, wavBytes.data() + offset + 2, 2);
-            std::memcpy(&sRate, wavBytes.data() + offset + 4, 4);
+            formatTag = readUint16LE(wavBytes.data() + offset);
+            numChannels = readUint16LE(wavBytes.data() + offset + 2);
+            sRate = readUint32LE(wavBytes.data() + offset + 4);
+            bitsPerSample = readUint16LE(wavBytes.data() + offset + 14);
         } else if (std::memcmp(chunkId, "data", 4) == 0) {
             dataOffset = offset;
             dataSize = chunkSize;
             break;
         }
 
-        offset += chunkSize;
+        offset += chunkSize + (chunkSize & 1u);
     }
 
-    if (dataOffset == 0 || numChannels == 0 || (formatTag != 3 && formatTag != 1)) {
+    if (dataOffset == 0 || (numChannels != 1 && numChannels != 2) || sRate < 8000 || sRate > 384000
+        || !((formatTag == 3 && bitsPerSample == 32) || (formatTag == 1 && bitsPerSample == 16))) {
         return false;
     }
 
     sampleRate_ = sRate;
-    const size_t bytesPerFrame = numChannels * (formatTag == 3 ? sizeof(float) : 2);
+    const size_t bytesPerSample = formatTag == 3 ? sizeof(float) : sizeof(int16_t);
+    const size_t bytesPerFrame = static_cast<size_t>(numChannels) * bytesPerSample;
+    if (bytesPerFrame == 0 || dataSize % bytesPerFrame != 0)
+        return false;
     const size_t numFrames = dataSize / bytesPerFrame;
 
     left_.resize(numFrames);
     right_.resize(numFrames);
 
-    if (formatTag == 3) {
-        const auto* floatPtr = reinterpret_cast<const float*>(wavBytes.data() + dataOffset);
-        for (size_t i = 0; i < numFrames; ++i) {
-            left_[i] = floatPtr[i * numChannels];
-            right_[i] = (numChannels > 1) ? floatPtr[i * numChannels + 1] : left_[i];
-        }
-    } else {
-        const auto* intPtr = reinterpret_cast<const int16_t*>(wavBytes.data() + dataOffset);
-        for (size_t i = 0; i < numFrames; ++i) {
-            left_[i] = static_cast<float>(intPtr[i * numChannels]) / 32768.0f;
-            right_[i] = (numChannels > 1) ? static_cast<float>(intPtr[i * numChannels + 1]) / 32768.0f : left_[i];
-        }
+    for (size_t i = 0; i < numFrames; ++i) {
+        const size_t frameOffset = dataOffset + i * bytesPerFrame;
+        auto readChannel = [&](size_t channel) {
+            const uint8_t* bytes = wavBytes.data() + frameOffset + channel * bytesPerSample;
+            float sample = 0.0f;
+            if (formatTag == 3) {
+                std::memcpy(&sample, bytes, sizeof(sample));
+                return std::isfinite(sample) ? sample : 0.0f;
+            }
+            const auto integer = static_cast<int16_t>(readUint16LE(bytes));
+            return static_cast<float>(integer) / 32768.0f;
+        };
+        left_[i] = readChannel(0);
+        right_[i] = numChannels > 1 ? readChannel(1) : left_[i];
     }
 
+    if (numFrames == 0)
+        return false;
     isLocked_ = true;
     return true;
 }
 
 void SmackEngine::prepare(double sampleRate) {
-    sampleRate_ = sampleRate;
-    synth_.prepare(sampleRate);
+    sampleRate_ = std::clamp(std::isfinite(sampleRate) ? sampleRate : 48000.0, 8000.0, 384000.0);
+    synth_.prepare(sampleRate_);
     distL_.reset();
     distR_.reset();
-    compressor_.prepare(sampleRate);
-    limiter_.prepare(sampleRate);
+    compressor_.prepare(sampleRate_);
+    limiter_.prepare(sampleRate_);
 
-    const int maxReverseSamples = static_cast<int>(sampleRate * 2.0);
+    const int maxReverseSamples = static_cast<int>(sampleRate_ * 2.0);
     reverseBufferL_.assign(maxReverseSamples, 0.0f);
     reverseBufferR_.assign(maxReverseSamples, 0.0f);
     reset();
@@ -168,7 +202,7 @@ void SmackEngine::reset() noexcept {
     distR_.reset();
     compressor_.reset();
     limiter_.reset();
-    wavPlayHead_ = -1;
+    wavPlayPosition_ = -1.0;
     reversePlayHead_ = -1;
     reverseDuration_ = 0;
     isReversing_ = false;
@@ -264,8 +298,8 @@ void SmackEngine::triggerSmack(
     }
 
     if (wavCache_.isLocked()) {
-        wavPlayHead_ = 0;
-        wavVelocity_ = velocity;
+        wavPlayPosition_ = 0.0;
+        wavVelocity_ = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
     } else {
         synth_.trigger(settings.synth, velocity, semitoneOffset);
     }
@@ -283,21 +317,6 @@ void SmackEngine::process(
         return;
     }
 
-    for (const auto& cc : controlChanges) {
-        if (cc.controller == 7) {
-            ccVolume_ = static_cast<float>(cc.value) / 127.0f;
-        } else if (cc.controller == 74) {
-            ccBrightness_ = static_cast<float>(cc.value) / 127.0f;
-        } else if (cc.controller == 120 || cc.controller == 123) {
-            synth_.reset();
-            wavPlayHead_ = -1;
-            reversePlayHead_ = -1;
-        } else if (cc.controller == 121) {
-            ccVolume_ = 1.0f;
-            ccBrightness_ = 1.0f;
-        }
-    }
-
     if (settings.lockIn != previousLockState_) {
         previousLockState_ = settings.lockIn;
         if (settings.lockIn && !wavCache_.isLocked()) {
@@ -308,35 +327,62 @@ void SmackEngine::process(
     }
 
     double ppq = transport.ppqPosition.value_or(fallbackPpq_);
-    const double ppqPerSample = (transport.bpm / 60.0) / sampleRate_;
-    const double beatsPerBar = transport.beatsPerBar > 0.0 ? transport.beatsPerBar : 4.0;
+    if (!std::isfinite(ppq))
+        ppq = fallbackPpq_;
+    const double bpm = std::clamp(std::isfinite(transport.bpm) ? transport.bpm : 138.0, 20.0, 400.0);
+    const double ppqPerSample = (bpm / 60.0) / sampleRate_;
+    const double beatsPerBar = std::clamp(std::isfinite(transport.beatsPerBar) ? transport.beatsPerBar : 4.0, 1.0, 32.0);
 
     int triggerIdx = 0;
+    int ccIdx = 0;
     float blockPeak = 0.0f;
-    const float masterGain = dbToLin(settings.effects.outputGainDb) * ccVolume_;
+    const float outputGain = dbToLin(settings.effects.outputGainDb);
 
     for (int sample = 0; sample < numSamples; ++sample) {
+        while (ccIdx < static_cast<int>(controlChanges.size()) && controlChanges[ccIdx].sampleOffset <= sample) {
+            const auto& cc = controlChanges[ccIdx++];
+            const int value = std::clamp(cc.value, 0, 127);
+            if (cc.controller == 7) {
+                ccVolume_ = static_cast<float>(value) / 127.0f;
+            } else if (cc.controller == 74) {
+                ccBrightness_ = static_cast<float>(value) / 127.0f;
+            } else if (cc.controller == 120 || cc.controller == 123) {
+                synth_.reset();
+                wavPlayPosition_ = -1.0;
+                reversePlayHead_ = -1;
+                isReversing_ = false;
+            } else if (cc.controller == 121) {
+                ccVolume_ = 1.0f;
+                ccBrightness_ = 1.0f;
+            }
+        }
         while (triggerIdx < static_cast<int>(midiTriggers.size()) && midiTriggers[triggerIdx].sampleOffset <= sample) {
             const auto& trig = midiTriggers[triggerIdx++];
             int semitoneOffset = 0;
             if (settings.noteTracking && !trig.audition) {
                 const int rootMidi = 12 * (settings.synth.octave + 1) + settings.synth.note;
-                semitoneOffset = trig.noteNumber - rootMidi;
+                semitoneOffset = std::clamp(trig.noteNumber, 0, 127) - rootMidi;
             }
-            triggerSmack(settings, ppq, transport.bpm, beatsPerBar, trig.velocity, semitoneOffset, trig.audition);
+            triggerSmack(settings, ppq, bpm, beatsPerBar,
+                std::clamp(std::isfinite(trig.velocity) ? trig.velocity : 1.0f, 0.0f, 1.0f), semitoneOffset, trig.audition);
         }
 
         float sL = 0.0f;
         float sR = 0.0f;
 
         if (wavCache_.isLocked()) {
-            if (wavPlayHead_ >= 0 && wavPlayHead_ < static_cast<int>(wavCache_.left().size())) {
-                sL = wavCache_.left()[wavPlayHead_] * wavVelocity_;
-                sR = wavCache_.right()[wavPlayHead_] * wavVelocity_;
-                wavPlayHead_++;
-                currentSmackProgress_ = static_cast<float>(wavPlayHead_) / static_cast<float>(wavCache_.left().size());
+            const auto& wavLeft = wavCache_.left();
+            const auto& wavRight = wavCache_.right();
+            if (wavPlayPosition_ >= 0.0 && wavPlayPosition_ < static_cast<double>(wavLeft.size())) {
+                const size_t frame = static_cast<size_t>(wavPlayPosition_);
+                const size_t next = std::min(frame + 1, wavLeft.size() - 1);
+                const float fraction = static_cast<float>(wavPlayPosition_ - static_cast<double>(frame));
+                sL = std::lerp(wavLeft[frame], wavLeft[next], fraction) * wavVelocity_;
+                sR = std::lerp(wavRight[frame], wavRight[next], fraction) * wavVelocity_;
+                wavPlayPosition_ += wavCache_.sampleRate() / sampleRate_;
+                currentSmackProgress_ = static_cast<float>(wavPlayPosition_ / static_cast<double>(wavLeft.size()));
             } else {
-                wavPlayHead_ = -1;
+                wavPlayPosition_ = -1.0;
                 currentSmackProgress_ = 1.0f;
             }
         } else {
@@ -382,8 +428,13 @@ void SmackEngine::process(
             limiter_.process(sL, sR, settings.effects.limiter);
         }
 
-        sL *= masterGain;
-        sR *= masterGain;
+        sL *= outputGain * ccVolume_;
+        sR *= outputGain * ccVolume_;
+        if (!std::isfinite(sL) || !std::isfinite(sR)) {
+            sL = sR = 0.0f;
+            distL_.reset();
+            distR_.reset();
+        }
 
         channels[0][sample] = sL;
         channels[1][sample] = sR;
@@ -396,7 +447,7 @@ void SmackEngine::process(
 
     fallbackPpq_ = ppq;
     currentPeak_ = blockPeak;
-    currentBeatPhase_ = static_cast<float>(std::fmod(ppq, 1.0));
+    currentBeatPhase_ = static_cast<float>(std::fmod(std::fmod(ppq, 1.0) + 1.0, 1.0));
 }
 
 } // namespace opensmacker::core
