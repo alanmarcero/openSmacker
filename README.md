@@ -1,142 +1,72 @@
-# openSmacker
+# openSmacker v2.0.0
 
 <p align="center">
-  <strong>Smack it. Tune it. Drop it.</strong><br>
-  Open-source tunable dance snare, FM bell, and club tom-tom synthesizer plugin for EDM and underground trance.
+  <strong>Trance percussion, tuned for impact.</strong><br>
+  A real-time snare, bell, and tom synthesizer for progressive, uplifting, tech, and psy trance.
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-screenshot.png" alt="openSmacker Simple Mode Live Screenshot" width="900">
+  <img src="assets/openSmacker-hit.png" alt="openSmacker v2 Hit page" width="900">
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-advanced-screenshot.png" alt="openSmacker Advanced Mode Live Screenshot" width="900">
+  <img src="assets/openSmacker-layers.png" alt="openSmacker v2 Layers page" width="900">
 </p>
 
-## Overview
+<p align="center">
+  <img src="assets/openSmacker-fx.png" alt="openSmacker v2 FX page" width="900">
+</p>
 
-`openSmacker` is a real-time C++20 and JUCE 8 percussion synthesizer built for electronic dance music, progressive trance, uplifting 138 trance, and melodic club production. Rather than relying on static sample packs, `openSmacker` synthesizes every hit from four independent physical and FM voice engines paired with a stereo mastering chain.
+openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the sound engine, effects, preset catalog, and editor while keeping the previous voice types, synthesis controls, MIDI mappings, program navigation, lock-in WAV workflow, and plugin formats. Its new envelopes and multi-part drum and metallic voices keep the transient and tuned body audible together for a more forceful dance and trance hit.
 
-Producers can tune the drum or bell body to the exact musical key of their track (`C` through `B` across octaves `1` to `8`, plus fine cents), lock the pitch while browsing presets (`LOCK PITCH`), or freeze the random seed (`LOCK IN (WAV)`) so every hit renders identically when bouncing stems.
+## Sound design
 
-## Synthesis Architecture
+- Four voices: Dance Snare, Club Tom-Tom, FM Bell / Chime, and Pryda / Rim Smack.
+- Tune every voice by root note, octave, and cents; use fixed pitch or MIDI note tracking, and retain the separate Lock Pitch option.
+- Full amplitude ADSR (attack, decay, sustain, release) works with the body pitch envelope, body decay, and independent wire-layer envelope.
+- Shape one to five pre-strikes with spread, decay, humanization, stereo pan, and level.
+- Choose Stick, Mallet, Rimshot, or Laser transients. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring with attack, hold, decay, curve, high/low-pass filters, level, and stereo width.
+- Process hits with Tape, Tube, Hard Clip, or Wavefold saturation; compressor; brickwall limiter; gated trance-hall reverb; host-synced reverse swell; master width; and output gain.
+- Use the animated stage and Push It audition button. Lock a rendered hit as WAV for repeatable stem rendering; the cache restores with the session and adapts to the host sample rate.
 
-1. `VOICE ENGINE` provides four synthesis modes:
-   - `Dance Snare`: Dual-membrane modal resonator with pitch-env sweep and harmonic shell excitation.
-   - `Club Tom-Tom`: Deep fundamental pitch-sweep oscillator with sub-harmonic punch and mallet resonance.
-   - `FM Bell / Chime`: 2-operator metallic FM synthesis with inharmonic ratios for crystalline chimes, bells, and ride pings.
-   - `Pryda / Rim Smack`: High-tension rimshot and arena snare generator built for big-room transitions.
-2. `PRE-STRIKE FLAM / DRAG ROLL` schedules 1 to 5 micro-bursts before the main transient with independent spread, decay, timing humanization, and stereo pan width.
-3. `SNARE WIRES, SIZZLE & AIR` offers four stereo noise colors (`Snare Wires`, `White Sizzle`, `Velvet Air`, `Metallic Ring`) with dedicated attack, hold, decay, curve, HPF/LPF filters, and stereo width.
-4. `STICK / MALLET / RIM TRANSIENT` shapes the initial impact (`Stick`, `Mallet`, `Rimshot`, `Laser`) with tunable center frequency.
-5. `MASTER FX CHAIN` includes four-mode saturation (`Tape`, `Tube`, `Hard Clip`, `Wavefold`), punch compression, brickwall limiting, gated trance hall reverb, and host-synced pre-hit reverse swell (`Beat End`, `Beat 4 Auto`, `1/2 Beat`, `1/4 Beat`).
+## Section locks
 
-## 72 Factory Presets (24 SN + 24 BL + 24 TM)
+Each of the six sections has a lock button. When locked, a preset change preserves that section's values. Controls remain editable, and the lock state is stored with the session. Lock Pitch and Lock WAV remain separate features.
 
-`openSmacker` ships with 72 presets organized into three categories (`SN` for Snares, `BL` for Bells, and `TM` for Tom-Toms), with quick category jump buttons (`SN` / `BL` / `TM`) in the top bar:
+## New factory presets
 
-### Snares (`SN 01` - `SN 24`)
+The factory bank contains 72 new presets: 24 snares (`SN`), 24 bells and chimes (`BL`), and 24 toms (`TM`). Every preset sets all of its sound and effect values. The old factory names and definitions have been retired. Browse with the category shortcuts, preset menu, or previous/next buttons.
 
-| # | Preset Name | Style |
-|---|---|---|
-| 01 | `SN 01 Velvet Snare Smack` | Velvet progressive snare with crisp wire tail |
-| 02 | `SN 02 Melodic Group Therapy Snare` | Wide melodic trance snare with stereo flam |
-| 03 | `SN 03 Progressive Arena Rim Smack` | Huge gated arena rim-snare for progressive drops |
-| 04 | `SN 04 Analog Tight Pocket Snare` | Punchy analog progressive snare |
-| 05 | `SN 05 Stadium Snap Rim Snare` | High-tension rimshot snare with tight gated tail |
-| 06 | `SN 06 Summer Progressive Snare` | Bright summer progressive house snare |
-| 07 | `SN 07 Sun & Moon Anthem Snare` | Emotional anthem snare with wide hall tail |
-| 08 | `SN 08 Retro Funk Electro Snare` | Gritty electro-trance snare with laser transient |
-| 09 | `SN 09 Euphoric Always Alive Snare` | Uplifting 138 snare with airy high-end sizzle |
-| 10 | `SN 10 Tech Degenerate Punch Snare` | Hard-hitting tech-trance snare |
-| 11 | `SN 11 Flashover Electro Snare` | Driven Dutch electro-trance snare |
-| 12 | `SN 12 Out of the Blue 909 Snare` | Classic 1999 Dutch uplifting 909 snare |
-| 13 | `SN 13 Armada Mainstage Snare` | Big-room festival trance snare |
-| 14 | `SN 14 ASOT 138 Uplifting Snare` | Bright uplifting trance snare |
-| 15 | `SN 15 Subculture Tech-Trance Snare` | Punchy underground tech-trance snare |
-| 16 | `SN 16 Coldharbour Dark Rim Smack` | Dark progressive rimshot snare |
-| 17 | `SN 17 FSOE 140 Anthem Snare` | High-energy 140 BPM uplifting snare with 4-hit flam |
-| 18 | `SN 18 Berlin Club Trance Snare` | Tight Berlin club trance snare |
-| 19 | `SN 19 Garuda Big Room Snare` | Compressed UK club snare |
-| 20 | `SN 20 Wake Your Mind Snare` | Modern progressive trance snare |
-| 21 | `SN 21 Euphonic Uplifting Snare` | Warm melodic trance snare |
-| 22 | `SN 22 Positiva 99 Ibiza Snare` | Late-90s Ibiza anthem snare |
-| 23 | `SN 23 Note-Tracked Melodic Snare Roll` | Keyboard-tracked snare for pitched build-up rolls |
-| 24 | `SN 24 Clean Studio Reference Snare` | Dry, uncolored reference dance snare |
+**Snares:** SN 01 Skyline Gate · SN 02 Neon Signal · SN 03 Aurora Snap · SN 04 Glass Horizon · SN 05 Afterglow Crack · SN 06 Silver Meridian · SN 07 Pulse Cathedral · SN 08 Voltage Bloom · SN 09 Starlight Rim · SN 10 Celestial Wire · SN 11 Chrome Lift · SN 12 Radiant Break · SN 13 Prism Impact · SN 14 Night Drive Clap · SN 15 Solar Flare · SN 16 Crystal Rush · SN 17 Echo Chamber · SN 18 Blue Hour Strike · SN 19 Harmonic Flash · SN 20 Skyline Roll · SN 21 Luminous Drop · SN 22 Electric Ribbon · SN 23 Summit Hit · SN 24 Last Light.
 
-### FM Bells & Chimes (`BL 01` - `BL 24`)
+**Bells and chimes:** BL 01 Glass Comet · BL 02 Polar Bloom · BL 03 Silver Orbit · BL 04 Prism Arp · BL 05 Dawn Sequence · BL 06 Strobe Chime · BL 07 Moonlit Carrier · BL 08 Radiant Shard · BL 09 Crystal Current · BL 10 Aurora Bell · BL 11 Halo Cascade · BL 12 Skyline Tines · BL 13 Meteoric FM · BL 14 Velvet Beacon · BL 15 Electric Halo · BL 16 Blue Planet · BL 17 Frozen Spark · BL 18 Ascension Tone · BL 19 Neon Harmonic · BL 20 Starfield Chime · BL 21 Lucid Sequence · BL 22 Diamond Signal · BL 23 Solar Glass · BL 24 Afterlight Bell.
 
-| # | Preset Name | Style |
-|---|---|---|
-| 25 | `BL 01 Tri-State Crystal Bell` | Crystalline FM chime for atmospheric trance breakdowns |
-| 26 | `BL 02 Balearic Ocean Chime` | Shimmering Balearic high-octave bell |
-| 27 | `BL 03 Deep Glass Bell` | Warm deep-house glass mallet bell |
-| 28 | `BL 04 Euphoric 138 Pluck Bell` | Bright uplifting melodic bell lead/accent |
-| 29 | `BL 05 Venice Beach Sunset Chime` | Lush stereo sunset chime |
-| 30 | `BL 06 Childish Gambit FM Bell` | Punchy metallic FM bell hit |
-| 31 | `BL 07 Lift High Acid Bell` | Resonant wavefolded acid bell |
-| 32 | `BL 08 Tytanium Metallic Cowbell` | Tech-trance tuned cowbell |
-| 33 | `BL 09 Celestial Heaven Bell` | Expansive hall chime for euphoric breakdowns |
-| 34 | `BL 10 Punk Metallic Bell Smack` | Gritty distorted electro bell |
-| 35 | `BL 11 Kyoto Ritual Bell` | Deep temple FM bell |
-| 36 | `BL 12 Who's Afraid 138 Ride Bell` | High-frequency metallic ride bell ping |
-| 37 | `BL 13 Black Hole Cosmic Bell` | Wide cosmic trance bell |
-| 38 | `BL 14 Classic Rave Cowbell` | Classic rave metallic cowbell |
-| 39 | `BL 15 Nordic Pluck Bell` | Finnish progressive pluck bell |
-| 40 | `BL 16 Solaris Shimmer Bell` | Airy Balearic shimmer bell |
-| 41 | `BL 17 Enhanced Progressive Chime` | Clean melodic progressive bell |
-| 42 | `BL 18 Minimal Pluck Bell Ping` | Tight minimal pluck bell |
-| 43 | `BL 19 Silk Music Sunset Bell` | Soft organic progressive chime |
-| 44 | `BL 20 Goa 909 Ride Bell` | Classic Goa trance ride bell |
-| 45 | `BL 21 Berlin Industrial Anvil Bell` | Heavy industrial metallic anvil strike |
-| 46 | `BL 22 Café del Mar Harmonic Chime` | Ambient Ibiza chillout chime |
-| 47 | `BL 23 Melodic Keyboard FM Bell` | Pure note-tracked FM bell for playing melodies |
-| 48 | `BL 24 Beat End Reverse Bell` | Host-synced reverse bell swell into the bar |
+**Toms:** TM 01 Uplift Driver · TM 02 Deep Meridian · TM 03 Stadium Roll · TM 04 Orbital Tension · TM 05 Pulse Foundry · TM 06 Horizon Runner · TM 07 Neon Floor Tom · TM 08 Eventide Rise · TM 09 Subsurface Bloom · TM 10 Chrome Tension · TM 11 Festival Engine · TM 12 Nightfall Tom · TM 13 Solar Sequence · TM 14 Pressure Valve · TM 15 Aurora Rack · TM 16 Voltage Runner · TM 17 Cathedral Floor · TM 18 Low Orbit · TM 19 Starlane Roll · TM 20 Impact Vector · TM 21 Glass Mountain · TM 22 Breakpoint Tom · TM 23 Lightwell Rack · TM 24 Final Ascent.
 
-### Tom-Toms (`TM 01` - `TM 24`)
+## Editor
 
-| # | Preset Name | Style |
-|---|---|---|
-| 49 | `TM 01 Progressive Groove Tom` | Deep tuned progressive groove tom |
-| 50 | `TM 02 Euphoric Melodic Tom Fill` | Pitched melodic tom for uplifting transitions |
-| 51 | `TM 03 Psy-Tech Laser Tom` | Fast pitch-drop psy-trance zapper tom |
-| 52 | `TM 04 Rotterdam Stadium Floor Tom` | Massive Dutch stadium floor tom |
-| 53 | `TM 05 Coldharbour Deep Rolling Tom` | Dark rolling sub-groove tom |
-| 54 | `TM 06 Cairo Tribal Tom` | Punchy tribal percussion tom |
-| 55 | `TM 07 High Contrast Tribal Tom` | High-impact stadium tribal tom |
-| 56 | `TM 08 Gatecrasher 2000 Synth Tom` | Classic Y2K Sheffield trance synth tom |
-| 57 | `TM 09 Deep Warm Percussive Tom` | Organic deep-house mallet tom |
-| 58 | `TM 10 Muranyi Electro Tom` | Tight punchy progressive house electro tom |
-| 59 | `TM 11 Rock Your Body Tom` | Electro-house synth tom |
-| 60 | `TM 12 Simmons 80s Trance Synth Tom` | Classic hexagonal electronic synth tom |
-| 61 | `TM 13 Subculture 140 Rolling Bass Tom` | Low-octave rolling tech-trance bass tom |
-| 62 | `TM 14 Red Rocks Canyon Tom` | Wide canyon-reverb stadium tom |
-| 63 | `TM 15 Armada Progressive Groove Tom` | Clean club groove tom |
-| 64 | `TM 16 Berlin Octapad Tom` | Live electronic pad tom |
-| 65 | `TM 17 Psy Zapper Tom` | High-sweep psychedelic laser tom |
-| 66 | `TM 18 Ligaya High Melodic Tom` | High-tuned Dutch trance melodic tom |
-| 67 | `TM 19 Electro Progressive Tight Tom` | Dry minimal progressive tom |
-| 68 | `TM 20 Ibiza Terrace Bongo-Tom` | High-pitched terrace percussion bongo-tom |
-| 69 | `TM 21 Sub-Bass 808 Boom Tom` | Long sub-bass 808 drop tom |
-| 70 | `TM 22 Stadium Big Flam Tom` | Dramatic flam-roll stadium tom |
-| 71 | `TM 23 Note-Tracked Keyboard Tom Rack` | Chromatic keyboard-tracked tom rack |
-| 72 | `TM 24 Beat 4 Reverse Tom Pickup` | Host-synced Beat 4 reverse tom pickup |
+The redesigned editor is 1100 × 972 with three pages:
+
+- **Hit:** voice, tuning, ADSR, transient, and animated stage.
+- **Layers:** pre-strikes, snare wires, sizzle, and air.
+- **FX:** saturation, dynamics, reverb, reverse sync, MIDI mode, output, and WAV lock.
+
+Simple and Advanced views are retained. Simple removes numeric boxes for a clearer surface; Advanced adds exact value readouts. Every parameter remains on its page and editable in both views. Screenshots are in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
+## MIDI and state
+
+Note-on messages trigger hits on every MIDI channel and velocity controls the hit level. Fixed Root and Note Tracking are available. Controller behavior remains CC 7 output level, CC 74 air low-pass, CC 120/123 silence, and CC 121 reset for CC 7/74. Existing parameter IDs, saved state, cached WAV data, program count, and plugin identity are preserved. Missing section-lock data in older sessions opens unlocked.
 
 ## Formats
 
-- `VST3`
-- `AU` (macOS Audio Unit)
-- `LV2`
-- `Standalone` application
+VST3, AU (macOS), LV2, and Standalone are built from the same source.
 
-## Building from Source
+## Build
 
-```bash
+```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-## License
-
-Released under the GNU General Public License v3.0 (`GPL-3.0`). See [LICENSE](LICENSE) for full details.
+See [docs/AUDIO.md](docs/AUDIO.md) for synthesis and effect notes. The project is licensed under GPL-3.0; see [LICENSE](LICENSE).

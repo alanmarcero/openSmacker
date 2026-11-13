@@ -123,7 +123,7 @@ private:
     BrickwallLimiter limiter_;
 
     SmackWavCache wavCache_;
-    int wavPlayHead_ = -1;
+    double wavPlayPosition_ = -1.0;
     float wavVelocity_ = 1.0f;
 
     std::vector<float> reverseBufferL_;

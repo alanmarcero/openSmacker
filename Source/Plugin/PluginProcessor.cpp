@@ -6,6 +6,22 @@
 OpenSmackerProcessor::OpenSmackerProcessor()
     : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       parameters(*this, nullptr, "PARAMETERS", opensmacker::params::createParameterLayout()) {
+    for (auto& locked : sectionLocks_)
+        locked.store(false, std::memory_order_relaxed);
+    setCurrentProgram(0);
+}
+
+bool OpenSmackerProcessor::isSectionLocked(opensmacker::presets::Section section) const noexcept {
+    const auto index = static_cast<size_t>(section);
+    return index < sectionLocks_.size() && sectionLocks_[index].load(std::memory_order_relaxed);
+}
+
+void OpenSmackerProcessor::setSectionLocked(opensmacker::presets::Section section, bool locked) {
+    const auto index = static_cast<size_t>(section);
+    if (index >= sectionLocks_.size())
+        return;
+    sectionLocks_[index].store(locked, std::memory_order_relaxed);
+    parameters.state.setProperty("section_lock_" + juce::String(static_cast<int>(index)), locked, nullptr);
 }
 
 void OpenSmackerProcessor::prepareToPlay(double sampleRate, int) {
@@ -118,7 +134,10 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
         currentProgram_ = index;
         const bool preservePitch = parameters.getRawParameterValue(opensmacker::params::kLockPitch) != nullptr
             && *parameters.getRawParameterValue(opensmacker::params::kLockPitch) > 0.5f;
-        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, preservePitch);
+        opensmacker::presets::SectionLocks locks{};
+        for (size_t i = 0; i < locks.size(); ++i)
+            locks[i] = sectionLocks_[i].load(std::memory_order_relaxed);
+        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch);
         if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {
             param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(index)));
         }
@@ -141,14 +160,29 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
     if (xmlState != nullptr && xmlState->hasTagName(parameters.state.getType())) {
         auto state = juce::ValueTree::fromXml(*xmlState);
+        const auto currentSchema = parameters.copyState();
+        for (int i = 0; i < currentSchema.getNumChildren(); ++i) {
+            const auto child = currentSchema.getChild(i);
+            if (child.hasProperty("id") && !state.getChildWithProperty("id", child.getProperty("id")).isValid())
+                state.addChild(child.createCopy(), -1, nullptr);
+        }
         parameters.replaceState(state);
+        for (size_t i = 0; i < sectionLocks_.size(); ++i) {
+            const auto key = "section_lock_" + juce::String(static_cast<int>(i));
+            sectionLocks_[i].store(state.getProperty(key, false), std::memory_order_relaxed);
+        }
+        if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
+            currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, static_cast<int>(*preset));
         if (state.hasProperty("locked_wav")) {
             juce::MemoryBlock block;
             block.fromBase64Encoding(state.getProperty("locked_wav").toString());
             const auto* bytePtr = static_cast<const uint8_t*>(block.getData());
             std::vector<uint8_t> wavBytes(bytePtr, bytePtr + block.getSize());
-            engine_.restoreLockedWav(wavBytes);
-            displayLockedIn.store(true);
+            const bool restored = engine_.restoreLockedWav(wavBytes);
+            displayLockedIn.store(restored);
+        } else {
+            engine_.unlockSmack();
+            displayLockedIn.store(false);
         }
     }
 }

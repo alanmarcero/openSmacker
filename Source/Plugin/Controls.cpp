@@ -1,5 +1,6 @@
 #include "Controls.h"
 #include "Theme.h"
+#include <algorithm>
 
 namespace opensmacker::ui {
 
@@ -34,6 +35,13 @@ void Knob::resized() {
 void Knob::setTooltip(const juce::String& text) {
     slider_.setTooltip(text);
     title_.setTooltip(text);
+}
+
+void Knob::setAdvancedMode(bool advanced) {
+    slider_.setTextBoxStyle(advanced ? juce::Slider::TextBoxBelow : juce::Slider::NoTextBox,
+        false, 56, 16);
+    slider_.resized();
+    resized();
 }
 
 Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
@@ -83,7 +91,10 @@ Toggle::Toggle(Apvts& state, const juce::String& parameterId, const juce::String
 }
 
 void Toggle::resized() {
-    button_.setBounds(getLocalBounds().reduced(2));
+    auto area = getLocalBounds().reduced(4);
+    const int width = std::min(124, area.getWidth());
+    const int height = std::min(32, area.getHeight());
+    button_.setBounds(area.withSizeKeepingCentre(width, height));
 }
 
 void Toggle::setTooltip(const juce::String& text) {

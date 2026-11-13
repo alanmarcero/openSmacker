@@ -13,6 +13,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void setAdvancedView(bool advanced);
+    void setPage(int page);
 
 private:
     void timerCallback() override;
@@ -30,6 +31,10 @@ private:
     juce::TextButton prevPresetBtn_{ "<" };
     juce::TextButton nextPresetBtn_{ ">" };
     juce::TextButton viewToggleBtn_{ "SIMPLE" };
+    juce::TextButton hitPageBtn_{ "HIT" };
+    juce::TextButton layersPageBtn_{ "LAYERS" };
+    juce::TextButton fxPageBtn_{ "FX" };
+    int currentPage_ = 0;
 
     opensmacker::ui::SmackerStagePanel stagePanel_;
     opensmacker::ui::SmackSynthPanel synthPanel_;

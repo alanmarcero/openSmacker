@@ -61,6 +61,12 @@ struct SmackSynthSettings {
     float fmAmount = 0.30f;        // 0..1 harmonic overtone / FM metallic index
     float toneLevel = 0.85f;       // 0..1 level of tonal drum/bell core
 
+    // One-shot amplitude envelope; release ends at the dry-hit boundary.
+    float ampAttackMs = 0.35f;     // 0.05..20 ms
+    float ampDecayMs = 72.0f;      // 1..600 ms
+    float ampSustain = 0.70f;      // 0..1
+    float ampReleaseMs = 180.0f;   // 5..800 ms
+
     // Snare Wires, Sizzle & Air
     NoiseType noiseType = NoiseType::SnareWires;
     float noiseAttackMs = 0.0f;    // 0..20 ms
@@ -196,6 +202,7 @@ private:
 
     int totalSamplesPlayed_ = 0;
     int totalDurationSamples_ = 0;
+    int dryDurationSamples_ = 0;
 
     // Micro-strike flam / roll timing
     int preStrikeCount_ = 1;
