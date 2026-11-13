@@ -190,11 +190,12 @@ TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset chang
 
 TEST_CASE("All 72 factory presets render clean audio without NaNs or silences", "[plugin][presets]") {
     OpenSmackerProcessor processor;
-    processor.prepareToPlay(48000.0, 512);
+    constexpr int renderSamples = 4096; // Covers the longest factory flam lead-in at 48 kHz.
+    processor.prepareToPlay(48000.0, renderSamples);
 
     for (int p = 0; p < 72; ++p) {
         processor.setCurrentProgram(p);
-        juce::AudioBuffer<float> buffer(2, 512);
+        juce::AudioBuffer<float> buffer(2, renderSamples);
         juce::MidiBuffer midi;
         midi.addEvent(juce::MidiMessage::noteOn(1, 69, (juce::uint8)110), 0);
 
@@ -202,7 +203,7 @@ TEST_CASE("All 72 factory presets render clean audio without NaNs or silences", 
 
         float peak = 0.0f;
         for (int ch = 0; ch < 2; ++ch) {
-            for (int i = 0; i < 512; ++i) {
+            for (int i = 0; i < renderSamples; ++i) {
                 const float s = buffer.getSample(ch, i);
                 REQUIRE_FALSE(std::isnan(s));
                 REQUIRE_FALSE(std::isinf(s));
