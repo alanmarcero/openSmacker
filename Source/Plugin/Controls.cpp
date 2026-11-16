@@ -7,6 +7,7 @@ namespace opensmacker::ui {
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
     slider_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 16);
+    slider_.setWantsKeyboardFocus(true);
     slider_.setColour(juce::Slider::rotarySliderFillColourId, accent);
     addAndMakeVisible(slider_);
 
@@ -46,8 +47,8 @@ void Knob::setAdvancedMode(bool advanced) {
 
 Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
     box_.setColour(juce::ComboBox::arrowColourId, accent);
-    box_.setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff0c141e));
-    box_.setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff223246));
+    box_.setColour(juce::ComboBox::backgroundColourId, theme::kInk);
+    box_.setColour(juce::ComboBox::outlineColourId, theme::kPanelEdge);
     addAndMakeVisible(box_);
 
     title_.setText(title, juce::dontSendNotification);
@@ -121,15 +122,15 @@ void drawPanel(juce::Graphics& g, juce::Rectangle<int> area, const juce::String&
     g.fillRoundedRectangle(bounds, 6.0f);
 
     g.setGradientFill(juce::ColourGradient(
-        juce::Colour(0xff121a26), bounds.getTopLeft(),
-        juce::Colour(0xff080c14), bounds.getBottomLeft(), false));
+        theme::kSteel, bounds.getTopLeft(),
+        theme::kInk, bounds.getBottomLeft(), false));
     g.fillRoundedRectangle(bounds.reduced(0.5f), 6.0f);
 
     g.setColour(theme::kPanelEdge);
     g.drawRoundedRectangle(bounds, 6.0f, 1.0f);
 
     auto titleBar = bounds.removeFromTop(22.0f);
-    g.setColour(juce::Colour(0xff090e17));
+    g.setColour(theme::kInk);
     g.fillRoundedRectangle(titleBar, 6.0f);
     g.fillRect(titleBar.removeFromBottom(6.0f));
 

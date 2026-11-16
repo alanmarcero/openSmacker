@@ -26,6 +26,12 @@ struct MidiTrigger {
     int channel = 1;
 };
 
+struct MidiNoteOff {
+    int sampleOffset = 0;
+    int noteNumber = 69;
+    int channel = 1;
+};
+
 struct MidiCcEvent {
     int sampleOffset = 0;
     int controller = 0;
@@ -136,6 +142,7 @@ private:
 class SmackEngine {
 public:
     static constexpr int kLatencySamples = 0;
+    static constexpr uint32_t kMaxPreparationSamplesPerCallback = 256;
 
     void prepare(double sampleRate);
     void reset() noexcept;
@@ -149,7 +156,8 @@ public:
         int numSamples,
         std::span<const MidiCcEvent> controlChanges = {},
         std::span<const MidiPressureEvent> pressureChanges = {},
-        LayerOutputChannels layerOutputs = {}) noexcept;
+        LayerOutputChannels layerOutputs = {},
+        std::span<const MidiNoteOff> noteOffs = {}) noexcept;
 
     void lockCurrentSmack(const EngineSettings& settings);
     void unlockSmack() noexcept;
@@ -165,7 +173,11 @@ public:
     [[nodiscard]] uint32_t triggerSerial() const noexcept { return triggerSerial_; }
     [[nodiscard]] bool isReversing() const noexcept { return isReversing_; }
     [[nodiscard]] uint64_t lastReverseRenderSamples() const noexcept { return lastReverseRenderSamples_; }
-    [[nodiscard]] uint64_t maxReverseSamplesPerHit() const noexcept { return reverseBuffer_.left.size(); }
+    [[nodiscard]] uint64_t maxReverseSamplesPerHit() const noexcept { return reverseSource_.left.capacity(); }
+    [[nodiscard]] int reverseDurationSamples() const noexcept { return reverseDuration_; }
+    [[nodiscard]] int reverseSourceFrames() const noexcept { return reverseSourceFrames_; }
+    [[nodiscard]] uint32_t lastCallbackPreparationSamples() const noexcept { return lastCallbackPreparationSamples_; }
+    [[nodiscard]] uint32_t maxCallbackPreparationSamples() const noexcept { return maxCallbackPreparationSamples_; }
 
 private:
     void triggerSmack(
@@ -177,13 +189,21 @@ private:
         int semitoneOffset,
         bool reverseCue,
         int noteNumber,
-        int channel) noexcept;
+        int channel,
+        bool hostRoll = false) noexcept;
+    void beginLockCapture(const EngineSettings& settings);
+    [[nodiscard]] uint32_t advanceLockCapture(uint32_t sampleBudget) noexcept;
+    [[nodiscard]] uint32_t advanceReversePreparation(uint32_t sampleBudget) noexcept;
+    void startReversePreparation(const SmackSynthSettings& triggerSettings, float velocity,
+        int semitoneOffset, int duration) noexcept;
 
     double sampleRate_ = 48000.0;
     double fallbackPpq_ = 0.0;
     bool previousLockState_ = false;
 
     SmackSynth synth_;
+    SmackSynth captureSynth_;
+    SmackSynth reverseSynth_;
     DistortionShaper distL_;
     DistortionShaper distR_;
     StereoCompressor compressor_;
@@ -193,11 +213,24 @@ private:
     double wavPlayPosition_ = -1.0;
     float wavVelocity_ = 1.0f;
 
-    SmackWavVoice reverseBuffer_;
     SmackWavVoice reverseSource_;
     int reversePlayHead_ = -1;
     int reverseDuration_ = 0;
+    int reverseSourceFrames_ = 0;
     bool isReversing_ = false;
+    bool reverseUsesCache_ = false;
+    bool reversePreparationActive_ = false;
+
+    EngineSettings captureSettings_{};
+    int captureVoiceIndex_ = 0;
+    bool captureVoiceStarted_ = false;
+    bool lockCaptureActive_ = false;
+    std::array<DistortionShaper, 4> captureDistL_{};
+    std::array<DistortionShaper, 4> captureDistR_{};
+    std::array<StereoCompressor, 4> captureCompressors_{};
+    std::array<BrickwallLimiter, 4> captureLimiters_{};
+    SmackSynthSettings reverseSettings_{};
+    int reverseRequestDuration_ = 0;
 
     float ccVolume_ = 1.0f;
     float ccBrightness_ = 1.0f;
@@ -218,6 +251,8 @@ private:
     float currentSmackProgress_ = 1.0f;
     uint32_t triggerSerial_ = 0;
     uint64_t lastReverseRenderSamples_ = 0;
+    uint32_t lastCallbackPreparationSamples_ = 0;
+    uint32_t maxCallbackPreparationSamples_ = 0;
 };
 
 } // namespace opensmacker::core

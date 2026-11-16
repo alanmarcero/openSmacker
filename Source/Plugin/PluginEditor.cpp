@@ -149,12 +149,12 @@ void OpenSmackerEditor::timerCallback() {
 void OpenSmackerEditor::paint(juce::Graphics& g) {
     g.fillAll(opensmacker::theme::kBackground);
     auto header = getLocalBounds().removeFromTop(120);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff141d2a), 0.0f, 0.0f,
-        juce::Colour(0xff090d15), 0.0f, 120.0f, false));
+    g.setGradientFill(juce::ColourGradient(opensmacker::theme::kSteel, 0.0f, 0.0f,
+        opensmacker::theme::kInk, 0.0f, 120.0f, false));
     g.fillRect(header);
     g.setColour(opensmacker::theme::kPanelEdge);
     g.drawHorizontalLine(119, 0.0f, static_cast<float>(getWidth()));
-    g.setColour(opensmacker::theme::kAccentMagenta);
+    g.setColour(opensmacker::theme::kSignalCyan);
     g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
     g.drawText("openSmacker", 16, 8, 190, 30, juce::Justification::centredLeft, true);
     g.setColour(opensmacker::theme::kTextDim);

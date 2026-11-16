@@ -102,6 +102,10 @@ void EdmLookAndFeel::drawRotarySlider(
     g.drawLine({ tail, tip }, 2.0f);
     g.setColour(juce::Colours::white);
     g.fillEllipse(juce::Rectangle<float>(3.0f, 3.0f).withCentre(tip));
+    if (slider.hasKeyboardFocus(true)) {
+        g.setColour(theme::kSignalCyan.withAlpha(0.8f));
+        g.drawRoundedRectangle(bounds.reduced(1.0f), 5.0f, 1.2f);
+    }
 }
 
 void EdmLookAndFeel::drawComboBox(
@@ -127,6 +131,10 @@ void EdmLookAndFeel::drawComboBox(
     arrow.lineTo(arrowZone.getRight() - 3.0f, arrowZone.getCentreY() - 2.0f);
     g.setColour(box.findColour(juce::ComboBox::arrowColourId));
     g.strokePath(arrow, juce::PathStrokeType(1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (box.hasKeyboardFocus(true)) {
+        g.setColour(theme::kSignalCyan);
+        g.drawRoundedRectangle(bounds.reduced(0.5f), kCornerRadius, 1.4f);
+    }
 }
 
 void EdmLookAndFeel::positionComboBoxText(juce::ComboBox& box, juce::Label& label) {
@@ -156,6 +164,10 @@ void EdmLookAndFeel::drawButtonBackground(
     g.fillRoundedRectangle(bounds, kCornerRadius);
     g.setColour(isOn ? onColour.brighter(0.6f) : theme::kPanelEdge.brighter(0.1f));
     g.drawRoundedRectangle(bounds, kCornerRadius, 1.2f);
+    if (button.hasKeyboardFocus(true)) {
+        g.setColour(theme::kSignalCyan);
+        g.drawRoundedRectangle(bounds.expanded(1.0f), kCornerRadius + 1.0f, 1.4f);
+    }
 }
 
 void EdmLookAndFeel::drawButtonText(

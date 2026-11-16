@@ -21,7 +21,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override;
     int getCurrentProgram() override { return currentProgram_; }
@@ -54,6 +54,7 @@ private:
     int currentProgram_ = 0;
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
     std::vector<opensmacker::core::MidiTrigger> midiTriggers_;
+    std::vector<opensmacker::core::MidiNoteOff> midiNoteOffs_;
     std::vector<opensmacker::core::MidiCcEvent> midiCcEvents_;
     std::vector<opensmacker::core::MidiPressureEvent> midiPressureEvents_;
 };

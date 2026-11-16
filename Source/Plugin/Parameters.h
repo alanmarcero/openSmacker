@@ -26,6 +26,7 @@ inline constexpr const char* kTonePitchDecay = "tone_pitch_decay";
 inline constexpr const char* kFmAmount = "fm_amount";
 inline constexpr const char* kToneLevel = "tone_level";
 inline constexpr const char* kAmpAttack = "amp_attack";
+inline constexpr const char* kAmpEnabled = "amp_enabled";
 inline constexpr const char* kAmpDecay = "amp_decay";
 inline constexpr const char* kAmpSustain = "amp_sustain";
 inline constexpr const char* kAmpRelease = "amp_release";

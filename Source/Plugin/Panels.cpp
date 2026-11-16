@@ -61,8 +61,8 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.reduceClipRegion(stage.toNearestInt());
 
     g.setGradientFill(juce::ColourGradient(
-        juce::Colour(0xff0d1320), stage.getTopLeft(),
-        juce::Colour(0xff05080f), stage.getBottomRight(), false));
+        theme::kSteel, stage.getTopLeft(),
+        theme::kInk, stage.getBottomRight(), false));
     g.fillRoundedRectangle(stage, 8.0f);
 
     const float peak = std::clamp(processor_.displayPeak.load(), 0.0f, 1.0f);
@@ -222,6 +222,13 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     } else {
         component = std::make_unique<Knob>(state, id, title, accent_);
     }
+    if (id == opensmacker::params::kAmpEnabled) {
+        if (auto* toggle = dynamic_cast<Toggle*>(component.get()))
+            toggle->setTooltip("Enable MIDI-gated Full ADSR. When off, hits keep their one-shot envelopes.");
+    } else if (id == opensmacker::params::kAmpRelease) {
+        if (auto* knob = dynamic_cast<Knob*>(component.get()))
+            knob->setTooltip("Full ADSR release time after a matching MIDI note-off (up to 20 seconds).");
+    }
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
 }
@@ -248,8 +255,8 @@ void ParameterCard::paint(juce::Graphics& g) {
     const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
     g.setColour(theme::kPanel);
     g.fillRoundedRectangle(bounds, 8.0f);
-    g.setGradientFill(juce::ColourGradient(juce::Colour(0xff111a27), bounds.getTopLeft(),
-        juce::Colour(0xff090d15), bounds.getBottomLeft(), false));
+    g.setGradientFill(juce::ColourGradient(theme::kSteel, bounds.getTopLeft(),
+        theme::kInk, bounds.getBottomLeft(), false));
     g.fillRoundedRectangle(bounds.reduced(0.5f), 8.0f);
     g.setColour(theme::kPanelEdge);
     g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
@@ -293,15 +300,16 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
       preStrikeCard_(processor, "PRE-STRIKE FLAMS", presets::Section::PreStrike, theme::kAccentCyan),
       wiresCard_(processor, "WIRES, SIZZLE & AIR", presets::Section::WiresAir, theme::kAccentViolet) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 16> voice{
+    const std::array<std::pair<const char*, const char*>, 17> voice{
         std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" }, { kToneFine, "Fine ct" },
         { kToneFreq, "Shell Hz" }, { kToneQ, "Shell Q" }, { kToneDecay, "Body Decay" }, { kTonePitchEnv, "Pitch Env" },
         { kTonePitchDecay, "Pitch Time" }, { kFmAmount, "FM / Ring" }, { kToneLevel, "Body Level" }, { kLockPitch, "Lock Pitch" },
-        { kAmpAttack, "Amp Attack" }, { kAmpDecay, "Amp Decay" }, { kAmpSustain, "Amp Sustain" }, { kAmpRelease, "Amp Release" }
+        { kAmpEnabled, "Full ADSR" }, { kAmpAttack, "Amp Attack" }, { kAmpDecay, "Amp Decay" },
+        { kAmpSustain, "Amp Sustain" }, { kAmpRelease, "Amp Release" }
     };
     for (const auto& [id, title] : voice)
         voiceCard_.addParameter(id, title);
-    voiceCard_.setRows({ 4, 4, 4, 4 });
+    voiceCard_.setRows({ 4, 4, 4, 4, 1 });
 
     transientCard_.addParameter(kClickType, "Strike Type");
     transientCard_.addParameter(kClickLevel, "Strike Level");

@@ -18,6 +18,7 @@ TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]")
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kFmAmount) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kToneFreq) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpAttack) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpEnabled) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpDecay) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpSustain) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kAmpRelease) != nullptr);
@@ -76,6 +77,33 @@ TEST_CASE("OpenSmackerProcessor renders audio upon MIDI note-on", "[plugin]") {
     REQUIRE(maxSample > 0.0f);
     REQUIRE(processor.displayPeak.load() > 0.0f);
     REQUIRE(processor.displayTriggerCount.load() >= 1);
+}
+
+TEST_CASE("OpenSmackerProcessor routes note-off into the optional Full ADSR tail", "[plugin][adsr][midi]") {
+    OpenSmackerProcessor processor;
+    auto* fullAdsr = processor.parameters.getParameter(opensmacker::params::kAmpEnabled);
+    auto* release = processor.parameters.getParameter(opensmacker::params::kAmpRelease);
+    REQUIRE(fullAdsr != nullptr);
+    REQUIRE(release != nullptr);
+    fullAdsr->setValueNotifyingHost(1.0f);
+    release->setValueNotifyingHost(release->convertTo0to1(20000.0f));
+    processor.prepareToPlay(8000.0, 2048);
+
+    juce::AudioBuffer<float> buffer(2, 2048);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(2, 60, static_cast<juce::uint8>(110)), 0);
+    midi.addEvent(juce::MidiMessage::noteOff(2, 60), 256);
+    processor.processBlock(buffer, midi);
+
+    float beforeNoteOff = 0.0f;
+    float afterNoteOff = 0.0f;
+    for (int sample = 0; sample < 256; ++sample)
+        beforeNoteOff += std::abs(buffer.getSample(0, sample));
+    for (int sample = 512; sample < buffer.getNumSamples(); ++sample)
+        afterNoteOff += std::abs(buffer.getSample(0, sample));
+    REQUIRE(beforeNoteOff > 0.1f);
+    REQUIRE(afterNoteOff > 0.1f);
+    REQUIRE(processor.getTailLengthSeconds() >= 20.0);
 }
 
 TEST_CASE("OpenSmackerProcessor saves and restores state information", "[plugin]") {
@@ -257,6 +285,7 @@ TEST_CASE("OpenSmacker provides stereo component output buses", "[plugin][layers
 TEST_CASE("Parameter state maps voice zones roll timing and layer CC defaults", "[plugin][performance]") {
     OpenSmackerProcessor processor;
     const auto settings = opensmacker::params::readSettings(processor.parameters);
+    REQUIRE_FALSE(settings.synth.fullAdsrEnabled);
     REQUIRE_FALSE(settings.keyZonesEnabled);
     REQUIRE(settings.voiceZones[0].lowNote == 36);
     REQUIRE(settings.voiceZones[0].highNote == 47);
@@ -312,7 +341,8 @@ TEST_CASE("Lock-In state restores all voice zones and separated layer stems", "[
     original.prepareToPlay(48000.0, 1024);
     juce::AudioBuffer<float> warmup(2, 1024);
     juce::MidiBuffer noMidi;
-    original.processBlock(warmup, noMidi);
+    for (int callback = 0; callback < 2000 && !original.isSmackLockedIn(); ++callback)
+        original.processBlock(warmup, noMidi);
     REQUIRE(original.isSmackLockedIn());
 
     juce::MemoryBlock state;
