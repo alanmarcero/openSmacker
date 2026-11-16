@@ -198,8 +198,8 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
 }
 
 ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
-                             presets::Section section, juce::Colour accent)
-    : processor_(processor), title_(std::move(title)), section_(section), accent_(accent) {
+                             presets::Section section, juce::Colour accent, bool lockable)
+    : processor_(processor), title_(std::move(title)), section_(section), accent_(accent), lockable_(lockable) {
     lockButton_.setClickingTogglesState(false);
     lockButton_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
     lockButton_.setColour(juce::TextButton::textColourOffId, theme::kTextDim);
@@ -209,6 +209,7 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
         repaint();
     };
     addAndMakeVisible(lockButton_);
+    lockButton_.setVisible(lockable_);
 }
 
 void ParameterCard::addParameter(const juce::String& id, const juce::String& title) {
@@ -258,17 +259,19 @@ void ParameterCard::paint(juce::Graphics& g) {
         static_cast<float>(heading.getHeight() - 4)), 1.5f);
     g.setColour(theme::kText);
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(94), juce::Justification::centredLeft, true);
+    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 94 : 8), juce::Justification::centredLeft, true);
     const bool locked = processor_.isSectionLocked(section_);
-    lockButton_.setButtonText(locked ? "HELD" : "LOCK");
-    lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_.withAlpha(0.22f) : theme::kKnobBody);
-    lockButton_.setColour(juce::TextButton::textColourOffId, locked ? accent_ : theme::kTextDim);
+    if (lockable_) {
+        lockButton_.setButtonText(locked ? "HELD" : "LOCK");
+        lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_.withAlpha(0.22f) : theme::kKnobBody);
+        lockButton_.setColour(juce::TextButton::textColourOffId, locked ? accent_ : theme::kTextDim);
+    }
 }
 
 void ParameterCard::resized() {
     auto area = getLocalBounds();
     auto header = area.removeFromTop(30).reduced(10, 3);
-    lockButton_.setBounds(header.removeFromRight(70));
+    lockButton_.setBounds(lockable_ ? header.removeFromRight(70) : juce::Rectangle<int>{});
     area = area.reduced(8, 8);
     const int gap = 4;
     int y = area.getY();
@@ -406,6 +409,67 @@ void EffectsPanel::resized() {
     dynamicsCard_.setBounds(area.removeFromTop(dynamicsHeight));
     area.removeFromTop(gap);
     spaceCard_.setBounds(area);
+}
+
+PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
+    : zonesCard_(processor, "FOUR VOICE KEY ZONES", presets::Section::VoiceTuning, theme::kAccentMagenta, false),
+      responseCard_(processor, "LAYER VELOCITY & AFTERTOUCH", presets::Section::Transient, theme::kAccentAmber, false),
+      rollCard_(processor, "HOST SYNC ROLL & MIDI CC", presets::Section::PreStrike, theme::kAccentCyan, false) {
+    using namespace opensmacker::params;
+    const std::array<std::pair<const char*, const char*>, 9> zones{
+        std::pair{ kKeyZonesEnabled, "Enable Zones" },
+        { kSnareZoneLow, "Snare Low" }, { kSnareZoneHigh, "Snare High" },
+        { kTomZoneLow, "Tom Low" }, { kTomZoneHigh, "Tom High" },
+        { kBellZoneLow, "Bell Low" }, { kBellZoneHigh, "Bell High" },
+        { kRimZoneLow, "Rim Low" }, { kRimZoneHigh, "Rim High" }
+    };
+    for (const auto& [id, title] : zones)
+        zonesCard_.addParameter(id, title);
+    zonesCard_.setRows({ 3, 3, 3 });
+
+    const std::array<std::pair<const char*, const char*>, 6> response{
+        std::pair{ kBodyVelocityDepth, "Body Vel" }, { kWireVelocityDepth, "Wire Vel" },
+        { kTransientVelocityDepth, "Strike Vel" }, { kBodyAftertouchDepth, "Body AT" },
+        { kWireAftertouchDepth, "Wire AT" }, { kTransientAftertouchDepth, "Strike AT" }
+    };
+    for (const auto& [id, title] : response)
+        responseCard_.addParameter(id, title);
+    responseCard_.setRows({ 3, 3 });
+
+    const std::array<std::pair<const char*, const char*>, 10> roll{
+        std::pair{ kRollEnabled, "Roll" }, { kRollSubdivision, "Rate" },
+        { kRollProbability, "Probability" }, { kRollVelocity, "Velocity" },
+        { kRollAccentVelocity, "Accent" }, { kRollAccentEvery, "Accent Every" },
+        { kRollNote, "Roll Note" }, { kMidiCcBody, "Body CC" },
+        { kMidiCcWire, "Wire CC" }, { kMidiCcTransient, "Strike CC" }
+    };
+    for (const auto& [id, title] : roll)
+        rollCard_.addParameter(id, title);
+    rollCard_.setRows({ 5, 5 });
+
+    addAndMakeVisible(zonesCard_);
+    addAndMakeVisible(responseCard_);
+    addAndMakeVisible(rollCard_);
+}
+
+void PerformancePanel::setAdvancedMode(bool advanced) {
+    advancedMode_ = advanced;
+    zonesCard_.setAdvancedMode(advanced);
+    responseCard_.setAdvancedMode(advanced);
+    rollCard_.setAdvancedMode(advanced);
+    resized();
+}
+
+void PerformancePanel::resized() {
+    auto area = getLocalBounds();
+    const int gap = 8;
+    const int zonesHeight = static_cast<int>(static_cast<float>(area.getHeight()) * 0.34f);
+    const int responseHeight = static_cast<int>(static_cast<float>(area.getHeight()) * 0.25f);
+    zonesCard_.setBounds(area.removeFromTop(zonesHeight));
+    area.removeFromTop(gap);
+    responseCard_.setBounds(area.removeFromTop(responseHeight));
+    area.removeFromTop(gap);
+    rollCard_.setBounds(area);
 }
 
 } // namespace opensmacker::ui

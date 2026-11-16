@@ -22,12 +22,39 @@ struct MidiTrigger {
     int noteNumber = 69; // A4
     float velocity = 1.0f;
     bool audition = false;
+    int channel = 1;
 };
 
 struct MidiCcEvent {
     int sampleOffset = 0;
     int controller = 0;
     int value = 0;
+    int channel = 1;
+};
+
+struct MidiPressureEvent {
+    int sampleOffset = 0;
+    int channel = 1;
+    int noteNumber = -1;
+    int value = 0;
+    bool polyphonic = false;
+};
+
+struct VoiceKeyZone {
+    int lowNote = 0;
+    int highNote = 127;
+};
+
+[[nodiscard]] std::optional<VoiceMode> resolveVoiceModeForNote(
+    int noteNumber, const std::array<VoiceKeyZone, 4>& zones) noexcept;
+
+struct LayerOutputChannels {
+    float* bodyLeft = nullptr;
+    float* bodyRight = nullptr;
+    float* wireLeft = nullptr;
+    float* wireRight = nullptr;
+    float* transientLeft = nullptr;
+    float* transientRight = nullptr;
 };
 
 struct SmackEffectSettings {
@@ -52,6 +79,18 @@ struct EngineSettings {
     bool noteTracking = false;     // false = Fixed (audition root), true = Note tracking
     bool lockIn = false;           // Lock in rendered WAV buffer
     bool bypass = false;
+    bool keyZonesEnabled = false;
+    std::array<VoiceKeyZone, 4> voiceZones{};
+    bool rollEnabled = false;
+    int rollSubdivision = 16;
+    int rollAccentEvery = 4;
+    float rollProbability = 1.0f;
+    float rollVelocity = 0.35f;
+    float rollAccentVelocity = 0.85f;
+    int rollNote = 69;
+    int midiCcForBody = 20;
+    int midiCcForWire = 21;
+    int midiCcForTransient = 22;
 };
 
 class SmackWavCache {
@@ -87,7 +126,9 @@ public:
         float* const* channels,
         int numChannels,
         int numSamples,
-        std::span<const MidiCcEvent> controlChanges = {}) noexcept;
+        std::span<const MidiCcEvent> controlChanges = {},
+        std::span<const MidiPressureEvent> pressureChanges = {},
+        LayerOutputChannels layerOutputs = {}) noexcept;
 
     void lockCurrentSmack(const EngineSettings& settings);
     void unlockSmack() noexcept;
@@ -110,7 +151,9 @@ private:
         double beatsPerBar,
         float velocity,
         int semitoneOffset,
-        bool reverseCue) noexcept;
+        bool reverseCue,
+        int noteNumber,
+        int channel) noexcept;
 
     double sampleRate_ = 48000.0;
     double fallbackPpq_ = 0.0;
@@ -134,6 +177,17 @@ private:
 
     float ccVolume_ = 1.0f;
     float ccBrightness_ = 1.0f;
+    float ccBodyGain_ = 1.0f;
+    float ccWireGain_ = 1.0f;
+    float ccTransientGain_ = 1.0f;
+    std::array<float, 16> channelPressure_{};
+    float activePressure_ = 0.0f;
+    int activeNote_ = -1;
+    int activeChannel_ = 1;
+    VoiceMode activeVoiceMode_ = VoiceMode::DanceSnare;
+    int64_t lastRollStep_ = 0;
+    bool hasRollStep_ = false;
+    uint32_t rollRandomState_ = 0x8f31a2c7U;
 
     float currentPeak_ = 0.0f;
     float currentBeatPhase_ = 0.0f;

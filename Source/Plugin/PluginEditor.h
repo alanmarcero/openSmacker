@@ -34,11 +34,13 @@ private:
     juce::TextButton hitPageBtn_{ "HIT" };
     juce::TextButton layersPageBtn_{ "LAYERS" };
     juce::TextButton fxPageBtn_{ "FX" };
+    juce::TextButton midiPageBtn_{ "MIDI" };
     int currentPage_ = 0;
 
     opensmacker::ui::SmackerStagePanel stagePanel_;
     opensmacker::ui::SmackSynthPanel synthPanel_;
     opensmacker::ui::EffectsPanel effectsPanel_;
+    opensmacker::ui::PerformancePanel performancePanel_;
     juce::TooltipWindow tooltipWindow_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenSmackerEditor)

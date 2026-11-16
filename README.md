@@ -17,6 +17,10 @@
   <img src="assets/openSmacker-fx.png" alt="openSmacker v2 FX page" width="900">
 </p>
 
+<p align="center">
+  <img src="assets/openSmacker-midi.png" alt="openSmacker v2 MIDI performance page" width="900">
+</p>
+
 openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the sound engine, effects, preset catalog, and editor while keeping the previous voice types, synthesis controls, MIDI mappings, program navigation, lock-in WAV workflow, and plugin formats. Its new envelopes and multi-part drum and metallic voices keep the transient and tuned body audible together for a more forceful dance and trance hit.
 
 ## Sound design
@@ -45,17 +49,22 @@ The factory bank contains 72 new presets: 24 snares (`SN`), 24 bells and chimes 
 
 ## Editor
 
-The redesigned editor is 1100 × 972 with three pages:
+The redesigned editor is 1100 × 972 with four pages:
 
 - **Hit:** voice, tuning, ADSR, transient, and animated stage.
 - **Layers:** pre-strikes, snare wires, sizzle, and air.
 - **FX:** saturation, dynamics, reverb, reverse sync, MIDI mode, output, and WAV lock.
+- **MIDI:** four voice key zones, layer velocity and aftertouch, host-synced rolls, and assignable layer CCs.
 
 Simple and Advanced views are retained. Simple removes numeric boxes for a clearer surface; Advanced adds exact value readouts. Every parameter remains on its page and editable in both views. Screenshots are in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
 
 ## MIDI and state
 
-Note-on messages trigger hits on every MIDI channel and velocity controls the hit level. Fixed Root and Note Tracking are available. Controller behavior remains CC 7 output level, CC 74 air low-pass, CC 120/123 silence, and CC 121 reset for CC 7/74. Existing parameter IDs, saved state, cached WAV data, program count, and plugin identity are preserved. Missing section-lock data in older sessions opens unlocked.
+Note-on messages trigger hits on every MIDI channel and velocity controls the hit level. The optional key zones map notes 36–47 to Dance Snare, 48–59 to Club Tom-Tom, 60–71 to FM Bell, and 72–84 to Pryda / Rim Smack; notes outside the configured zones are ignored while zones are enabled. Fixed Root and Note Tracking remain available.
+
+Body, wire, and transient velocity depth and aftertouch are independent. Enable the host-synced roll to retrigger at 1/8, 1/16, or 1/32-note intervals while transport plays; set its probability and accent velocity. Body, wire, and transient MIDI CCs are assignable (default CC 20, 21, and 22; CC 0 disables a mapping). The existing CC 7 output level, CC 74 air low-pass, CC 120/123 silence, and CC 121 reset behavior remains.
+
+The Body, Wires, and Transient stereo output buses provide dry component stems before saturation, compression, limiter, and reverb. They follow the layer velocity, aftertouch, and assigned CC controls. Existing parameter IDs, saved state, cached WAV data, program count, and plugin identity are preserved. Missing section-lock data in older sessions opens unlocked.
 
 ## Formats
 

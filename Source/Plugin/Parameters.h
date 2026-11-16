@@ -84,6 +84,33 @@ inline constexpr const char* kStereoWidth = "stereo_width";
 inline constexpr const char* kOutputGain = "output_gain";
 inline constexpr const char* kPreset = "preset";
 
+// MIDI key zones and layer performance
+inline constexpr const char* kKeyZonesEnabled = "key_zones_enabled";
+inline constexpr const char* kSnareZoneLow = "snare_zone_low";
+inline constexpr const char* kSnareZoneHigh = "snare_zone_high";
+inline constexpr const char* kTomZoneLow = "tom_zone_low";
+inline constexpr const char* kTomZoneHigh = "tom_zone_high";
+inline constexpr const char* kBellZoneLow = "bell_zone_low";
+inline constexpr const char* kBellZoneHigh = "bell_zone_high";
+inline constexpr const char* kRimZoneLow = "rim_zone_low";
+inline constexpr const char* kRimZoneHigh = "rim_zone_high";
+inline constexpr const char* kBodyVelocityDepth = "body_velocity_depth";
+inline constexpr const char* kWireVelocityDepth = "wire_velocity_depth";
+inline constexpr const char* kTransientVelocityDepth = "transient_velocity_depth";
+inline constexpr const char* kBodyAftertouchDepth = "body_aftertouch_depth";
+inline constexpr const char* kWireAftertouchDepth = "wire_aftertouch_depth";
+inline constexpr const char* kTransientAftertouchDepth = "transient_aftertouch_depth";
+inline constexpr const char* kRollEnabled = "roll_enabled";
+inline constexpr const char* kRollSubdivision = "roll_subdivision";
+inline constexpr const char* kRollProbability = "roll_probability";
+inline constexpr const char* kRollVelocity = "roll_velocity";
+inline constexpr const char* kRollAccentVelocity = "roll_accent_velocity";
+inline constexpr const char* kRollAccentEvery = "roll_accent_every";
+inline constexpr const char* kRollNote = "roll_note";
+inline constexpr const char* kMidiCcBody = "midi_cc_body";
+inline constexpr const char* kMidiCcWire = "midi_cc_wire";
+inline constexpr const char* kMidiCcTransient = "midi_cc_transient";
+
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTreeState& apvts);
 

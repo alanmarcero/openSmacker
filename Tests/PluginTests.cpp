@@ -27,6 +27,12 @@ TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]")
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kCompThresh) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kLimiterCeiling) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kReverbMix) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kKeyZonesEnabled) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kBodyVelocityDepth) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kWireAftertouchDepth) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kRollEnabled) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kRollProbability) != nullptr);
+    REQUIRE(processor.parameters.getParameter(opensmacker::params::kMidiCcTransient) != nullptr);
 }
 
 TEST_CASE("OpenSmackerProcessor provides 72 factory presets organized into 24 SN, 24 BL, and 24 TM", "[plugin]") {
@@ -132,9 +138,10 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
         assetsDir = juce::File::getCurrentWorkingDirectory().getParentDirectory().getChildFile("assets");
     }
     REQUIRE(assetsDir.exists());
-    const std::array<const char*, 3> pageNames{ "hit", "layers", "fx" };
-    for (int page = 0; page < 3; ++page) {
-        processor.setCurrentProgram(page * 24 + 1);
+    const std::array<const char*, 4> pageNames{ "hit", "layers", "fx", "midi" };
+    for (int page = 0; page < 4; ++page) {
+        if (page < 3)
+            processor.setCurrentProgram(page * 24 + 1);
         editor->setPage(page);
         for (int mode = 0; mode < 2; ++mode) {
             editor->setAdvancedView(mode == 1);
@@ -213,5 +220,84 @@ TEST_CASE("All 72 factory presets render clean audio without NaNs or silences", 
         REQUIRE(peak > 0.05f);
         REQUIRE(peak <= 1.5f);
     }
+}
+
+TEST_CASE("OpenSmacker provides stereo component output buses", "[plugin][layers]") {
+    OpenSmackerProcessor processor;
+    REQUIRE(processor.getTotalNumOutputChannels() == 2);
+    auto layout = processor.getBusesLayout();
+    layout.outputBuses.set(1, juce::AudioChannelSet::stereo());
+    layout.outputBuses.set(2, juce::AudioChannelSet::stereo());
+    layout.outputBuses.set(3, juce::AudioChannelSet::stereo());
+    REQUIRE(processor.setBusesLayout(layout));
+    REQUIRE(processor.getBusCount(false) == 4);
+    REQUIRE(processor.getChannelCountOfBus(false, 0) == 2);
+    REQUIRE(processor.getChannelCountOfBus(false, 1) == 2);
+    REQUIRE(processor.getChannelCountOfBus(false, 2) == 2);
+    REQUIRE(processor.getChannelCountOfBus(false, 3) == 2);
+    processor.prepareToPlay(48000.0, 4096);
+    juce::AudioBuffer<float> buffer(processor.getTotalNumOutputChannels(), 4096);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 69, static_cast<juce::uint8>(110)), 0);
+    processor.processBlock(buffer, midi);
+
+    const auto energy = [&processor, &buffer](int bus) {
+        auto output = processor.getBusBuffer(buffer, false, bus);
+        float sum = 0.0f;
+        for (int sample = 0; sample < output.getNumSamples(); ++sample)
+            sum += std::abs(output.getSample(0, sample)) + std::abs(output.getSample(1, sample));
+        return sum;
+    };
+    REQUIRE(energy(0) > 0.1f);
+    REQUIRE(energy(1) > 0.1f);
+    REQUIRE(energy(2) > 0.1f);
+    REQUIRE(energy(3) > 0.1f);
+}
+
+TEST_CASE("Parameter state maps voice zones roll timing and layer CC defaults", "[plugin][performance]") {
+    OpenSmackerProcessor processor;
+    const auto settings = opensmacker::params::readSettings(processor.parameters);
+    REQUIRE_FALSE(settings.keyZonesEnabled);
+    REQUIRE(settings.voiceZones[0].lowNote == 36);
+    REQUIRE(settings.voiceZones[0].highNote == 47);
+    REQUIRE(settings.voiceZones[1].lowNote == 48);
+    REQUIRE(settings.voiceZones[3].highNote == 84);
+    REQUIRE_FALSE(settings.rollEnabled);
+    REQUIRE(settings.rollSubdivision == 16);
+    REQUIRE(settings.rollAccentEvery == 4);
+    REQUIRE(settings.midiCcForBody == 20);
+    REQUIRE(settings.midiCcForWire == 21);
+    REQUIRE(settings.midiCcForTransient == 22);
+}
+
+TEST_CASE("OpenSmacker routes MIDI channel pressure to the body layer", "[plugin][aftertouch]") {
+    const auto renderBodyEnergy = [](bool withPressure) {
+        OpenSmackerProcessor processor;
+        auto layout = processor.getBusesLayout();
+        layout.outputBuses.set(1, juce::AudioChannelSet::stereo());
+        layout.outputBuses.set(2, juce::AudioChannelSet::stereo());
+        layout.outputBuses.set(3, juce::AudioChannelSet::stereo());
+        REQUIRE(processor.setBusesLayout(layout));
+        auto* aftertouch = processor.parameters.getParameter(opensmacker::params::kBodyAftertouchDepth);
+        REQUIRE(aftertouch != nullptr);
+        aftertouch->setValueNotifyingHost(aftertouch->convertTo0to1(1.0f));
+        processor.prepareToPlay(48000.0, 4096);
+        juce::AudioBuffer<float> buffer(processor.getTotalNumOutputChannels(), 4096);
+        juce::MidiBuffer midi;
+        if (withPressure)
+            midi.addEvent(juce::MidiMessage::channelPressureChange(1, 127), 0);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 69, static_cast<juce::uint8>(110)), 0);
+        processor.processBlock(buffer, midi);
+
+        auto body = processor.getBusBuffer(buffer, false, 1);
+        float energy = 0.0f;
+        for (int sample = 0; sample < body.getNumSamples(); ++sample)
+            energy += std::abs(body.getSample(0, sample)) + std::abs(body.getSample(1, sample));
+        return energy;
+    };
+
+    const float withoutPressure = renderBodyEnergy(false);
+    const float withPressure = renderBodyEnergy(true);
+    REQUIRE(withPressure > withoutPressure * 1.5f);
 }
 

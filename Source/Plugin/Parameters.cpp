@@ -176,6 +176,58 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 71, 0));
 
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{ kKeyZonesEnabled, 1 }, "MIDI Voice Zones", false));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare Zone Low", 0, 127, 36));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare Zone High", 0, 127, 47));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kTomZoneLow, 1 }, "Tom Zone Low", 0, 127, 48));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom Zone High", 0, 127, 59));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kBellZoneLow, 1 }, "Bell Zone Low", 0, 127, 60));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell Zone High", 0, 127, 71));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kRimZoneLow, 1 }, "Rim Zone Low", 0, 127, 72));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim Zone High", 0, 127, 84));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kBodyVelocityDepth, 1 }, "Body Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kWireVelocityDepth, 1 }, "Wire Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kTransientVelocityDepth, 1 }, "Transient Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kBodyAftertouchDepth, 1 }, "Body Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kWireAftertouchDepth, 1 }, "Wire Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kTransientAftertouchDepth, 1 }, "Transient Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterBool>(
+        juce::ParameterID{ kRollEnabled, 1 }, "Host Synced Roll", false));
+    juce::StringArray rollRates{ "1/8", "1/16", "1/32" };
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{ kRollSubdivision, 1 }, "Roll Rate", rollRates, 1));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kRollProbability, 1 }, "Roll Probability", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kRollVelocity, 1 }, "Roll Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.35f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kRollAccentVelocity, 1 }, "Accent Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kRollAccentEvery, 1 }, "Accent Every", 1, 16, 4));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kRollNote, 1 }, "Roll Note", 0, 127, 69));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kMidiCcBody, 1 }, "Body CC", 0, 127, 20));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kMidiCcWire, 1 }, "Wire CC", 0, 127, 21));
+    params.push_back(std::make_unique<juce::AudioParameterInt>(
+        juce::ParameterID{ kMidiCcTransient, 1 }, "Transient CC", 0, 127, 22));
+
     return { params.begin(), params.end() };
 }
 
@@ -208,6 +260,12 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
         s.synth.fmAmount = *pFm;
     }
     s.synth.toneLevel = *apvts.getRawParameterValue(kToneLevel);
+    s.synth.bodyVelocityDepth = *apvts.getRawParameterValue(kBodyVelocityDepth);
+    s.synth.wireVelocityDepth = *apvts.getRawParameterValue(kWireVelocityDepth);
+    s.synth.transientVelocityDepth = *apvts.getRawParameterValue(kTransientVelocityDepth);
+    s.synth.bodyAftertouchDepth = *apvts.getRawParameterValue(kBodyAftertouchDepth);
+    s.synth.wireAftertouchDepth = *apvts.getRawParameterValue(kWireAftertouchDepth);
+    s.synth.transientAftertouchDepth = *apvts.getRawParameterValue(kTransientAftertouchDepth);
     s.synth.ampAttackMs = *apvts.getRawParameterValue(kAmpAttack);
     s.synth.ampDecayMs = *apvts.getRawParameterValue(kAmpDecay);
     s.synth.ampSustain = *apvts.getRawParameterValue(kAmpSustain);
@@ -263,6 +321,26 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
 
     s.noteTracking = *apvts.getRawParameterValue(kMidiMode) > 0.5f;
     s.lockIn = *apvts.getRawParameterValue(kLockIn) > 0.5f;
+
+    s.keyZonesEnabled = *apvts.getRawParameterValue(kKeyZonesEnabled) > 0.5f;
+    s.voiceZones = {{
+        { static_cast<int>(*apvts.getRawParameterValue(kSnareZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kSnareZoneHigh)) },
+        { static_cast<int>(*apvts.getRawParameterValue(kTomZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kTomZoneHigh)) },
+        { static_cast<int>(*apvts.getRawParameterValue(kBellZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kBellZoneHigh)) },
+        { static_cast<int>(*apvts.getRawParameterValue(kRimZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kRimZoneHigh)) }
+    }};
+    s.rollEnabled = *apvts.getRawParameterValue(kRollEnabled) > 0.5f;
+    constexpr std::array<int, 3> rollSubdivisions{ 8, 16, 32 };
+    const int rollChoice = static_cast<int>(*apvts.getRawParameterValue(kRollSubdivision));
+    s.rollSubdivision = rollSubdivisions[static_cast<size_t>(std::clamp(rollChoice, 0, 2))];
+    s.rollProbability = *apvts.getRawParameterValue(kRollProbability);
+    s.rollVelocity = *apvts.getRawParameterValue(kRollVelocity);
+    s.rollAccentVelocity = *apvts.getRawParameterValue(kRollAccentVelocity);
+    s.rollAccentEvery = static_cast<int>(*apvts.getRawParameterValue(kRollAccentEvery));
+    s.rollNote = static_cast<int>(*apvts.getRawParameterValue(kRollNote));
+    s.midiCcForBody = static_cast<int>(*apvts.getRawParameterValue(kMidiCcBody));
+    s.midiCcForWire = static_cast<int>(*apvts.getRawParameterValue(kMidiCcWire));
+    s.midiCcForTransient = static_cast<int>(*apvts.getRawParameterValue(kMidiCcTransient));
 
     return s;
 }
