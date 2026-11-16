@@ -1,4 +1,4 @@
-# openSmacker v2 screenshots
+# openSmacker v2.1.0 screenshots
 
 Captured from the built JUCE editor at its default **1100 × 972** size. All four pages were inspected in Simple and Advanced view; labels and controls fit without overlap or clipping. Simple keeps all parameters visible and hides only rotary numeric boxes. Advanced restores exact numeric readouts.
 
