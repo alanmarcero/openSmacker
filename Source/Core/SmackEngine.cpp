@@ -33,6 +33,15 @@ uint32_t readUint32LE(const uint8_t* data) noexcept {
         | (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
 }
 
+void resizeVoiceBuffers(SmackWavVoice& voice, size_t size) {
+    voice.left.resize(size);
+    voice.right.resize(size);
+    for (auto& layer : voice.layers) {
+        layer.left.resize(size);
+        layer.right.resize(size);
+    }
+}
+
 } // namespace
 
 std::optional<VoiceMode> resolveVoiceModeForNote(
@@ -50,8 +59,68 @@ std::optional<VoiceMode> resolveVoiceModeForNote(
 void SmackWavCache::clear() noexcept {
     isLocked_ = false;
     sampleRate_ = 48000.0;
-    left_.clear();
-    right_.clear();
+    primaryVoiceIndex_ = 0;
+    for (auto& voice : voices_) {
+        voice.left.clear();
+        voice.right.clear();
+        for (auto& layer : voice.layers) {
+            layer.left.clear();
+            layer.right.clear();
+        }
+    }
+}
+
+void SmackWavCache::reserveFrames(size_t frames) {
+    for (auto& voice : voices_) {
+        voice.left.reserve(frames);
+        voice.right.reserve(frames);
+        for (auto& layer : voice.layers) {
+            layer.left.reserve(frames);
+            layer.right.reserve(frames);
+        }
+    }
+}
+
+void SmackWavCache::beginCapture() noexcept {
+    clear();
+}
+
+SmackWavVoice& SmackWavCache::writableVoice(size_t voiceIndex) noexcept {
+    return voices_[std::min(voiceIndex, voices_.size() - 1)];
+}
+
+bool SmackWavCache::finishCapture(double sampleRate, VoiceMode primaryVoice) noexcept {
+    if (voices_[0].left.empty() || !std::isfinite(sampleRate) || sampleRate < 8000.0 || sampleRate > 384000.0) {
+        clear();
+        return false;
+    }
+    const size_t frameCount = voices_[0].left.size();
+    for (auto& voice : voices_) {
+        if (voice.left.size() != frameCount || voice.right.size() != frameCount) {
+            clear();
+            return false;
+        }
+        for (size_t i = 0; i < frameCount; ++i) {
+            voice.left[i] = std::isfinite(voice.left[i]) ? voice.left[i] : 0.0f;
+            voice.right[i] = std::isfinite(voice.right[i]) ? voice.right[i] : 0.0f;
+        }
+        for (auto& layer : voice.layers) {
+            if (layer.left.empty() && layer.right.empty())
+                continue;
+            if (layer.left.size() != frameCount || layer.right.size() != frameCount) {
+                clear();
+                return false;
+            }
+            for (size_t i = 0; i < frameCount; ++i) {
+                layer.left[i] = std::isfinite(layer.left[i]) ? layer.left[i] : 0.0f;
+                layer.right[i] = std::isfinite(layer.right[i]) ? layer.right[i] : 0.0f;
+            }
+        }
+    }
+    sampleRate_ = sampleRate;
+    primaryVoiceIndex_ = static_cast<size_t>(std::clamp(static_cast<int>(primaryVoice), 0, 3));
+    isLocked_ = true;
+    return true;
 }
 
 void SmackWavCache::capture(const std::vector<float>& left, const std::vector<float>& right, double sampleRate) {
@@ -59,25 +128,38 @@ void SmackWavCache::capture(const std::vector<float>& left, const std::vector<fl
         clear();
         return;
     }
-    left_ = left;
-    right_.resize(left.size());
-    for (size_t i = 0; i < left.size(); ++i) {
-        left_[i] = std::isfinite(left_[i]) ? left_[i] : 0.0f;
-        const float rightSample = i < right.size() ? right[i] : left_[i];
-        right_[i] = std::isfinite(rightSample) ? rightSample : 0.0f;
+    std::array<SmackWavVoice, 4> voices;
+    for (auto& voice : voices) {
+        voice.left = left;
+        voice.right.resize(left.size());
+        for (size_t i = 0; i < left.size(); ++i) {
+            voice.left[i] = std::isfinite(voice.left[i]) ? voice.left[i] : 0.0f;
+            const float rightSample = i < right.size() ? right[i] : voice.left[i];
+            voice.right[i] = std::isfinite(rightSample) ? rightSample : 0.0f;
+        }
     }
-    sampleRate_ = sampleRate;
-    isLocked_ = true;
+    captureVoices(std::move(voices), sampleRate);
+}
+
+void SmackWavCache::captureVoices(std::array<SmackWavVoice, 4>&& voices, double sampleRate, VoiceMode primaryVoice) {
+    voices_ = std::move(voices);
+    (void) finishCapture(sampleRate, primaryVoice);
+}
+
+const SmackWavVoice& SmackWavCache::voice(VoiceMode mode) const noexcept {
+    const auto index = std::clamp(static_cast<int>(mode), 0, static_cast<int>(voices_.size()) - 1);
+    return voices_[static_cast<size_t>(index)];
 }
 
 std::vector<uint8_t> SmackWavCache::toWavBytes() const {
-    if (!isLocked_ || left_.empty()) {
+    const auto& baseVoice = voices_[primaryVoiceIndex_];
+    if (!isLocked_ || baseVoice.left.empty()) {
         return {};
     }
 
-    if (left_.size() > (std::numeric_limits<uint32_t>::max() - 36u) / (2u * sizeof(float)))
+    if (baseVoice.left.size() > (std::numeric_limits<uint32_t>::max() - 36u) / (2u * sizeof(float)))
         return {};
-    const uint32_t numFrames = static_cast<uint32_t>(left_.size());
+    const uint32_t numFrames = static_cast<uint32_t>(baseVoice.left.size());
     const uint16_t numChannels = 2;
     const uint32_t sRate = static_cast<uint32_t>(std::clamp(sampleRate_, 8000.0, 384000.0));
     const uint16_t bitsPerSample = 32;
@@ -103,9 +185,9 @@ std::vector<uint8_t> SmackWavCache::toWavBytes() const {
     wav.insert(wav.end(), { 'd', 'a', 't', 'a' });
     writeUint32LE(wav, dataBytes);
 
-    for (size_t i = 0; i < left_.size(); ++i) {
-        float sampleL = left_[i];
-        float sampleR = (i < right_.size()) ? right_[i] : sampleL;
+    for (size_t i = 0; i < baseVoice.left.size(); ++i) {
+        float sampleL = baseVoice.left[i];
+        float sampleR = (i < baseVoice.right.size()) ? baseVoice.right[i] : sampleL;
 
         uint32_t rawL, rawR;
         std::memcpy(&rawL, &sampleL, sizeof(float));
@@ -114,6 +196,54 @@ std::vector<uint8_t> SmackWavCache::toWavBytes() const {
         writeUint32LE(wav, rawR);
     }
 
+    return wav;
+}
+
+std::vector<uint8_t> SmackWavCache::toBankWavBytes() const {
+    constexpr uint16_t channelCount = 32;
+    const size_t frameCount = voices_[0].left.size();
+    if (!isLocked_ || frameCount == 0
+        || frameCount > (std::numeric_limits<uint32_t>::max() - 36u) / (channelCount * sizeof(float)))
+        return {};
+
+    const auto frames = static_cast<uint32_t>(frameCount);
+    const uint32_t sampleRate = static_cast<uint32_t>(std::clamp(sampleRate_, 8000.0, 384000.0));
+    const uint32_t dataBytes = frames * channelCount * sizeof(float);
+    std::vector<uint8_t> wav;
+    wav.reserve(44u + dataBytes);
+    wav.insert(wav.end(), { 'R', 'I', 'F', 'F' });
+    writeUint32LE(wav, 36u + dataBytes);
+    wav.insert(wav.end(), { 'W', 'A', 'V', 'E' });
+    wav.insert(wav.end(), { 'f', 'm', 't', ' ' });
+    writeUint32LE(wav, 16);
+    writeUint16LE(wav, 3);
+    writeUint16LE(wav, channelCount);
+    writeUint32LE(wav, sampleRate);
+    writeUint32LE(wav, sampleRate * channelCount * sizeof(float));
+    writeUint16LE(wav, channelCount * sizeof(float));
+    writeUint16LE(wav, 32);
+    wav.insert(wav.end(), { 'd', 'a', 't', 'a' });
+    writeUint32LE(wav, dataBytes);
+
+    for (size_t frame = 0; frame < frameCount; ++frame) {
+        for (const auto& voice : voices_) {
+            const std::array<float, 8> channels{
+                voice.left[frame], voice.right[frame],
+                voice.layers[0].left.empty() ? 0.0f : voice.layers[0].left[frame],
+                voice.layers[0].right.empty() ? 0.0f : voice.layers[0].right[frame],
+                voice.layers[1].left.empty() ? 0.0f : voice.layers[1].left[frame],
+                voice.layers[1].right.empty() ? 0.0f : voice.layers[1].right[frame],
+                voice.layers[2].left.empty() ? 0.0f : voice.layers[2].left[frame],
+                voice.layers[2].right.empty() ? 0.0f : voice.layers[2].right[frame]
+            };
+            for (float sample : channels) {
+                const float finiteSample = std::isfinite(sample) ? sample : 0.0f;
+                uint32_t raw;
+                std::memcpy(&raw, &finiteSample, sizeof(float));
+                writeUint32LE(wav, raw);
+            }
+        }
+    }
     return wav;
 }
 
@@ -157,7 +287,7 @@ bool SmackWavCache::fromWavBytes(const std::vector<uint8_t>& wavBytes) {
         offset += chunkSize + (chunkSize & 1u);
     }
 
-    if (dataOffset == 0 || (numChannels != 1 && numChannels != 2) || sRate < 8000 || sRate > 384000
+    if (dataOffset == 0 || (numChannels != 1 && numChannels != 2 && numChannels != 32) || sRate < 8000 || sRate > 384000
         || !((formatTag == 3 && bitsPerSample == 32) || (formatTag == 1 && bitsPerSample == 16))) {
         return false;
     }
@@ -169,8 +299,16 @@ bool SmackWavCache::fromWavBytes(const std::vector<uint8_t>& wavBytes) {
         return false;
     const size_t numFrames = dataSize / bytesPerFrame;
 
-    left_.resize(numFrames);
-    right_.resize(numFrames);
+    for (auto& voice : voices_) {
+        voice.left.resize(numFrames);
+        voice.right.resize(numFrames);
+        if (numChannels == 32) {
+            for (auto& layer : voice.layers) {
+                layer.left.resize(numFrames);
+                layer.right.resize(numFrames);
+            }
+        }
+    }
 
     for (size_t i = 0; i < numFrames; ++i) {
         const size_t frameOffset = dataOffset + i * bytesPerFrame;
@@ -184,8 +322,25 @@ bool SmackWavCache::fromWavBytes(const std::vector<uint8_t>& wavBytes) {
             const auto integer = static_cast<int16_t>(readUint16LE(bytes));
             return static_cast<float>(integer) / 32768.0f;
         };
-        left_[i] = readChannel(0);
-        right_[i] = numChannels > 1 ? readChannel(1) : left_[i];
+        if (numChannels == 32) {
+            for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+                const size_t channelBase = voiceIndex * 8;
+                auto& voice = voices_[voiceIndex];
+                voice.left[i] = readChannel(channelBase);
+                voice.right[i] = readChannel(channelBase + 1);
+                for (size_t layerIndex = 0; layerIndex < voice.layers.size(); ++layerIndex) {
+                    voice.layers[layerIndex].left[i] = readChannel(channelBase + 2 + layerIndex * 2);
+                    voice.layers[layerIndex].right[i] = readChannel(channelBase + 3 + layerIndex * 2);
+                }
+            }
+        } else {
+            const float left = readChannel(0);
+            const float right = numChannels > 1 ? readChannel(1) : left;
+            for (auto& voice : voices_) {
+                voice.left[i] = left;
+                voice.right[i] = right;
+            }
+        }
     }
 
     if (numFrames == 0)
@@ -203,8 +358,9 @@ void SmackEngine::prepare(double sampleRate) {
     limiter_.prepare(sampleRate_);
 
     const int maxReverseSamples = static_cast<int>(sampleRate_ * 2.0);
-    reverseBufferL_.assign(maxReverseSamples, 0.0f);
-    reverseBufferR_.assign(maxReverseSamples, 0.0f);
+    wavCache_.reserveFrames(static_cast<size_t>(std::ceil(sampleRate_ * 2.5)));
+    resizeVoiceBuffers(reverseBuffer_, static_cast<size_t>(maxReverseSamples));
+    resizeVoiceBuffers(reverseSource_, static_cast<size_t>(maxReverseSamples));
     reset();
 }
 
@@ -232,55 +388,64 @@ void SmackEngine::reset() noexcept {
     activeChannel_ = 1;
     activeVoiceMode_ = VoiceMode::DanceSnare;
     hasRollStep_ = false;
+    lastReverseRenderSamples_ = 0;
 }
 
 void SmackEngine::lockCurrentSmack(const EngineSettings& settings) {
-    std::vector<float> dryL, dryR;
-    synth_.renderBlock(dryL, dryR, settings.synth);
+    wavCache_.reserveFrames(static_cast<size_t>(std::ceil(sampleRate_ * 2.5)));
+    wavCache_.beginCapture();
+    for (size_t voiceIndex = 0; voiceIndex < 4; ++voiceIndex) {
+        auto voiceSettings = settings.synth;
+        voiceSettings.voiceMode = static_cast<VoiceMode>(voiceIndex);
+        auto& voice = wavCache_.writableVoice(voiceIndex);
+        synth_.renderBlock(voice.left, voice.right, voiceSettings, 1.0f, 0, &voice.layers);
 
-    std::vector<float> renderedL(dryL.size());
-    std::vector<float> renderedR(dryR.size());
+        DistortionShaper dL, dR;
+        StereoCompressor comp;
+        BrickwallLimiter lim;
+        comp.prepare(sampleRate_);
+        lim.prepare(sampleRate_);
 
-    DistortionShaper dL, dR;
-    StereoCompressor comp;
-    BrickwallLimiter lim;
-    comp.prepare(sampleRate_);
-    lim.prepare(sampleRate_);
+        for (size_t i = 0; i < voice.left.size(); ++i) {
+            float sL = voice.left[i];
+            float sR = voice.right[i];
 
-    for (size_t i = 0; i < dryL.size(); ++i) {
-        float sL = dryL[i];
-        float sR = dryR[i];
+            if (settings.effects.distMix > 0.001f) {
+                const float wetDistL = dL.processSample(sL, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                const float wetDistR = dR.processSample(sR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                sL = sL * (1.0f - settings.effects.distMix) + wetDistL * settings.effects.distMix;
+                sR = sR * (1.0f - settings.effects.distMix) + wetDistR * settings.effects.distMix;
+            }
 
-        if (settings.effects.distMix > 0.001f) {
-            const float wetDistL = dL.processSample(sL, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
-            const float wetDistR = dR.processSample(sR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
-            sL = sL * (1.0f - settings.effects.distMix) + wetDistL * settings.effects.distMix;
-            sR = sR * (1.0f - settings.effects.distMix) + wetDistR * settings.effects.distMix;
+            if (settings.effects.stereoWidth != 1.0f) {
+                const float mid = (sL + sR) * 0.5f;
+                const float side = (sL - sR) * 0.5f * settings.effects.stereoWidth;
+                sL = mid + side;
+                sR = mid - side;
+            }
+
+            comp.process(sL, sR, settings.effects.compressor);
+            lim.process(sL, sR, settings.effects.limiter);
+
+            voice.left[i] = sL;
+            voice.right[i] = sR;
         }
-
-        if (settings.effects.stereoWidth != 1.0f) {
-            const float mid = (sL + sR) * 0.5f;
-            const float side = (sL - sR) * 0.5f * settings.effects.stereoWidth;
-            sL = mid + side;
-            sR = mid - side;
-        }
-
-        comp.process(sL, sR, settings.effects.compressor);
-        lim.process(sL, sR, settings.effects.limiter);
-
-        renderedL[i] = sL;
-        renderedR[i] = sR;
     }
-
-    wavCache_.capture(renderedL, renderedR, sampleRate_);
+    (void) wavCache_.finishCapture(sampleRate_, settings.synth.voiceMode);
 }
 
 void SmackEngine::unlockSmack() noexcept {
     wavCache_.clear();
+    previousLockState_ = false;
 }
 
-bool SmackEngine::restoreLockedWav(const std::vector<uint8_t>& wavBytes) {
-    return wavCache_.fromWavBytes(wavBytes);
+bool SmackEngine::restoreLockedWav(const std::vector<uint8_t>& wavBytes, VoiceMode primaryVoice) {
+    previousLockState_ = wavCache_.fromWavBytes(wavBytes);
+    if (previousLockState_) {
+        wavCache_.setPrimaryVoice(primaryVoice);
+        wavCache_.reserveFrames(static_cast<size_t>(std::ceil(sampleRate_ * 2.5)));
+    }
+    return previousLockState_;
 }
 
 void SmackEngine::triggerSmack(
@@ -309,25 +474,71 @@ void SmackEngine::triggerSmack(
     activePressure_ = channelPressure_[static_cast<size_t>(activeChannel_ - 1)];
     auto triggerSettings = settings.synth;
     triggerSettings.voiceMode = activeVoiceMode_;
+    triggerSettings.aftertouchValue = activePressure_;
+    triggerSettings.bodyPerformanceGain = ccBodyGain_;
+    triggerSettings.wirePerformanceGain = ccWireGain_;
+    triggerSettings.transientPerformanceGain = ccTransientGain_;
 
     const bool engageReverse = shouldTriggerReverse(settings.effects.reverseMode, reverseCue, samplePpq, beatsPerBar);
     if (engageReverse && settings.effects.reverseMode != ReverseSyncMode::Off) {
         reverseDuration_ = computeSyncedReverseSamples(settings.effects.reverseMode, samplePpq, bpm, beatsPerBar, sampleRate_);
-        reverseDuration_ = std::min(reverseDuration_, static_cast<int>(reverseBufferL_.size()));
+        reverseDuration_ = std::min(reverseDuration_, static_cast<int>(reverseBuffer_.left.size()));
 
-        std::vector<float> forwardL, forwardR;
-        synth_.renderBlock(forwardL, forwardR, triggerSettings, velocity, semitoneOffset);
+        const std::vector<float>* sourceL = nullptr;
+        const std::vector<float>* sourceR = nullptr;
+        const std::array<StereoLayerBuffer, 3>* sourceLayers = nullptr;
+        int renderedFrames = 0;
+        const bool sourceIsCached = wavCache_.isLocked();
+        if (sourceIsCached) {
+            const auto& cachedVoice = wavCache_.voice(activeVoiceMode_);
+            sourceL = &cachedVoice.left;
+            sourceR = &cachedVoice.right;
+            sourceLayers = &cachedVoice.layers;
+            renderedFrames = static_cast<int>(cachedVoice.left.size());
+        } else {
+            renderedFrames = synth_.renderPrefix(reverseSource_.left, reverseSource_.right,
+                triggerSettings, reverseDuration_, velocity, semitoneOffset, &reverseSource_.layers);
+            lastReverseRenderSamples_ += static_cast<uint64_t>(renderedFrames);
+            sourceL = &reverseSource_.left;
+            sourceR = &reverseSource_.right;
+            sourceLayers = &reverseSource_.layers;
+        }
 
-        const int copyCount = std::min(reverseDuration_, static_cast<int>(forwardL.size()));
+        const int copyCount = std::min(reverseDuration_, renderedFrames);
+        const float normalizedVelocity = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
+        const std::array<float, 3> cachedLayerGains = sourceIsCached ? std::array<float, 3>{
+            std::lerp(1.0f, normalizedVelocity, std::clamp(settings.synth.bodyVelocityDepth, 0.0f, 1.0f))
+                * (1.0f + activePressure_ * std::clamp(settings.synth.bodyAftertouchDepth, 0.0f, 1.0f)) * ccBodyGain_,
+            std::lerp(1.0f, normalizedVelocity, std::clamp(settings.synth.wireVelocityDepth, 0.0f, 1.0f))
+                * (1.0f + activePressure_ * std::clamp(settings.synth.wireAftertouchDepth, 0.0f, 1.0f)) * ccWireGain_,
+            std::lerp(1.0f, normalizedVelocity, std::clamp(settings.synth.transientVelocityDepth, 0.0f, 1.0f))
+                * (1.0f + activePressure_ * std::clamp(settings.synth.transientAftertouchDepth, 0.0f, 1.0f)) * ccTransientGain_
+        } : std::array<float, 3>{ 1.0f, 1.0f, 1.0f };
+        const float cachedMainGain = sourceIsCached ? normalizedVelocity : 1.0f;
         for (int i = 0; i < reverseDuration_; ++i) {
             if (i < copyCount) {
                 const int srcIdx = copyCount - 1 - i;
                 const float ramp = static_cast<float>(i) / static_cast<float>(reverseDuration_);
-                reverseBufferL_[i] = forwardL[srcIdx] * ramp * settings.effects.reverseMix;
-                reverseBufferR_[i] = forwardR[srcIdx] * ramp * settings.effects.reverseMix;
+                reverseBuffer_.left[static_cast<size_t>(i)] = (*sourceL)[static_cast<size_t>(srcIdx)] * cachedMainGain * ramp * settings.effects.reverseMix;
+                reverseBuffer_.right[static_cast<size_t>(i)] = (*sourceR)[static_cast<size_t>(srcIdx)] * cachedMainGain * ramp * settings.effects.reverseMix;
+                for (size_t layer = 0; layer < reverseBuffer_.layers.size(); ++layer) {
+                    const auto& src = (*sourceLayers)[layer];
+                    const bool hasStem = static_cast<size_t>(srcIdx) < src.left.size()
+                        && static_cast<size_t>(srcIdx) < src.right.size();
+                    reverseBuffer_.layers[layer].left[static_cast<size_t>(i)] = hasStem
+                        ? src.left[static_cast<size_t>(srcIdx)] * cachedLayerGains[layer] * ramp * settings.effects.reverseMix
+                        : 0.0f;
+                    reverseBuffer_.layers[layer].right[static_cast<size_t>(i)] = hasStem
+                        ? src.right[static_cast<size_t>(srcIdx)] * cachedLayerGains[layer] * ramp * settings.effects.reverseMix
+                        : 0.0f;
+                }
             } else {
-                reverseBufferL_[i] = 0.0f;
-                reverseBufferR_[i] = 0.0f;
+                reverseBuffer_.left[static_cast<size_t>(i)] = 0.0f;
+                reverseBuffer_.right[static_cast<size_t>(i)] = 0.0f;
+                for (auto& layer : reverseBuffer_.layers) {
+                    layer.left[static_cast<size_t>(i)] = 0.0f;
+                    layer.right[static_cast<size_t>(i)] = 0.0f;
+                }
             }
         }
         reversePlayHead_ = 0;
@@ -355,6 +566,7 @@ void SmackEngine::process(
     if (settings.bypass || numChannels < 2 || channels == nullptr || numSamples <= 0) {
         return;
     }
+    lastReverseRenderSamples_ = 0;
 
     if (settings.lockIn != previousLockState_) {
         previousLockState_ = settings.lockIn;
@@ -465,16 +677,33 @@ void SmackEngine::process(
         float transientL = 0.0f, transientR = 0.0f;
 
         if (wavCache_.isLocked()) {
-            const auto& wavLeft = wavCache_.left();
-            const auto& wavRight = wavCache_.right();
-            if (wavPlayPosition_ >= 0.0 && wavPlayPosition_ < static_cast<double>(wavLeft.size())) {
+            const auto& cachedVoice = wavCache_.voice(activeVoiceMode_);
+            if (wavPlayPosition_ >= 0.0 && wavPlayPosition_ < static_cast<double>(cachedVoice.left.size())) {
                 const size_t frame = static_cast<size_t>(wavPlayPosition_);
-                const size_t next = std::min(frame + 1, wavLeft.size() - 1);
+                const size_t next = std::min(frame + 1, cachedVoice.left.size() - 1);
                 const float fraction = static_cast<float>(wavPlayPosition_ - static_cast<double>(frame));
-                sL = std::lerp(wavLeft[frame], wavLeft[next], fraction) * wavVelocity_;
-                sR = std::lerp(wavRight[frame], wavRight[next], fraction) * wavVelocity_;
+                sL = std::lerp(cachedVoice.left[frame], cachedVoice.left[next], fraction) * wavVelocity_;
+                sR = std::lerp(cachedVoice.right[frame], cachedVoice.right[next], fraction) * wavVelocity_;
+                const std::array<float, 3> layerGains{
+                    std::lerp(1.0f, wavVelocity_, std::clamp(settings.synth.bodyVelocityDepth, 0.0f, 1.0f))
+                        * (1.0f + activePressure_ * std::clamp(settings.synth.bodyAftertouchDepth, 0.0f, 1.0f)) * ccBodyGain_,
+                    std::lerp(1.0f, wavVelocity_, std::clamp(settings.synth.wireVelocityDepth, 0.0f, 1.0f))
+                        * (1.0f + activePressure_ * std::clamp(settings.synth.wireAftertouchDepth, 0.0f, 1.0f)) * ccWireGain_,
+                    std::lerp(1.0f, wavVelocity_, std::clamp(settings.synth.transientVelocityDepth, 0.0f, 1.0f))
+                        * (1.0f + activePressure_ * std::clamp(settings.synth.transientAftertouchDepth, 0.0f, 1.0f)) * ccTransientGain_
+                };
+                for (size_t layer = 0; layer < cachedVoice.layers.size(); ++layer) {
+                    const auto& stem = cachedVoice.layers[layer];
+                    if (stem.left.size() == cachedVoice.left.size() && stem.right.size() == cachedVoice.left.size()) {
+                        const float stemL = std::lerp(stem.left[frame], stem.left[next], fraction) * layerGains[layer];
+                        const float stemR = std::lerp(stem.right[frame], stem.right[next], fraction) * layerGains[layer];
+                        if (layer == 0) { bodyL = stemL; bodyR = stemR; }
+                        else if (layer == 1) { wireL = stemL; wireR = stemR; }
+                        else { transientL = stemL; transientR = stemR; }
+                    }
+                }
                 wavPlayPosition_ += wavCache_.sampleRate() / sampleRate_;
-                currentSmackProgress_ = static_cast<float>(wavPlayPosition_ / static_cast<double>(wavLeft.size()));
+                currentSmackProgress_ = static_cast<float>(wavPlayPosition_ / static_cast<double>(cachedVoice.left.size()));
             } else {
                 wavPlayPosition_ = -1.0;
                 currentSmackProgress_ = 1.0f;
@@ -506,12 +735,17 @@ void SmackEngine::process(
         }
 
         if (reversePlayHead_ >= 0 && reversePlayHead_ < reverseDuration_) {
-            const float reverseL = reverseBufferL_[reversePlayHead_];
-            const float reverseR = reverseBufferR_[reversePlayHead_];
+            const size_t reverseIndex = static_cast<size_t>(reversePlayHead_);
+            const float reverseL = reverseBuffer_.left[reverseIndex];
+            const float reverseR = reverseBuffer_.right[reverseIndex];
             sL += reverseL;
             sR += reverseR;
-            transientL += reverseL;
-            transientR += reverseR;
+            bodyL += reverseBuffer_.layers[0].left[reverseIndex];
+            bodyR += reverseBuffer_.layers[0].right[reverseIndex];
+            wireL += reverseBuffer_.layers[1].left[reverseIndex];
+            wireR += reverseBuffer_.layers[1].right[reverseIndex];
+            transientL += reverseBuffer_.layers[2].left[reverseIndex];
+            transientR += reverseBuffer_.layers[2].right[reverseIndex];
             reversePlayHead_++;
         } else {
             reversePlayHead_ = -1;

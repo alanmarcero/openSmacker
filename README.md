@@ -31,7 +31,7 @@ openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the soun
 - Shape one to five pre-strikes with spread, decay, humanization, stereo pan, and level.
 - Choose Stick, Mallet, Rimshot, or Laser transients. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring with attack, hold, decay, curve, high/low-pass filters, level, and stereo width.
 - Process hits with Tape, Tube, Hard Clip, or Wavefold saturation; compressor; brickwall limiter; gated trance-hall reverb; host-synced reverse swell; master width; and output gain.
-- Use the animated stage and Push It audition button. Lock a rendered hit as WAV for repeatable stem rendering; the cache restores with the session and adapts to the host sample rate.
+- Use the animated stage and Push It audition button. Lock a rendered hit as WAV for repeatable playback; the cache retains all four mapped voices and their layer stems, restores with the session, and adapts to the host sample rate.
 
 ## Section locks
 
@@ -64,7 +64,7 @@ Note-on messages trigger hits on every MIDI channel and velocity controls the hi
 
 Body, wire, and transient velocity depth and aftertouch are independent. Enable the host-synced roll to retrigger at 1/8, 1/16, or 1/32-note intervals while transport plays; set its probability and accent velocity. Body, wire, and transient MIDI CCs are assignable (default CC 20, 21, and 22; CC 0 disables a mapping). The existing CC 7 output level, CC 74 air low-pass, CC 120/123 silence, and CC 121 reset behavior remains.
 
-The Body, Wires, and Transient stereo output buses provide dry component stems before saturation, compression, limiter, and reverb. They follow the layer velocity, aftertouch, and assigned CC controls. Existing parameter IDs, saved state, cached WAV data, program count, and plugin identity are preserved. Missing section-lock data in older sessions opens unlocked.
+The Body, Wires, and Transient stereo output buses provide dry component stems before saturation, compression, limiter, and reverb. They follow the layer velocity, aftertouch, and assigned CC controls, including during Lock-In playback. Each key zone selects its own cached voice. Existing stereo locked-WAV session data still loads as one shared sound; generated Lock-In banks save all four voices and stems. Existing parameter IDs, program count, and plugin identity are preserved. Missing section-lock data in older sessions opens unlocked.
 
 ## Formats
 

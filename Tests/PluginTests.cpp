@@ -301,3 +301,61 @@ TEST_CASE("OpenSmacker routes MIDI channel pressure to the body layer", "[plugin
     REQUIRE(withPressure > withoutPressure * 1.5f);
 }
 
+TEST_CASE("Lock-In state restores all voice zones and separated layer stems", "[plugin][lock_in][zones][layers]") {
+    OpenSmackerProcessor original;
+    auto* lockIn = original.parameters.getParameter(opensmacker::params::kLockIn);
+    auto* zones = original.parameters.getParameter(opensmacker::params::kKeyZonesEnabled);
+    REQUIRE(lockIn != nullptr);
+    REQUIRE(zones != nullptr);
+    lockIn->setValueNotifyingHost(1.0f);
+    zones->setValueNotifyingHost(1.0f);
+    original.prepareToPlay(48000.0, 1024);
+    juce::AudioBuffer<float> warmup(2, 1024);
+    juce::MidiBuffer noMidi;
+    original.processBlock(warmup, noMidi);
+    REQUIRE(original.isSmackLockedIn());
+
+    juce::MemoryBlock state;
+    original.getStateInformation(state);
+    REQUIRE(state.getSize() > 1000);
+
+    OpenSmackerProcessor restored;
+    auto layout = restored.getBusesLayout();
+    layout.outputBuses.set(1, juce::AudioChannelSet::stereo());
+    layout.outputBuses.set(2, juce::AudioChannelSet::stereo());
+    layout.outputBuses.set(3, juce::AudioChannelSet::stereo());
+    REQUIRE(restored.setBusesLayout(layout));
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    REQUIRE(restored.isSmackLockedIn());
+    restored.prepareToPlay(48000.0, 2048);
+
+    const auto renderNote = [&restored](int note) {
+        juce::AudioBuffer<float> buffer(restored.getTotalNumOutputChannels(), 2048);
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(110)), 0);
+        restored.processBlock(buffer, midi);
+        auto main = restored.getBusBuffer(buffer, false, 0);
+        auto body = restored.getBusBuffer(buffer, false, 1);
+        auto wire = restored.getBusBuffer(buffer, false, 2);
+        auto transient = restored.getBusBuffer(buffer, false, 3);
+        std::array<float, 4> result{};
+        for (int sample = 0; sample < main.getNumSamples(); ++sample) {
+            result[0] += std::abs(main.getSample(0, sample));
+            result[1] += std::abs(body.getSample(0, sample));
+            result[2] += std::abs(wire.getSample(0, sample));
+            result[3] += std::abs(transient.getSample(0, sample));
+        }
+        return result;
+    };
+
+    const auto snare = renderNote(36);
+    const auto bell = renderNote(60);
+    REQUIRE(snare[0] > 0.1f);
+    REQUIRE(bell[0] > 0.1f);
+    REQUIRE(std::abs(snare[0] - bell[0]) > 0.01f);
+    for (size_t layer = 1; layer < snare.size(); ++layer) {
+        REQUIRE(snare[layer] > 0.1f);
+        REQUIRE(bell[layer] > 0.1f);
+    }
+}
+

@@ -429,8 +429,8 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
 
     const std::array<std::pair<const char*, const char*>, 6> response{
         std::pair{ kBodyVelocityDepth, "Body Vel" }, { kWireVelocityDepth, "Wire Vel" },
-        { kTransientVelocityDepth, "Strike Vel" }, { kBodyAftertouchDepth, "Body AT" },
-        { kWireAftertouchDepth, "Wire AT" }, { kTransientAftertouchDepth, "Strike AT" }
+        { kTransientVelocityDepth, "Transient Vel" }, { kBodyAftertouchDepth, "Body AT" },
+        { kWireAftertouchDepth, "Wire AT" }, { kTransientAftertouchDepth, "Transient AT" }
     };
     for (const auto& [id, title] : response)
         responseCard_.addParameter(id, title);
@@ -441,7 +441,7 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
         { kRollProbability, "Probability" }, { kRollVelocity, "Velocity" },
         { kRollAccentVelocity, "Accent" }, { kRollAccentEvery, "Accent Every" },
         { kRollNote, "Roll Note" }, { kMidiCcBody, "Body CC" },
-        { kMidiCcWire, "Wire CC" }, { kMidiCcTransient, "Strike CC" }
+        { kMidiCcWire, "Wire CC" }, { kMidiCcTransient, "Transient CC" }
     };
     for (const auto& [id, title] : roll)
         rollCard_.addParameter(id, title);

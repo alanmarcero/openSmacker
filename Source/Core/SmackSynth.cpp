@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <numeric>
 
@@ -543,15 +544,42 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
 }
 
 void SmackSynth::renderBlock(std::vector<float>& leftOut, std::vector<float>& rightOut,
-                             const SmackSynthSettings& settings, float velocity, int semitoneOffset) noexcept {
+                             const SmackSynthSettings& settings, float velocity, int semitoneOffset,
+                             std::array<StereoLayerBuffer, 3>* layerOutputs) noexcept {
+    (void) renderPrefix(leftOut, rightOut, settings, std::numeric_limits<int>::max(), velocity, semitoneOffset, layerOutputs);
+}
+
+int SmackSynth::renderPrefix(std::vector<float>& leftOut, std::vector<float>& rightOut,
+                             const SmackSynthSettings& settings, int maxSamples,
+                             float velocity, int semitoneOffset,
+                             std::array<StereoLayerBuffer, 3>* layerOutputs) noexcept {
     trigger(settings, velocity, semitoneOffset);
-    leftOut.resize(static_cast<size_t>(totalDurationSamples_));
-    rightOut.resize(static_cast<size_t>(totalDurationSamples_));
-    for (int i = 0; i < totalDurationSamples_; ++i) {
+    const int renderCount = std::min(totalDurationSamples_, std::max(0, maxSamples));
+    leftOut.resize(static_cast<size_t>(renderCount));
+    rightOut.resize(static_cast<size_t>(renderCount));
+    if (layerOutputs != nullptr) {
+        for (auto& layer : *layerOutputs) {
+            layer.left.resize(static_cast<size_t>(renderCount));
+            layer.right.resize(static_cast<size_t>(renderCount));
+        }
+    }
+    for (int i = 0; i < renderCount; ++i) {
         const auto frame = processSample(settings);
         leftOut[static_cast<size_t>(i)] = frame.left;
         rightOut[static_cast<size_t>(i)] = frame.right;
+        if (layerOutputs != nullptr) {
+            auto& body = (*layerOutputs)[0];
+            auto& wire = (*layerOutputs)[1];
+            auto& transient = (*layerOutputs)[2];
+            body.left[static_cast<size_t>(i)] = frame.bodyLeft;
+            body.right[static_cast<size_t>(i)] = frame.bodyRight;
+            wire.left[static_cast<size_t>(i)] = frame.wireLeft;
+            wire.right[static_cast<size_t>(i)] = frame.wireRight;
+            transient.left[static_cast<size_t>(i)] = frame.transientLeft;
+            transient.right[static_cast<size_t>(i)] = frame.transientRight;
+        }
     }
+    return renderCount;
 }
 
 } // namespace opensmacker::core
