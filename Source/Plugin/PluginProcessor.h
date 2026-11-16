@@ -53,4 +53,7 @@ private:
     std::atomic<bool> auditionPending_{ false };
     int currentProgram_ = 0;
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
+    std::vector<opensmacker::core::MidiTrigger> midiTriggers_;
+    std::vector<opensmacker::core::MidiCcEvent> midiCcEvents_;
+    std::vector<opensmacker::core::MidiPressureEvent> midiPressureEvents_;
 };

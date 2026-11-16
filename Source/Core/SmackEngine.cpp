@@ -35,6 +35,18 @@ uint32_t readUint32LE(const uint8_t* data) noexcept {
 
 } // namespace
 
+std::optional<VoiceMode> resolveVoiceModeForNote(
+    int noteNumber, const std::array<VoiceKeyZone, 4>& zones) noexcept {
+    const int note = std::clamp(noteNumber, 0, 127);
+    for (size_t i = 0; i < zones.size(); ++i) {
+        const int low = std::clamp(zones[i].lowNote, 0, 127);
+        const int high = std::clamp(zones[i].highNote, 0, 127);
+        if (low <= high && note >= low && note <= high)
+            return static_cast<VoiceMode>(i);
+    }
+    return std::nullopt;
+}
+
 void SmackWavCache::clear() noexcept {
     isLocked_ = false;
     sampleRate_ = 48000.0;
@@ -211,6 +223,15 @@ void SmackEngine::reset() noexcept {
     currentSmackProgress_ = 1.0f;
     ccVolume_ = 1.0f;
     ccBrightness_ = 1.0f;
+    ccBodyGain_ = 1.0f;
+    ccWireGain_ = 1.0f;
+    ccTransientGain_ = 1.0f;
+    channelPressure_.fill(0.0f);
+    activePressure_ = 0.0f;
+    activeNote_ = -1;
+    activeChannel_ = 1;
+    activeVoiceMode_ = VoiceMode::DanceSnare;
+    hasRollStep_ = false;
 }
 
 void SmackEngine::lockCurrentSmack(const EngineSettings& settings) {
@@ -269,9 +290,25 @@ void SmackEngine::triggerSmack(
     double beatsPerBar,
     float velocity,
     int semitoneOffset,
-    bool reverseCue) noexcept {
+    bool reverseCue,
+    int noteNumber,
+    int channel) noexcept {
+    if (settings.keyZonesEnabled) {
+        const auto mode = resolveVoiceModeForNote(noteNumber, settings.voiceZones);
+        if (!mode)
+            return;
+        activeVoiceMode_ = *mode;
+    } else {
+        activeVoiceMode_ = settings.synth.voiceMode;
+    }
+
     triggerSerial_++;
     currentSmackProgress_ = 0.0f;
+    activeNote_ = std::clamp(noteNumber, 0, 127);
+    activeChannel_ = std::clamp(channel, 1, 16);
+    activePressure_ = channelPressure_[static_cast<size_t>(activeChannel_ - 1)];
+    auto triggerSettings = settings.synth;
+    triggerSettings.voiceMode = activeVoiceMode_;
 
     const bool engageReverse = shouldTriggerReverse(settings.effects.reverseMode, reverseCue, samplePpq, beatsPerBar);
     if (engageReverse && settings.effects.reverseMode != ReverseSyncMode::Off) {
@@ -279,7 +316,7 @@ void SmackEngine::triggerSmack(
         reverseDuration_ = std::min(reverseDuration_, static_cast<int>(reverseBufferL_.size()));
 
         std::vector<float> forwardL, forwardR;
-        synth_.renderBlock(forwardL, forwardR, settings.synth, velocity, semitoneOffset);
+        synth_.renderBlock(forwardL, forwardR, triggerSettings, velocity, semitoneOffset);
 
         const int copyCount = std::min(reverseDuration_, static_cast<int>(forwardL.size()));
         for (int i = 0; i < reverseDuration_; ++i) {
@@ -301,7 +338,7 @@ void SmackEngine::triggerSmack(
         wavPlayPosition_ = 0.0;
         wavVelocity_ = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
     } else {
-        synth_.trigger(settings.synth, velocity, semitoneOffset);
+        synth_.trigger(triggerSettings, velocity, semitoneOffset);
     }
 }
 
@@ -312,7 +349,9 @@ void SmackEngine::process(
     float* const* channels,
     int numChannels,
     int numSamples,
-    std::span<const MidiCcEvent> controlChanges) noexcept {
+    std::span<const MidiCcEvent> controlChanges,
+    std::span<const MidiPressureEvent> pressureChanges,
+    LayerOutputChannels layerOutputs) noexcept {
     if (settings.bypass || numChannels < 2 || channels == nullptr || numSamples <= 0) {
         return;
     }
@@ -335,6 +374,7 @@ void SmackEngine::process(
 
     int triggerIdx = 0;
     int ccIdx = 0;
+    int pressureIdx = 0;
     float blockPeak = 0.0f;
     const float outputGain = dbToLin(settings.effects.outputGainDb);
 
@@ -354,6 +394,29 @@ void SmackEngine::process(
             } else if (cc.controller == 121) {
                 ccVolume_ = 1.0f;
                 ccBrightness_ = 1.0f;
+                ccBodyGain_ = 1.0f;
+                ccWireGain_ = 1.0f;
+                ccTransientGain_ = 1.0f;
+            }
+            const float gain = static_cast<float>(value) / 127.0f;
+            if (settings.midiCcForBody > 0 && cc.controller == settings.midiCcForBody)
+                ccBodyGain_ = gain;
+            if (settings.midiCcForWire > 0 && cc.controller == settings.midiCcForWire)
+                ccWireGain_ = gain;
+            if (settings.midiCcForTransient > 0 && cc.controller == settings.midiCcForTransient)
+                ccTransientGain_ = gain;
+        }
+        while (pressureIdx < static_cast<int>(pressureChanges.size()) && pressureChanges[pressureIdx].sampleOffset <= sample) {
+            const auto& pressure = pressureChanges[pressureIdx++];
+            const int channel = std::clamp(pressure.channel, 1, 16);
+            const float value = static_cast<float>(std::clamp(pressure.value, 0, 127)) / 127.0f;
+            if (pressure.polyphonic) {
+                if (channel == activeChannel_ && pressure.noteNumber == activeNote_)
+                    activePressure_ = value;
+            } else {
+                channelPressure_[static_cast<size_t>(channel - 1)] = value;
+                if (channel == activeChannel_)
+                    activePressure_ = value;
             }
         }
         while (triggerIdx < static_cast<int>(midiTriggers.size()) && midiTriggers[triggerIdx].sampleOffset <= sample) {
@@ -364,11 +427,42 @@ void SmackEngine::process(
                 semitoneOffset = std::clamp(trig.noteNumber, 0, 127) - rootMidi;
             }
             triggerSmack(settings, ppq, bpm, beatsPerBar,
-                std::clamp(std::isfinite(trig.velocity) ? trig.velocity : 1.0f, 0.0f, 1.0f), semitoneOffset, trig.audition);
+                std::clamp(std::isfinite(trig.velocity) ? trig.velocity : 1.0f, 0.0f, 1.0f), semitoneOffset,
+                trig.audition, trig.noteNumber, trig.channel);
+        }
+
+        if (settings.rollEnabled && transport.isPlaying) {
+            const int subdivision = settings.rollSubdivision == 8 || settings.rollSubdivision == 16 || settings.rollSubdivision == 32
+                ? settings.rollSubdivision : 16;
+            const double stepBeats = 4.0 / static_cast<double>(subdivision);
+            const double rawStep = std::floor(ppq / stepBeats);
+            const int64_t step = static_cast<int64_t>(std::clamp(rawStep, -9.0e15, 9.0e15));
+            if (!hasRollStep_ || step != lastRollStep_) {
+                lastRollStep_ = step;
+                hasRollStep_ = true;
+                rollRandomState_ ^= rollRandomState_ << 13;
+                rollRandomState_ ^= rollRandomState_ >> 17;
+                rollRandomState_ ^= rollRandomState_ << 5;
+                const float chance = static_cast<float>(rollRandomState_) / static_cast<float>(std::numeric_limits<uint32_t>::max());
+                if (chance <= std::clamp(settings.rollProbability, 0.0f, 1.0f)) {
+                    const int accentEvery = std::clamp(settings.rollAccentEvery, 1, 16);
+                    const int accentStep = static_cast<int>((step % accentEvery + accentEvery) % accentEvery);
+                    const float velocity = accentStep == 0
+                        ? std::clamp(settings.rollAccentVelocity, 0.0f, 1.0f)
+                        : std::clamp(settings.rollVelocity, 0.0f, 1.0f);
+                    triggerSmack(settings, ppq, bpm, beatsPerBar, velocity, 0, false,
+                        settings.rollNote, 1);
+                }
+            }
+        } else {
+            hasRollStep_ = false;
         }
 
         float sL = 0.0f;
         float sR = 0.0f;
+        float bodyL = 0.0f, bodyR = 0.0f;
+        float wireL = 0.0f, wireR = 0.0f;
+        float transientL = 0.0f, transientR = 0.0f;
 
         if (wavCache_.isLocked()) {
             const auto& wavLeft = wavCache_.left();
@@ -388,12 +482,23 @@ void SmackEngine::process(
         } else {
             if (synth_.isPlaying()) {
                 auto activeSettings = settings.synth;
+                activeSettings.voiceMode = activeVoiceMode_;
+                activeSettings.aftertouchValue = activePressure_;
+                activeSettings.bodyPerformanceGain = ccBodyGain_;
+                activeSettings.wirePerformanceGain = ccWireGain_;
+                activeSettings.transientPerformanceGain = ccTransientGain_;
                 if (std::abs(ccBrightness_ - 1.0f) > 0.001f) {
                     activeSettings.noiseLPF = std::clamp(settings.synth.noiseLPF * ccBrightness_, 200.0f, 20000.0f);
                 }
                 const auto frame = synth_.processSample(activeSettings);
                 sL = frame.left;
                 sR = frame.right;
+                bodyL = frame.bodyLeft;
+                bodyR = frame.bodyRight;
+                wireL = frame.wireLeft;
+                wireR = frame.wireRight;
+                transientL = frame.transientLeft;
+                transientR = frame.transientRight;
                 currentSmackProgress_ = synth_.getEnvelopeProgress();
             } else {
                 currentSmackProgress_ = 1.0f;
@@ -401,8 +506,12 @@ void SmackEngine::process(
         }
 
         if (reversePlayHead_ >= 0 && reversePlayHead_ < reverseDuration_) {
-            sL += reverseBufferL_[reversePlayHead_];
-            sR += reverseBufferR_[reversePlayHead_];
+            const float reverseL = reverseBufferL_[reversePlayHead_];
+            const float reverseR = reverseBufferR_[reversePlayHead_];
+            sL += reverseL;
+            sR += reverseR;
+            transientL += reverseL;
+            transientR += reverseR;
             reversePlayHead_++;
         } else {
             reversePlayHead_ = -1;
@@ -438,6 +547,12 @@ void SmackEngine::process(
 
         channels[0][sample] = sL;
         channels[1][sample] = sR;
+        if (layerOutputs.bodyLeft != nullptr) layerOutputs.bodyLeft[sample] = bodyL * outputGain * ccVolume_;
+        if (layerOutputs.bodyRight != nullptr) layerOutputs.bodyRight[sample] = bodyR * outputGain * ccVolume_;
+        if (layerOutputs.wireLeft != nullptr) layerOutputs.wireLeft[sample] = wireL * outputGain * ccVolume_;
+        if (layerOutputs.wireRight != nullptr) layerOutputs.wireRight[sample] = wireR * outputGain * ccVolume_;
+        if (layerOutputs.transientLeft != nullptr) layerOutputs.transientLeft[sample] = transientL * outputGain * ccVolume_;
+        if (layerOutputs.transientRight != nullptr) layerOutputs.transientRight[sample] = transientR * outputGain * ccVolume_;
 
         const float framePeak = std::max(std::abs(sL), std::abs(sR));
         blockPeak = std::max(blockPeak, framePeak);

@@ -246,7 +246,10 @@ void SmackSynth::reset() noexcept {
 void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int semitoneOffset) noexcept {
     reset();
     isPlaying_ = true;
-    velocity_ = std::clamp(velocity, 0.0f, 1.0f);
+    const float normalizedVelocity = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
+    bodyVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.bodyVelocityDepth, 0.0f, 1.0f));
+    wireVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.wireVelocityDepth, 0.0f, 1.0f));
+    transientVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.transientVelocityDepth, 0.0f, 1.0f));
     semitoneOffset_ = std::clamp(semitoneOffset, -96, 96);
     preStrikeCount_ = std::clamp(settings.preStrikeCount, 1, 5);
     const float sr = static_cast<float>(sampleRate_);
@@ -507,14 +510,36 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         bodyR *= std::clamp(settings.toneLevel, 0.0f, 1.0f);
     }
 
-    const float dryL = (noiseL + bodyL + flamL + click) * amp * velocity_;
-    const float dryR = (noiseR + bodyR + flamR + click) * amp * velocity_;
+    const float pressure = std::clamp(settings.aftertouchValue, 0.0f, 1.0f);
+    const float bodyGain = bodyVelocity_ * (1.0f + pressure * std::clamp(settings.bodyAftertouchDepth, 0.0f, 1.0f))
+        * std::clamp(settings.bodyPerformanceGain, 0.0f, 1.0f);
+    const float wireGain = wireVelocity_ * (1.0f + pressure * std::clamp(settings.wireAftertouchDepth, 0.0f, 1.0f))
+        * std::clamp(settings.wirePerformanceGain, 0.0f, 1.0f);
+    const float transientGain = transientVelocity_ * (1.0f + pressure * std::clamp(settings.transientAftertouchDepth, 0.0f, 1.0f))
+        * std::clamp(settings.transientPerformanceGain, 0.0f, 1.0f);
+    const float bodyOutL = bodyL * amp * bodyGain;
+    const float bodyOutR = bodyR * amp * bodyGain;
+    const float wireOutL = noiseL * amp * wireGain;
+    const float wireOutR = noiseR * amp * wireGain;
+    const float transientOutL = (flamL + click) * amp * transientGain;
+    const float transientOutR = (flamR + click) * amp * transientGain;
+    const float dryL = wireOutL + bodyOutL + transientOutL;
+    const float dryR = wireOutR + bodyOutR + transientOutR;
     const auto wet = reverb_.process(dryL, dryR, settings.reverbSize, settings.reverbDecayMs,
                                      settings.reverbDamp, settings.reverbGateMs, sampleRate_);
     const float reverbMix = std::clamp(settings.reverbMix, 0.0f, 1.0f);
     const float outL = dryL * (1.0f - 0.4f * reverbMix) + wet.left * reverbMix;
     const float outR = dryR * (1.0f - 0.4f * reverbMix) + wet.right * reverbMix;
-    return { std::isfinite(outL) ? outL : 0.0f, std::isfinite(outR) ? outR : 0.0f };
+    return {
+        std::isfinite(outL) ? outL : 0.0f,
+        std::isfinite(outR) ? outR : 0.0f,
+        std::isfinite(bodyOutL) ? bodyOutL : 0.0f,
+        std::isfinite(bodyOutR) ? bodyOutR : 0.0f,
+        std::isfinite(wireOutL) ? wireOutL : 0.0f,
+        std::isfinite(wireOutR) ? wireOutR : 0.0f,
+        std::isfinite(transientOutL) ? transientOutL : 0.0f,
+        std::isfinite(transientOutR) ? transientOutR : 0.0f
+    };
 }
 
 void SmackSynth::renderBlock(std::vector<float>& leftOut, std::vector<float>& rightOut,

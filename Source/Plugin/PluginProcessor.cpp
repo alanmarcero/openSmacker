@@ -4,7 +4,11 @@
 #include "Presets.h"
 
 OpenSmackerProcessor::OpenSmackerProcessor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+    : AudioProcessor(BusesProperties()
+          .withOutput("Output", juce::AudioChannelSet::stereo(), true)
+          .withOutput("Body", juce::AudioChannelSet::stereo(), false)
+          .withOutput("Wires", juce::AudioChannelSet::stereo(), false)
+          .withOutput("Transient", juce::AudioChannelSet::stereo(), false)),
       parameters(*this, nullptr, "PARAMETERS", opensmacker::params::createParameterLayout()) {
     for (auto& locked : sectionLocks_)
         locked.store(false, std::memory_order_relaxed);
@@ -24,15 +28,26 @@ void OpenSmackerProcessor::setSectionLocked(opensmacker::presets::Section sectio
     parameters.state.setProperty("section_lock_" + juce::String(static_cast<int>(index)), locked, nullptr);
 }
 
-void OpenSmackerProcessor::prepareToPlay(double sampleRate, int) {
+void OpenSmackerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
     engine_.prepare(sampleRate);
+    const auto capacity = static_cast<size_t>(std::max(256, samplesPerBlock * 4));
+    midiTriggers_.reserve(capacity);
+    midiCcEvents_.reserve(capacity);
+    midiPressureEvents_.reserve(capacity);
 }
 
 bool OpenSmackerProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const {
     if (layouts.getMainInputChannelSet() != juce::AudioChannelSet::disabled()) {
         return false;
     }
-    return layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+    for (int bus = 1; bus < layouts.outputBuses.size(); ++bus) {
+        const auto channels = layouts.getChannelSet(false, bus);
+        if (channels != juce::AudioChannelSet::disabled() && channels != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    return true;
 }
 
 void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) {
@@ -67,43 +82,83 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         }
     }
 
-    std::vector<opensmacker::core::MidiTrigger> triggers;
-    std::vector<opensmacker::core::MidiCcEvent> ccEvents;
+    midiTriggers_.clear();
+    midiCcEvents_.clear();
+    midiPressureEvents_.clear();
 
     for (const auto meta : midi) {
         const auto msg = meta.getMessage();
         if (msg.isNoteOn()) {
             const float vel = msg.getFloatVelocity();
             displayVelocity.store(vel, std::memory_order_relaxed);
-            triggers.push_back({
+            midiTriggers_.push_back({
                 .sampleOffset = meta.samplePosition,
                 .noteNumber = msg.getNoteNumber(),
                 .velocity = vel,
-                .audition = false
+                .audition = false,
+                .channel = msg.getChannel()
             });
         } else if (msg.isController()) {
-            ccEvents.push_back({
+            midiCcEvents_.push_back({
                 .sampleOffset = meta.samplePosition,
                 .controller = msg.getControllerNumber(),
-                .value = msg.getControllerValue()
+                .value = msg.getControllerValue(),
+                .channel = msg.getChannel()
+            });
+        } else if (msg.isChannelPressure()) {
+            midiPressureEvents_.push_back({
+                .sampleOffset = meta.samplePosition,
+                .channel = msg.getChannel(),
+                .noteNumber = -1,
+                .value = msg.getChannelPressureValue(),
+                .polyphonic = false
+            });
+        } else if (msg.isAftertouch()) {
+            midiPressureEvents_.push_back({
+                .sampleOffset = meta.samplePosition,
+                .channel = msg.getChannel(),
+                .noteNumber = msg.getNoteNumber(),
+                .value = msg.getAfterTouchValue(),
+                .polyphonic = true
             });
         }
     }
 
     if (auditionPending_.exchange(false)) {
         displayVelocity.store(1.0f, std::memory_order_relaxed);
-        triggers.push_back({
+        midiTriggers_.push_back({
             .sampleOffset = 0,
             .noteNumber = 69, // A4
             .velocity = 1.0f,
-            .audition = true
+            .audition = true,
+            .channel = 1
         });
     }
 
     const auto settings = opensmacker::params::readSettings(parameters);
-    float* channelPointers[2] = { buffer.getWritePointer(0), buffer.getWritePointer(1) };
+    auto mainOutput = getBusBuffer(buffer, false, 0);
+    if (mainOutput.getNumChannels() < 2)
+        return;
+    float* channelPointers[2] = { mainOutput.getWritePointer(0), mainOutput.getWritePointer(1) };
+    auto bodyOutput = getBusBuffer(buffer, false, 1);
+    auto wireOutput = getBusBuffer(buffer, false, 2);
+    auto transientOutput = getBusBuffer(buffer, false, 3);
+    opensmacker::core::LayerOutputChannels layerOutputs;
+    if (bodyOutput.getNumChannels() >= 2) {
+        layerOutputs.bodyLeft = bodyOutput.getWritePointer(0);
+        layerOutputs.bodyRight = bodyOutput.getWritePointer(1);
+    }
+    if (wireOutput.getNumChannels() >= 2) {
+        layerOutputs.wireLeft = wireOutput.getWritePointer(0);
+        layerOutputs.wireRight = wireOutput.getWritePointer(1);
+    }
+    if (transientOutput.getNumChannels() >= 2) {
+        layerOutputs.transientLeft = transientOutput.getWritePointer(0);
+        layerOutputs.transientRight = transientOutput.getWritePointer(1);
+    }
 
-    engine_.process(settings, transport, triggers, channelPointers, 2, numSamples, ccEvents);
+    engine_.process(settings, transport, midiTriggers_, channelPointers, 2, numSamples,
+        midiCcEvents_, midiPressureEvents_, layerOutputs);
 
     displayPeak.store(engine_.currentPeak());
     displayBeatPhase.store(engine_.currentBeatPhase());

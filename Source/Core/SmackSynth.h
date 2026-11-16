@@ -60,6 +60,16 @@ struct SmackSynthSettings {
     float tonePitchDecayMs = 22.0f;// 3..150 ms pitch envelope decay
     float fmAmount = 0.30f;        // 0..1 harmonic overtone / FM metallic index
     float toneLevel = 0.85f;       // 0..1 level of tonal drum/bell core
+    float bodyVelocityDepth = 1.0f;
+    float wireVelocityDepth = 1.0f;
+    float transientVelocityDepth = 1.0f;
+    float bodyAftertouchDepth = 0.0f;
+    float wireAftertouchDepth = 0.0f;
+    float transientAftertouchDepth = 0.0f;
+    float aftertouchValue = 0.0f;
+    float bodyPerformanceGain = 1.0f;
+    float wirePerformanceGain = 1.0f;
+    float transientPerformanceGain = 1.0f;
 
     // One-shot amplitude envelope; release ends at the dry-hit boundary.
     float ampAttackMs = 0.35f;     // 0.05..20 ms
@@ -117,6 +127,12 @@ struct BiquadState {
 struct StereoFrame {
     float left = 0.0f;
     float right = 0.0f;
+    float bodyLeft = 0.0f;
+    float bodyRight = 0.0f;
+    float wireLeft = 0.0f;
+    float wireRight = 0.0f;
+    float transientLeft = 0.0f;
+    float transientRight = 0.0f;
 };
 
 struct AllpassDiffuser {
@@ -197,7 +213,9 @@ private:
 
     double sampleRate_ = 48000.0;
     bool isPlaying_ = false;
-    float velocity_ = 1.0f;
+    float bodyVelocity_ = 1.0f;
+    float wireVelocity_ = 1.0f;
+    float transientVelocity_ = 1.0f;
     int semitoneOffset_ = 0;
 
     int totalSamplesPlayed_ = 0;

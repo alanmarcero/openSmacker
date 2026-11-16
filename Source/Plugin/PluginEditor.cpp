@@ -9,6 +9,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
       stagePanel_(processorToEdit),
       synthPanel_(processorToEdit),
       effectsPanel_(processorToEdit),
+      performancePanel_(processorToEdit),
       tooltipWindow_(this, 500) {
     juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
 
@@ -61,14 +62,15 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     viewToggleBtn_.onClick = [this] { setAdvancedView(!synthPanel_.isAdvancedMode()); };
     addAndMakeVisible(viewToggleBtn_);
 
-    const std::array<juce::TextButton*, 3> pages{ &hitPageBtn_, &layersPageBtn_, &fxPageBtn_ };
-    for (int i = 0; i < 3; ++i) {
+    const std::array<juce::TextButton*, 4> pages{ &hitPageBtn_, &layersPageBtn_, &fxPageBtn_, &midiPageBtn_ };
+    for (int i = 0; i < 4; ++i) {
         pages[static_cast<size_t>(i)]->onClick = [this, i] { setPage(i); };
         addAndMakeVisible(*pages[static_cast<size_t>(i)]);
     }
     addAndMakeVisible(stagePanel_);
     addAndMakeVisible(synthPanel_);
     addAndMakeVisible(effectsPanel_);
+    addAndMakeVisible(performancePanel_);
 
     setAdvancedView(false);
     setSize(1100, 972);
@@ -95,6 +97,7 @@ void OpenSmackerEditor::selectCategory(int categoryIndex) {
 void OpenSmackerEditor::setAdvancedView(bool advanced) {
     synthPanel_.setAdvancedMode(advanced);
     effectsPanel_.setAdvancedMode(advanced);
+    performancePanel_.setAdvancedMode(advanced);
     viewToggleBtn_.setButtonText(advanced ? "ADVANCED" : "SIMPLE");
     viewToggleBtn_.setColour(juce::TextButton::textColourOffId,
         advanced ? opensmacker::theme::kAccentAmber : opensmacker::theme::kAccentCyan);
@@ -102,13 +105,14 @@ void OpenSmackerEditor::setAdvancedView(bool advanced) {
 }
 
 void OpenSmackerEditor::setPage(int page) {
-    currentPage_ = juce::jlimit(0, 2, page);
+    currentPage_ = juce::jlimit(0, 3, page);
     synthPanel_.setPage(currentPage_ == 1 ? 1 : 0);
     const bool hit = currentPage_ == 0;
     const bool layers = currentPage_ == 1;
     stagePanel_.setVisible(hit);
     synthPanel_.setVisible(hit || layers);
     effectsPanel_.setVisible(currentPage_ == 2);
+    performancePanel_.setVisible(currentPage_ == 3);
     resized();
     repaint();
 }
@@ -127,8 +131,8 @@ void OpenSmackerEditor::syncPresetBox() {
         cats[static_cast<size_t>(i)]->setColour(juce::TextButton::textColourOffId,
             active ? colors[static_cast<size_t>(i)] : opensmacker::theme::kTextDim);
     }
-    const std::array<juce::TextButton*, 3> pages{ &hitPageBtn_, &layersPageBtn_, &fxPageBtn_ };
-    for (int i = 0; i < 3; ++i) {
+    const std::array<juce::TextButton*, 4> pages{ &hitPageBtn_, &layersPageBtn_, &fxPageBtn_, &midiPageBtn_ };
+    for (int i = 0; i < 4; ++i) {
         const bool active = currentPage_ == i;
         pages[static_cast<size_t>(i)]->setColour(juce::TextButton::buttonColourId,
             active ? opensmacker::theme::kAccentCyan.withAlpha(0.22f) : opensmacker::theme::kKnobBody);
@@ -182,6 +186,8 @@ void OpenSmackerEditor::resized() {
     hitPageBtn_.setBounds(x, y, 64, h); x += 68;
     layersPageBtn_.setBounds(x, y, 78, h); x += 82;
     fxPageBtn_.setBounds(x, y, 58, h);
+    x += 62;
+    midiPageBtn_.setBounds(x, y, 64, h);
 
     auto content = getLocalBounds().withTrimmedTop(128).reduced(margin, 8);
     if (currentPage_ == 0) {
@@ -191,7 +197,9 @@ void OpenSmackerEditor::resized() {
         synthPanel_.setBounds(content);
     } else if (currentPage_ == 1) {
         synthPanel_.setBounds(content);
-    } else {
+    } else if (currentPage_ == 2) {
         effectsPanel_.setBounds(content);
+    } else {
+        performancePanel_.setBounds(content);
     }
 }

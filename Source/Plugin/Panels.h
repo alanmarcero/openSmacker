@@ -34,7 +34,7 @@ private:
 class ParameterCard : public juce::Component {
 public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
-                  presets::Section section, juce::Colour accent);
+                  presets::Section section, juce::Colour accent, bool lockable = true);
     void addParameter(const juce::String& id, const juce::String& title);
     void setRows(std::vector<int> rows);
     void setAdvancedMode(bool advanced);
@@ -45,6 +45,7 @@ private:
     juce::String title_;
     presets::Section section_;
     juce::Colour accent_;
+    bool lockable_ = true;
     juce::TextButton lockButton_{ "LOCK" };
     std::vector<std::unique_ptr<juce::Component>> controls_;
     std::vector<int> rows_;
@@ -76,6 +77,18 @@ private:
     bool advancedMode_ = false;
     ParameterCard dynamicsCard_;
     ParameterCard spaceCard_;
+};
+
+class PerformancePanel : public juce::Component {
+public:
+    explicit PerformancePanel(OpenSmackerProcessor& processor);
+    void setAdvancedMode(bool advanced);
+    void resized() override;
+private:
+    bool advancedMode_ = false;
+    ParameterCard zonesCard_;
+    ParameterCard responseCard_;
+    ParameterCard rollCard_;
 };
 
 } // namespace opensmacker::ui

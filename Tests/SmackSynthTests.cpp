@@ -154,3 +154,102 @@ TEST_CASE("SmackSynth tone pitch responds to note and octave settings", "[core][
     }
     REQUIRE(diffSum > 1.0f);
 }
+
+TEST_CASE("SmackSynth exposes body wire and transient output layers", "[core][synth][layers]") {
+    SmackSynth synth;
+    synth.prepare(48000.0);
+
+    SmackSynthSettings settings;
+    settings.reverbMix = 0.0f;
+    synth.trigger(settings, 1.0f, 0);
+
+    float bodyEnergy = 0.0f;
+    float wireEnergy = 0.0f;
+    float transientEnergy = 0.0f;
+    for (int sample = 0; sample < 512; ++sample) {
+        const auto frame = synth.processSample(settings);
+        bodyEnergy += std::abs(frame.bodyLeft) + std::abs(frame.bodyRight);
+        wireEnergy += std::abs(frame.wireLeft) + std::abs(frame.wireRight);
+        transientEnergy += std::abs(frame.transientLeft) + std::abs(frame.transientRight);
+    }
+
+    REQUIRE(bodyEnergy > 0.1f);
+    REQUIRE(wireEnergy > 0.1f);
+    REQUIRE(transientEnergy > 0.1f);
+}
+
+TEST_CASE("SmackSynth applies velocity response independently to each layer", "[core][synth][velocity]") {
+    const auto renderPeak = [](SmackSynthSettings settings, float velocity) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        settings.reverbMix = 0.0f;
+        synth.trigger(settings, velocity, 0);
+        float peak = 0.0f;
+        for (int sample = 0; sample < 512; ++sample) {
+            const auto frame = synth.processSample(settings);
+            peak = std::max(peak, std::max({ std::abs(frame.bodyLeft), std::abs(frame.wireLeft), std::abs(frame.transientLeft) }));
+        }
+        return peak;
+    };
+
+    SmackSynthSettings body;
+    body.noiseLevel = 0.0f;
+    body.clickLevel = 0.0f;
+    body.preStrikeCount = 1;
+    body.bodyVelocityDepth = 1.0f;
+    body.wireVelocityDepth = 0.0f;
+    body.transientVelocityDepth = 0.0f;
+    const float bodyAtFullVelocity = renderPeak(body, 1.0f);
+    const float bodyAtHalfVelocity = renderPeak(body, 0.5f);
+    REQUIRE(bodyAtHalfVelocity < bodyAtFullVelocity * 0.65f);
+    REQUIRE(bodyAtHalfVelocity > bodyAtFullVelocity * 0.35f);
+
+    SmackSynthSettings wire = body;
+    wire.toneLevel = 0.0f;
+    wire.noiseLevel = 1.0f;
+    wire.wireVelocityDepth = 1.0f;
+    const float wireAtFullVelocity = renderPeak(wire, 1.0f);
+    const float wireAtHalfVelocity = renderPeak(wire, 0.5f);
+    REQUIRE(wireAtHalfVelocity < wireAtFullVelocity * 0.65f);
+    REQUIRE(wireAtHalfVelocity > wireAtFullVelocity * 0.35f);
+
+    SmackSynthSettings transient = body;
+    transient.toneLevel = 0.0f;
+    transient.noiseLevel = 0.0f;
+    transient.clickLevel = 1.0f;
+    transient.transientVelocityDepth = 1.0f;
+    const float transientAtFullVelocity = renderPeak(transient, 1.0f);
+    const float transientAtHalfVelocity = renderPeak(transient, 0.5f);
+    REQUIRE(transientAtHalfVelocity < transientAtFullVelocity * 0.65f);
+    REQUIRE(transientAtHalfVelocity > transientAtFullVelocity * 0.35f);
+}
+
+TEST_CASE("SmackSynth aftertouch increases only the selected layer response", "[core][synth][aftertouch]") {
+    SmackSynth synth;
+    synth.prepare(48000.0);
+
+    SmackSynthSettings settings;
+    settings.noiseLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.preStrikeCount = 1;
+    settings.reverbMix = 0.0f;
+    settings.bodyAftertouchDepth = 1.0f;
+    settings.wireAftertouchDepth = 0.0f;
+    settings.transientAftertouchDepth = 0.0f;
+    synth.trigger(settings, 1.0f, 0);
+
+    settings.aftertouchValue = 1.0f;
+    float touchedBodyPeak = 0.0f;
+    for (int sample = 0; sample < 512; ++sample)
+        touchedBodyPeak = std::max(touchedBodyPeak, std::abs(synth.processSample(settings).bodyLeft));
+
+    SmackSynth untouched;
+    untouched.prepare(48000.0);
+    settings.aftertouchValue = 0.0f;
+    untouched.trigger(settings, 1.0f, 0);
+    float bodyPeak = 0.0f;
+    for (int sample = 0; sample < 512; ++sample)
+        bodyPeak = std::max(bodyPeak, std::abs(untouched.processSample(settings).bodyLeft));
+
+    REQUIRE(touchedBodyPeak > bodyPeak * 1.5f);
+}
