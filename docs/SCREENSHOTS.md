@@ -1,6 +1,6 @@
-# openSmacker v2.1.0 screenshots
+# openSmacker v2.2.0 screenshots
 
-Captured from the built JUCE editor at its default **1100 × 972** size. All four pages were inspected in Simple and Advanced view; labels and controls fit without overlap or clipping. Simple keeps all parameters visible and hides only rotary numeric boxes. Advanced restores exact numeric readouts.
+Captured from the built JUCE editor at its default **1100 × 972** size. All four pages were inspected in Simple and Advanced view; labels and controls fit within their sections. Simple keeps all parameters visible and hides only rotary numeric boxes. Advanced restores exact numeric readouts. The Hit and Layers pages show independent layer filters, pan, and wire tension.
 
 | Page | Simple | Advanced |
 | --- | --- | --- |

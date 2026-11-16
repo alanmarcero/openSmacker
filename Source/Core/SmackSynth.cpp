@@ -262,6 +262,10 @@ void SmackSynth::reset() noexcept {
     shellFilterL_.reset(); shellFilterR_.reset();
     noiseHPF_L_.reset(); noiseHPF_R_.reset();
     noiseLPF_L_.reset(); noiseLPF_R_.reset();
+    bodyHPF_L_.reset(); bodyHPF_R_.reset();
+    bodyLPF_L_.reset(); bodyLPF_R_.reset();
+    transientHPF_L_.reset(); transientHPF_R_.reset();
+    transientLPF_L_.reset(); transientLPF_R_.reset();
     prngStateL_ = 0x2468ACE1U; prngStateR_ = 0x1357BDF0U;
     wireStateL_ = wireStateR_ = velvetStateL_ = velvetStateR_ = 0.0f;
     reverb_.reset();
@@ -330,13 +334,15 @@ void SmackSynth::noteOff(int noteNumber, int channel, const SmackSynthSettings& 
         isPlaying_ = false;
 }
 
-StereoFrame SmackSynth::generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv) noexcept {
+StereoFrame SmackSynth::generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv, float wireTension) noexcept {
     const float whiteL = nextRandom(prngStateL_);
     const float whiteR = nextRandom(prngStateR_);
     switch (type) {
         case NoiseType::SnareWires: {
-            wireStateL_ = 0.82f * wireStateL_ + 0.18f * whiteL;
-            wireStateR_ = 0.82f * wireStateR_ + 0.18f * whiteR;
+            const float resonance = 0.60f + 0.40f * std::clamp(wireTension, 0.0f, 1.0f);
+            const float excitation = 1.0f - resonance;
+            wireStateL_ = resonance * wireStateL_ + excitation * whiteL;
+            wireStateR_ = resonance * wireStateR_ + excitation * whiteR;
             const float wireL = whiteL - wireStateL_;
             const float wireR = whiteR - wireStateR_;
             const float snapL = std::abs(whiteL) > 0.64f ? 1.25f * whiteL : 0.34f * whiteL;
@@ -439,7 +445,7 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         }
     }
 
-    const auto rawNoise = generateStereoNoise(settings.noiseType, tunedHz, overtoneEnv);
+    const auto rawNoise = generateStereoNoise(settings.noiseType, tunedHz, overtoneEnv, settings.wireTension);
     float noiseL = rawNoise.left * wireEnv * settings.noiseLevel;
     float noiseR = rawNoise.right * wireEnv * settings.noiseLevel;
     const float flamDecay = std::max(1.0f, std::clamp(settings.preStrikeDecayMs, 2.0f, 35.0f) * 0.001f * sr);
@@ -572,6 +578,21 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         bodyR *= std::clamp(settings.toneLevel, 0.0f, 1.0f);
     }
 
+    const float bodyHighpass = std::clamp(settings.bodyHPF, 20.0f, 4000.0f);
+    if (bodyHighpass > 20.0f) {
+        bodyL = highpassOnePole(bodyL, bodyHPF_L_, bodyHighpass, sr);
+        bodyR = highpassOnePole(bodyR, bodyHPF_R_, bodyHighpass, sr);
+    } else {
+        bodyHPF_L_.reset(); bodyHPF_R_.reset();
+    }
+    const float bodyLowpass = std::clamp(settings.bodyLPF, 100.0f, 20000.0f);
+    if (bodyLowpass < std::min(20000.0f, sr * 0.44f)) {
+        bodyL = lowpassOnePole(bodyL, bodyLPF_L_, bodyLowpass, sr);
+        bodyR = lowpassOnePole(bodyR, bodyLPF_R_, bodyLowpass, sr);
+    } else {
+        bodyLPF_L_.reset(); bodyLPF_R_.reset();
+    }
+
     const float pressure = std::clamp(settings.aftertouchValue, 0.0f, 1.0f);
     const float bodyGain = bodyVelocity_ * (1.0f + pressure * std::clamp(settings.bodyAftertouchDepth, 0.0f, 1.0f))
         * std::clamp(settings.bodyPerformanceGain, 0.0f, 1.0f);
@@ -579,12 +600,37 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         * std::clamp(settings.wirePerformanceGain, 0.0f, 1.0f);
     const float transientGain = transientVelocity_ * (1.0f + pressure * std::clamp(settings.transientAftertouchDepth, 0.0f, 1.0f))
         * std::clamp(settings.transientPerformanceGain, 0.0f, 1.0f);
-    const float bodyOutL = bodyL * amp * bodyGain;
-    const float bodyOutR = bodyR * amp * bodyGain;
-    const float wireOutL = noiseL * amp * wireGain;
-    const float wireOutR = noiseR * amp * wireGain;
-    const float transientOutL = (flamL + click) * amp * transientGain;
-    const float transientOutR = (flamR + click) * amp * transientGain;
+    float transientL = flamL + click;
+    float transientR = flamR + click;
+    const float transientHighpass = std::clamp(settings.transientHPF, 20.0f, 12000.0f);
+    if (transientHighpass > 20.0f) {
+        transientL = highpassOnePole(transientL, transientHPF_L_, transientHighpass, sr);
+        transientR = highpassOnePole(transientR, transientHPF_R_, transientHighpass, sr);
+    } else {
+        transientHPF_L_.reset(); transientHPF_R_.reset();
+    }
+    const float transientLowpass = std::clamp(settings.transientLPF, 100.0f, 20000.0f);
+    if (transientLowpass < std::min(20000.0f, sr * 0.44f)) {
+        transientL = lowpassOnePole(transientL, transientLPF_L_, transientLowpass, sr);
+        transientR = lowpassOnePole(transientR, transientLPF_R_, transientLowpass, sr);
+    } else {
+        transientLPF_L_.reset(); transientLPF_R_.reset();
+    }
+
+    float bodyOutL = bodyL * amp * bodyGain;
+    float bodyOutR = bodyR * amp * bodyGain;
+    float wireOutL = noiseL * amp * wireGain;
+    float wireOutR = noiseR * amp * wireGain;
+    float transientOutL = transientL * amp * transientGain;
+    float transientOutR = transientR * amp * transientGain;
+    const auto applyPan = [](float& left, float& right, float pan) {
+        const float position = std::clamp(pan, -1.0f, 1.0f);
+        if (position < 0.0f) right *= 1.0f + position;
+        else left *= 1.0f - position;
+    };
+    applyPan(bodyOutL, bodyOutR, settings.bodyPan);
+    applyPan(wireOutL, wireOutR, settings.wirePan);
+    applyPan(transientOutL, transientOutR, settings.transientPan);
     const float dryL = wireOutL + bodyOutL + transientOutL;
     const float dryR = wireOutR + bodyOutR + transientOutR;
     const auto wet = reverb_.process(dryL, dryR, settings.reverbSize, settings.reverbDecayMs,

@@ -1,4 +1,4 @@
-# openSmacker v2.1.0
+# openSmacker v2.2.0
 
 <p align="center">
   <strong>Trance percussion, tuned for impact.</strong><br>
@@ -23,15 +23,17 @@
 
 openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the sound engine, effects, preset catalog, and editor while keeping the previous voice types, synthesis controls, MIDI mappings, program navigation, lock-in WAV workflow, and plugin formats. Its new envelopes and multi-part drum and metallic voices keep the transient and tuned body audible together for a more forceful dance and trance hit.
 
-Version 2.1 adds separate performance gains and stereo output buses for the body, wires, and transient. Full ADSR is MIDI-note tracked, preserves its release tail through Lock-In playback, and uses sample-accurate note-off handling.
+Version 2.1 adds separate performance gains and stereo output buses for the body, wires, and transient. Version 2.2 adds independent body/transient filters, per-layer pan, and wire tension. Full ADSR is MIDI-note tracked, preserves its release tail through Lock-In playback, and uses sample-accurate note-off handling.
 
 ## Sound design
 
 - Four voices: Dance Snare, Club Tom-Tom, FM Bell / Chime, and Pryda / Rim Smack.
+- Filter the tuned body and transient independently with host-automatable high/low-pass cutoffs. Each of the body, wire, and transient layers has its own host-automatable pan control.
+- Adjust the snare-wire tension to change the resonant feedback and spectral brightness of the wire layer.
 - Tune every voice by root note, octave, and cents; use fixed pitch or MIDI note tracking, and retain the separate Lock Pitch option.
 - Optional Full ADSR is off by default. When enabled, MIDI note-off releases the body, wires, and transient on the matching note/channel; release reaches 20 seconds and feeds the shared effects. Existing one-shot playback stays the default.
 - Shape one to five pre-strikes with spread, decay, humanization, stereo pan, and level.
-- Choose Stick, Mallet, Rimshot, or Laser transients. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring with attack, hold, decay, curve, high/low-pass filters, level, and stereo width.
+- Choose Stick, Mallet, Rimshot, or Laser transients. The transient and tuned body each have separate host-automatable high/low-pass filters and pan controls. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring with attack, hold, decay, curve, high/low-pass filters, level, and stereo width; snare-wire tension and pan are independent controls.
 - Process hits with Tape, Tube, Hard Clip, or Wavefold saturation; compressor; brickwall limiter; gated trance-hall reverb; host-synced reverse swell; master width; and output gain.
 - Use the animated stage and Push It audition button. Lock a rendered hit as WAV for repeatable playback; the cache retains all four mapped voices and their layer stems, restores with the session, and adapts to the host sample rate.
 

@@ -52,6 +52,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kFmAmount, 1 }, "FM / Overtone", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.30f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kToneLevel, 1 }, "Body Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kBodyHPF, 1 }, "Body HPF", juce::NormalisableRange<float>(20.0f, 4000.0f, 1.0f, 0.35f), 20.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kBodyLPF, 1 }, "Body LPF", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kBodyPan, 1 }, "Body Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kAmpEnabled, 1 }, "Full ADSR", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -91,6 +99,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kNoiseStereoWidth, 1 }, "Wire Width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.15f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kNoiseLevel, 1 }, "Wire Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kWireTension, 1 }, "Wire Tension", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kWirePan, 1 }, "Wire Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
 
     // Stick / Mallet / Rim Transient
     juce::StringArray clickTypes{ "Stick", "Mallet", "Rimshot", "Laser" };
@@ -101,6 +113,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kClickFreq, 1 }, "Strike Freq", juce::NormalisableRange<float>(500.0f, 12000.0f, 10.0f, 0.35f), 3800.0f,
         juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kTransientHPF, 1 }, "Transient HPF", juce::NormalisableRange<float>(20.0f, 12000.0f, 1.0f, 0.35f), 20.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kTransientLPF, 1 }, "Transient LPF", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kTransientPan, 1 }, "Transient Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f));
 
     // Impact Distortion
     juce::StringArray distTypes{ "Tape", "Tube", "Hard Clip", "Wavefold" };
@@ -262,6 +282,9 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
         s.synth.fmAmount = *pFm;
     }
     s.synth.toneLevel = *apvts.getRawParameterValue(kToneLevel);
+    s.synth.bodyHPF = *apvts.getRawParameterValue(kBodyHPF);
+    s.synth.bodyLPF = *apvts.getRawParameterValue(kBodyLPF);
+    s.synth.bodyPan = *apvts.getRawParameterValue(kBodyPan);
     s.synth.fullAdsrEnabled = *apvts.getRawParameterValue(kAmpEnabled) > 0.5f;
     s.synth.bodyVelocityDepth = *apvts.getRawParameterValue(kBodyVelocityDepth);
     s.synth.wireVelocityDepth = *apvts.getRawParameterValue(kWireVelocityDepth);
@@ -284,6 +307,8 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     s.synth.noiseLPF = *apvts.getRawParameterValue(kNoiseLPF);
     s.synth.noiseStereoWidth = *apvts.getRawParameterValue(kNoiseStereoWidth);
     s.synth.noiseLevel = *apvts.getRawParameterValue(kNoiseLevel);
+    s.synth.wireTension = *apvts.getRawParameterValue(kWireTension);
+    s.synth.wirePan = *apvts.getRawParameterValue(kWirePan);
 
     // Click / Strike
     if (const auto* pClickType = apvts.getRawParameterValue(kClickType)) {
@@ -291,6 +316,9 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     }
     s.synth.clickLevel = *apvts.getRawParameterValue(kClickLevel);
     s.synth.clickFreqHz = *apvts.getRawParameterValue(kClickFreq);
+    s.synth.transientHPF = *apvts.getRawParameterValue(kTransientHPF);
+    s.synth.transientLPF = *apvts.getRawParameterValue(kTransientLPF);
+    s.synth.transientPan = *apvts.getRawParameterValue(kTransientPan);
 
     // Reverb
     s.synth.reverbSize = *apvts.getRawParameterValue(kReverbSize);

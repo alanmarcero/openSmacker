@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OpenSmacker VERSION 2.1.0 LANGUAGES C CXX)
+project(OpenSmacker VERSION 2.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -104,7 +104,9 @@ if(OS_BUILD_TESTS)
     if(OS_BUILD_PLUGIN)
         add_executable(opensmacker_plugin_tests Tests/PluginTests.cpp)
         target_include_directories(opensmacker_plugin_tests PRIVATE Source/Plugin Source/Core)
-        target_compile_definitions(opensmacker_plugin_tests PRIVATE $<TARGET_PROPERTY:OpenSmacker,COMPILE_DEFINITIONS>)
+        target_compile_definitions(opensmacker_plugin_tests PRIVATE
+            OPENSMACKER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+            $<TARGET_PROPERTY:OpenSmacker,COMPILE_DEFINITIONS>)
         target_link_libraries(opensmacker_plugin_tests PRIVATE OpenSmacker SmackerAssets juce::juce_audio_utils Catch2::Catch2WithMain)
         catch_discover_tests(opensmacker_plugin_tests)
     endif()

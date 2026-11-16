@@ -60,6 +60,9 @@ struct SmackSynthSettings {
     float tonePitchDecayMs = 22.0f;// 3..150 ms pitch envelope decay
     float fmAmount = 0.30f;        // 0..1 harmonic overtone / FM metallic index
     float toneLevel = 0.85f;       // 0..1 level of tonal drum/bell core
+    float bodyHPF = 20.0f;         // 20..4000 Hz tonal body high-pass
+    float bodyLPF = 20000.0f;      // 100..20000 Hz tonal body low-pass
+    float bodyPan = 0.0f;          // -1..+1 body balance
     float bodyVelocityDepth = 1.0f;
     float wireVelocityDepth = 1.0f;
     float transientVelocityDepth = 1.0f;
@@ -88,11 +91,16 @@ struct SmackSynthSettings {
     float noiseLPF = 11000.0f;     // 800..20000 Hz
     float noiseStereoWidth = 1.15f;// 0 (mono) .. 2 (ultra-wide)
     float noiseLevel = 0.80f;      // 0..1
+    float wireTension = 0.55f;     // 0..1 wire resonance and brightness
+    float wirePan = 0.0f;          // -1..+1 wire balance
 
     // Stick / Mallet / Rim Transient
     ClickType clickType = ClickType::Stick;
     float clickLevel = 0.50f;      // 0..1
     float clickFreqHz = 3800.0f;   // 500..12000 Hz
+    float transientHPF = 20.0f;    // 20..12000 Hz transient high-pass
+    float transientLPF = 20000.0f; // 100..20000 Hz transient low-pass
+    float transientPan = 0.0f;     // -1..+1 transient balance
 
     // Gated FDN Reverb Tail
     float reverbSize = 0.65f;      // 0.1..1.0
@@ -226,7 +234,7 @@ public:
         std::array<StereoLayerBuffer, 3>* layerOutputs = nullptr) noexcept;
 
 private:
-    [[nodiscard]] StereoFrame generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv) noexcept;
+    [[nodiscard]] StereoFrame generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv, float wireTension) noexcept;
 
     double sampleRate_ = 48000.0;
     bool isPlaying_ = false;
@@ -275,6 +283,14 @@ private:
     BiquadState noiseHPF_R_{};
     BiquadState noiseLPF_L_{};
     BiquadState noiseLPF_R_{};
+    BiquadState bodyHPF_L_{};
+    BiquadState bodyHPF_R_{};
+    BiquadState bodyLPF_L_{};
+    BiquadState bodyLPF_R_{};
+    BiquadState transientHPF_L_{};
+    BiquadState transientHPF_R_{};
+    BiquadState transientLPF_L_{};
+    BiquadState transientLPF_R_{};
 
     // Filter cache
     float lastHPF_ = -1.0f;
