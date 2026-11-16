@@ -201,10 +201,12 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
 
 void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto state = parameters.copyState();
+    state.removeProperty("locked_wav", nullptr);
+    state.removeProperty("locked_wav_bank", nullptr);
     if (engine_.isSmackLocked()) {
-        const auto wav = engine_.wavCache().toWavBytes();
-        if (!wav.empty()) {
-            state.setProperty("locked_wav", juce::MemoryBlock(wav.data(), wav.size()).toBase64Encoding(), nullptr);
+        const auto wavBank = engine_.wavCache().toBankWavBytes();
+        if (!wavBank.empty()) {
+            state.setProperty("locked_wav_bank", juce::MemoryBlock(wavBank.data(), wavBank.size()).toBase64Encoding(), nullptr);
         }
     }
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
@@ -228,12 +230,14 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
         }
         if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
             currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, static_cast<int>(*preset));
-        if (state.hasProperty("locked_wav")) {
+        if (state.hasProperty("locked_wav_bank") || state.hasProperty("locked_wav")) {
             juce::MemoryBlock block;
-            block.fromBase64Encoding(state.getProperty("locked_wav").toString());
+            const auto wavProperty = state.hasProperty("locked_wav_bank") ? "locked_wav_bank" : "locked_wav";
+            block.fromBase64Encoding(state.getProperty(wavProperty).toString());
             const auto* bytePtr = static_cast<const uint8_t*>(block.getData());
             std::vector<uint8_t> wavBytes(bytePtr, bytePtr + block.getSize());
-            const bool restored = engine_.restoreLockedWav(wavBytes);
+            const auto restoredSettings = opensmacker::params::readSettings(parameters);
+            const bool restored = engine_.restoreLockedWav(wavBytes, restoredSettings.synth.voiceMode);
             displayLockedIn.store(restored);
         } else {
             engine_.unlockSmack();

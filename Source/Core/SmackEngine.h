@@ -2,6 +2,7 @@
 
 #include "SmackSynth.h"
 #include "Effects.h"
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <optional>
@@ -57,6 +58,12 @@ struct LayerOutputChannels {
     float* transientRight = nullptr;
 };
 
+struct SmackWavVoice {
+    std::vector<float> left;
+    std::vector<float> right;
+    std::array<StereoLayerBuffer, 3> layers;
+};
+
 struct SmackEffectSettings {
     DistortionType distType = DistortionType::Tape;
     float distDrive = 0.14f;       // 0..1
@@ -99,17 +106,31 @@ public:
     void capture(const std::vector<float>& left, const std::vector<float>& right, double sampleRate);
     [[nodiscard]] bool isLocked() const noexcept { return isLocked_; }
     [[nodiscard]] double sampleRate() const noexcept { return sampleRate_; }
-    [[nodiscard]] const std::vector<float>& left() const noexcept { return left_; }
-    [[nodiscard]] const std::vector<float>& right() const noexcept { return right_; }
+    [[nodiscard]] const std::vector<float>& left() const noexcept { return voices_[primaryVoiceIndex_].left; }
+    [[nodiscard]] const std::vector<float>& right() const noexcept { return voices_[primaryVoiceIndex_].right; }
+    [[nodiscard]] const SmackWavVoice& voice(VoiceMode mode) const noexcept;
 
     [[nodiscard]] std::vector<uint8_t> toWavBytes() const;
+    [[nodiscard]] std::vector<uint8_t> toBankWavBytes() const;
     bool fromWavBytes(const std::vector<uint8_t>& wavBytes);
 
 private:
+    friend class SmackEngine;
+
+    void reserveFrames(size_t frames);
+    void beginCapture() noexcept;
+    [[nodiscard]] SmackWavVoice& writableVoice(size_t voiceIndex) noexcept;
+    [[nodiscard]] bool finishCapture(double sampleRate, VoiceMode primaryVoice = VoiceMode::DanceSnare) noexcept;
+    void captureVoices(std::array<SmackWavVoice, 4>&& voices, double sampleRate,
+        VoiceMode primaryVoice = VoiceMode::DanceSnare);
+    void setPrimaryVoice(VoiceMode mode) noexcept {
+        primaryVoiceIndex_ = static_cast<size_t>(std::clamp(static_cast<int>(mode), 0, 3));
+    }
+
     bool isLocked_ = false;
     double sampleRate_ = 48000.0;
-    std::vector<float> left_;
-    std::vector<float> right_;
+    size_t primaryVoiceIndex_ = 0;
+    std::array<SmackWavVoice, 4> voices_;
 };
 
 class SmackEngine {
@@ -132,7 +153,8 @@ public:
 
     void lockCurrentSmack(const EngineSettings& settings);
     void unlockSmack() noexcept;
-    bool restoreLockedWav(const std::vector<uint8_t>& wavBytes);
+    bool restoreLockedWav(const std::vector<uint8_t>& wavBytes,
+        VoiceMode primaryVoice = VoiceMode::DanceSnare);
 
     [[nodiscard]] bool isSmackLocked() const noexcept { return wavCache_.isLocked(); }
     [[nodiscard]] const SmackWavCache& wavCache() const noexcept { return wavCache_; }
@@ -142,6 +164,8 @@ public:
     [[nodiscard]] float currentSmackProgress() const noexcept { return currentSmackProgress_; }
     [[nodiscard]] uint32_t triggerSerial() const noexcept { return triggerSerial_; }
     [[nodiscard]] bool isReversing() const noexcept { return isReversing_; }
+    [[nodiscard]] uint64_t lastReverseRenderSamples() const noexcept { return lastReverseRenderSamples_; }
+    [[nodiscard]] uint64_t maxReverseSamplesPerHit() const noexcept { return reverseBuffer_.left.size(); }
 
 private:
     void triggerSmack(
@@ -169,8 +193,8 @@ private:
     double wavPlayPosition_ = -1.0;
     float wavVelocity_ = 1.0f;
 
-    std::vector<float> reverseBufferL_;
-    std::vector<float> reverseBufferR_;
+    SmackWavVoice reverseBuffer_;
+    SmackWavVoice reverseSource_;
     int reversePlayHead_ = -1;
     int reverseDuration_ = 0;
     bool isReversing_ = false;
@@ -193,6 +217,7 @@ private:
     float currentBeatPhase_ = 0.0f;
     float currentSmackProgress_ = 1.0f;
     uint32_t triggerSerial_ = 0;
+    uint64_t lastReverseRenderSamples_ = 0;
 };
 
 } // namespace opensmacker::core

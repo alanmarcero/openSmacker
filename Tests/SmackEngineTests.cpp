@@ -1,7 +1,31 @@
 #include "SmackEngine.h"
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <cstdlib>
 #include <numeric>
+#include <new>
+
+namespace {
+thread_local bool countAllocations = false;
+thread_local size_t allocationCount = 0;
+}
+
+void* operator new(std::size_t size) {
+    if (countAllocations)
+        ++allocationCount;
+    if (void* memory = std::malloc(size == 0 ? 1 : size))
+        return memory;
+    throw std::bad_alloc{};
+}
+
+void* operator new[](std::size_t size) {
+    return ::operator new(size);
+}
+
+void operator delete(void* memory) noexcept { std::free(memory); }
+void operator delete[](void* memory) noexcept { std::free(memory); }
+void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
+void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
 
 using namespace opensmacker::core;
 
@@ -244,4 +268,139 @@ TEST_CASE("SmackEngine accents host-synced roll steps with the configured veloci
     };
 
     REQUIRE(rollPeakAtPpq(0.0) > rollPeakAtPpq(0.5) * 2.0f);
+}
+
+TEST_CASE("SmackEngine keeps dense host rolls with synced reverse allocation-free and bounded", "[core][engine][reverse][realtime]") {
+    SmackEngine engine;
+    engine.prepare(48000.0);
+    EngineSettings settings;
+    settings.rollEnabled = true;
+    settings.rollSubdivision = 32;
+    settings.rollProbability = 1.0f;
+    settings.effects.reverseMode = ReverseSyncMode::QuarterBeat;
+    Transport transport;
+    transport.bpm = 400.0;
+    transport.ppqPosition = 0.0;
+    std::vector<float> left(8192, 0.0f), right(8192, 0.0f);
+    float* channels[2] = { left.data(), right.data() };
+
+    allocationCount = 0;
+    countAllocations = true;
+    engine.process(settings, transport, {}, channels, 2, static_cast<int>(left.size()));
+    countAllocations = false;
+
+    REQUIRE(allocationCount == 0);
+    REQUIRE(engine.triggerSerial() >= 8);
+    REQUIRE(engine.lastReverseRenderSamples() > 0);
+    const auto maxQuarterBeatSamples = computeSyncedReverseSamples(
+        ReverseSyncMode::QuarterBeat, 0.0, transport.bpm, transport.beatsPerBar, 48000.0);
+    REQUIRE(engine.maxReverseSamplesPerHit() > static_cast<uint64_t>(maxQuarterBeatSamples));
+    REQUIRE(engine.lastReverseRenderSamples()
+        <= engine.triggerSerial() * static_cast<uint64_t>(maxQuarterBeatSamples));
+}
+
+TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][engine][lock_in][layers][zones]") {
+    SmackEngine engine;
+    engine.prepare(48000.0);
+    EngineSettings settings;
+    settings.synth.reverbMix = 0.0f;
+    settings.synth.voiceMode = VoiceMode::FmBell;
+    engine.lockCurrentSmack(settings);
+    REQUIRE(engine.isSmackLocked());
+    REQUIRE(&engine.wavCache().left() == &engine.wavCache().voice(VoiceMode::FmBell).left);
+
+    SmackWavCache restoredCache;
+    const auto bankBytes = engine.wavCache().toBankWavBytes();
+    REQUIRE(bankBytes.size() > 44);
+    REQUIRE(restoredCache.fromWavBytes(bankBytes));
+    for (VoiceMode mode : { VoiceMode::DanceSnare, VoiceMode::ClubTom, VoiceMode::FmBell, VoiceMode::PrydaRimSmack }) {
+        const auto& restoredVoice = restoredCache.voice(mode);
+        REQUIRE(restoredVoice.left.size() == engine.wavCache().voice(mode).left.size());
+        REQUIRE(restoredVoice.layers[0].left.size() == restoredVoice.left.size());
+        REQUIRE(restoredVoice.layers[1].left.size() == restoredVoice.left.size());
+        REQUIRE(restoredVoice.layers[2].left.size() == restoredVoice.left.size());
+    }
+
+    settings.keyZonesEnabled = true;
+    settings.voiceZones = {{ { 36, 47 }, { 48, 59 }, { 60, 71 }, { 72, 84 } }};
+    const std::array<int, 4> notes{ 36, 48, 60, 72 };
+    std::array<float, 4> voiceEnergy{};
+    for (size_t voice = 0; voice < notes.size(); ++voice) {
+        std::vector<float> left(1024, 0.0f), right(1024, 0.0f);
+        std::vector<float> bodyL(1024, 0.0f), bodyR(1024, 0.0f);
+        std::vector<float> wireL(1024, 0.0f), wireR(1024, 0.0f);
+        std::vector<float> transientL(1024, 0.0f), transientR(1024, 0.0f);
+        float* channels[2] = { left.data(), right.data() };
+        LayerOutputChannels layers{ bodyL.data(), bodyR.data(), wireL.data(), wireR.data(), transientL.data(), transientR.data() };
+        const std::array<MidiTrigger, 1> trigger{{
+            { .sampleOffset = 0, .noteNumber = notes[voice], .velocity = 1.0f, .audition = false }
+        }};
+        engine.process(settings, Transport{}, trigger, channels, 2, static_cast<int>(left.size()), {}, {}, layers);
+
+        for (float sample : left)
+            voiceEnergy[voice] += std::abs(sample);
+        REQUIRE(std::any_of(bodyL.begin(), bodyL.end(), [](float sample) { return std::abs(sample) > 0.001f; }));
+        REQUIRE(std::any_of(wireL.begin(), wireL.end(), [](float sample) { return std::abs(sample) > 0.001f; }));
+        REQUIRE(std::any_of(transientL.begin(), transientL.end(), [](float sample) { return std::abs(sample) > 0.001f; }));
+    }
+
+    for (size_t voice = 1; voice < voiceEnergy.size(); ++voice)
+        REQUIRE(std::abs(voiceEnergy[voice] - voiceEnergy[0]) > 0.001f);
+}
+
+TEST_CASE("Prepared Lock-In capture does not allocate in the audio callback", "[core][engine][lock_in][realtime]") {
+    SmackEngine engine;
+    engine.prepare(48000.0);
+    EngineSettings settings;
+    settings.lockIn = true;
+    std::vector<float> left(256, 0.0f), right(256, 0.0f);
+    float* channels[2] = { left.data(), right.data() };
+
+    allocationCount = 0;
+    countAllocations = true;
+    engine.process(settings, Transport{}, {}, channels, 2, static_cast<int>(left.size()));
+    countAllocations = false;
+
+    REQUIRE(allocationCount == 0);
+    REQUIRE(engine.isSmackLocked());
+}
+
+TEST_CASE("SmackEngine routes reverse synthesis into its source layer stems", "[core][engine][reverse][layers]") {
+    struct RenderedLayers {
+        std::vector<float> body, wire, transient;
+    };
+    const auto render = [](ReverseSyncMode reverseMode) {
+        SmackEngine engine;
+        engine.prepare(48000.0);
+        EngineSettings settings;
+        settings.synth.reverbMix = 0.0f;
+        settings.synth.clickLevel = 1.0f;
+        settings.synth.preStrikeCount = 2;
+        settings.effects.reverseMode = reverseMode;
+        settings.effects.reverseMix = 1.0f;
+        const std::array<MidiTrigger, 1> trigger{{
+            { .sampleOffset = 0, .noteNumber = 69, .velocity = 1.0f, .audition = false }
+        }};
+        std::vector<float> left(4096, 0.0f), right(4096, 0.0f);
+        RenderedLayers output{ std::vector<float>(4096), std::vector<float>(4096), std::vector<float>(4096) };
+        std::vector<float> bodyR(4096), wireR(4096), transientR(4096);
+        float* channels[2] = { left.data(), right.data() };
+        LayerOutputChannels layers{
+            output.body.data(), bodyR.data(), output.wire.data(), wireR.data(), output.transient.data(), transientR.data()
+        };
+        engine.process(settings, Transport{}, trigger, channels, 2, static_cast<int>(left.size()), {}, {}, layers);
+        return output;
+    };
+
+    const auto forward = render(ReverseSyncMode::Off);
+    const auto reversed = render(ReverseSyncMode::QuarterBeat);
+    const auto energyDifference = [](const std::vector<float>& a, const std::vector<float>& b) {
+        float difference = 0.0f;
+        for (size_t i = 0; i < a.size(); ++i)
+            difference += std::abs(a[i] - b[i]);
+        return difference;
+    };
+    REQUIRE(energyDifference(forward.body, reversed.body) > 0.01f);
+    REQUIRE(energyDifference(forward.wire, reversed.wire) > 0.01f);
+    REQUIRE(energyDifference(forward.transient, reversed.transient) > 0.01f);
 }

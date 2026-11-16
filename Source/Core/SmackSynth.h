@@ -135,6 +135,11 @@ struct StereoFrame {
     float transientRight = 0.0f;
 };
 
+struct StereoLayerBuffer {
+    std::vector<float> left;
+    std::vector<float> right;
+};
+
 struct AllpassDiffuser {
     std::vector<float> buffer;
     size_t writeIndex = 0;
@@ -206,7 +211,16 @@ public:
         std::vector<float>& rightOut,
         const SmackSynthSettings& settings,
         float velocity = 1.0f,
-        int semitoneOffset = 0) noexcept;
+        int semitoneOffset = 0,
+        std::array<StereoLayerBuffer, 3>* layerOutputs = nullptr) noexcept;
+    [[nodiscard]] int renderPrefix(
+        std::vector<float>& leftOut,
+        std::vector<float>& rightOut,
+        const SmackSynthSettings& settings,
+        int maxSamples,
+        float velocity = 1.0f,
+        int semitoneOffset = 0,
+        std::array<StereoLayerBuffer, 3>* layerOutputs = nullptr) noexcept;
 
 private:
     [[nodiscard]] StereoFrame generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv) noexcept;
