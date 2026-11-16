@@ -1,4 +1,4 @@
-# openSmacker v2.0.0
+# openSmacker v2.1.0
 
 <p align="center">
   <strong>Trance percussion, tuned for impact.</strong><br>
@@ -22,6 +22,8 @@
 </p>
 
 openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the sound engine, effects, preset catalog, and editor while keeping the previous voice types, synthesis controls, MIDI mappings, program navigation, lock-in WAV workflow, and plugin formats. Its new envelopes and multi-part drum and metallic voices keep the transient and tuned body audible together for a more forceful dance and trance hit.
+
+Version 2.1 adds separate performance gains and stereo output buses for the body, wires, and transient. Full ADSR is MIDI-note tracked, preserves its release tail through Lock-In playback, and uses sample-accurate note-off handling.
 
 ## Sound design
 
