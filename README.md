@@ -27,7 +27,7 @@ openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the soun
 
 - Four voices: Dance Snare, Club Tom-Tom, FM Bell / Chime, and Pryda / Rim Smack.
 - Tune every voice by root note, octave, and cents; use fixed pitch or MIDI note tracking, and retain the separate Lock Pitch option.
-- Full amplitude ADSR (attack, decay, sustain, release) works with the body pitch envelope, body decay, and independent wire-layer envelope.
+- Optional Full ADSR is off by default. When enabled, MIDI note-off releases the body, wires, and transient on the matching note/channel; release reaches 20 seconds and feeds the shared effects. Existing one-shot playback stays the default.
 - Shape one to five pre-strikes with spread, decay, humanization, stereo pan, and level.
 - Choose Stick, Mallet, Rimshot, or Laser transients. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring with attack, hold, decay, curve, high/low-pass filters, level, and stereo width.
 - Process hits with Tape, Tube, Hard Clip, or Wavefold saturation; compressor; brickwall limiter; gated trance-hall reverb; host-synced reverse swell; master width; and output gain.
@@ -60,7 +60,7 @@ Simple and Advanced views are retained. Simple removes numeric boxes for a clear
 
 ## MIDI and state
 
-Note-on messages trigger hits on every MIDI channel and velocity controls the hit level. The optional key zones map notes 36–47 to Dance Snare, 48–59 to Club Tom-Tom, 60–71 to FM Bell, and 72–84 to Pryda / Rim Smack; notes outside the configured zones are ignored while zones are enabled. Fixed Root and Note Tracking remain available.
+Note-on messages trigger hits on every MIDI channel and velocity controls the hit level. With Full ADSR enabled, sample-accurate note-off releases only the matching MIDI note and channel; note-off is ignored by the default one-shot mode. The optional key zones map notes 36–47 to Dance Snare, 48–59 to Club Tom-Tom, 60–71 to FM Bell, and 72–84 to Pryda / Rim Smack; notes outside the configured zones are ignored while zones are enabled. Fixed Root and Note Tracking remain available for the body, tuned metallic noise, strike, and pitch sweep.
 
 Body, wire, and transient velocity depth and aftertouch are independent. Enable the host-synced roll to retrigger at 1/8, 1/16, or 1/32-note intervals while transport plays; set its probability and accent velocity. Body, wire, and transient MIDI CCs are assignable (default CC 20, 21, and 22; CC 0 disables a mapping). The existing CC 7 output level, CC 74 air low-pass, CC 120/123 silence, and CC 121 reset behavior remains.
 

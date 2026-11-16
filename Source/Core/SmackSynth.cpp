@@ -95,6 +95,21 @@ float amplitudeEnvelope(int sample, int duration, const SmackSynthSettings& sett
     return sustain * 0.5f * (1.0f + std::cos(kPi * phase));
 }
 
+float gatedEnvelope(int sample, const SmackSynthSettings& settings, float sampleRate) noexcept {
+    const float time = static_cast<float>(std::max(0, sample));
+    const float attack = std::clamp(settings.ampAttackMs, 0.0f, 10000.0f) * 0.001f * sampleRate;
+    const float decay = std::clamp(settings.ampDecayMs, 0.0f, 10000.0f) * 0.001f * sampleRate;
+    const float sustain = std::clamp(settings.ampSustain, 0.0f, 1.0f);
+    if (attack > 0.0f && time < attack)
+        return std::sin(0.5f * kPi * time / attack);
+    if (decay > 0.0f && time < attack + decay) {
+        const float phase = (time - attack) / decay;
+        const float smooth = phase * phase * (3.0f - 2.0f * phase);
+        return 1.0f + (sustain - 1.0f) * smooth;
+    }
+    return sustain;
+}
+
 } // namespace
 
 float GatedStereoReverb::readHermite(const std::vector<float>& buffer, double delaySamples, int writePos) noexcept {
@@ -230,6 +245,14 @@ void SmackSynth::reset() noexcept {
     totalSamplesPlayed_ = 0;
     totalDurationSamples_ = 0;
     dryDurationSamples_ = 0;
+    fullAdsrEnabled_ = false;
+    noteOffReceived_ = false;
+    activeNoteNumber_ = -1;
+    activeChannel_ = 1;
+    releaseStartSample_ = -1;
+    releaseDurationSamples_ = 0;
+    reverbTailSamples_ = 0;
+    releaseStartLevel_ = 0.0f;
     phaseFund_ = phaseMode2_ = phaseMode3_ = phaseMode4_ = 0.0f;
     phaseMod1_ = phaseMod2_ = phaseFundR_ = phaseMode2R_ = 0.0f;
     std::fill(metalPhasesL_.begin(), metalPhasesL_.end(), 0.0f);
@@ -244,7 +267,8 @@ void SmackSynth::reset() noexcept {
     reverb_.reset();
 }
 
-void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int semitoneOffset) noexcept {
+void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int semitoneOffset,
+                         int noteNumber, int channel) noexcept {
     reset();
     isPlaying_ = true;
     const float normalizedVelocity = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
@@ -252,6 +276,9 @@ void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int
     wireVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.wireVelocityDepth, 0.0f, 1.0f));
     transientVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.transientVelocityDepth, 0.0f, 1.0f));
     semitoneOffset_ = std::clamp(semitoneOffset, -96, 96);
+    fullAdsrEnabled_ = settings.fullAdsrEnabled;
+    activeNoteNumber_ = noteNumber < 0 ? -1 : std::clamp(noteNumber, 0, 127);
+    activeChannel_ = std::clamp(channel, 1, 16);
     preStrikeCount_ = std::clamp(settings.preStrikeCount, 1, 5);
     const float sr = static_cast<float>(sampleRate_);
     const float spread = std::clamp(settings.preStrikeSpreadMs, 2.0f, 45.0f) * 0.001f * sr;
@@ -284,6 +311,23 @@ void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int
     const float reverbTailMs = settings.reverbMix > 0.001f
         ? std::max(settings.reverbGateMs, std::min(settings.reverbDecayMs * 0.60f, 900.0f)) : 0.0f;
     totalDurationSamples_ = dryDurationSamples_ + static_cast<int>(reverbTailMs * 0.001f * sr);
+    reverbTailSamples_ = static_cast<int>(reverbTailMs * 0.001f * sr);
+}
+
+void SmackSynth::noteOff(int noteNumber, int channel, const SmackSynthSettings& settings) noexcept {
+    if (!isPlaying_ || !fullAdsrEnabled_ || noteOffReceived_
+        || activeNoteNumber_ != std::clamp(noteNumber, 0, 127)
+        || activeChannel_ != std::clamp(channel, 1, 16))
+        return;
+
+    const int sample = totalSamplesPlayed_;
+    releaseStartLevel_ = gatedEnvelope(sample, settings, static_cast<float>(sampleRate_));
+    releaseStartSample_ = sample;
+    const float releaseMs = std::clamp(settings.ampReleaseMs, 0.0f, 20000.0f);
+    releaseDurationSamples_ = static_cast<int>(releaseMs * 0.001f * static_cast<float>(sampleRate_));
+    noteOffReceived_ = true;
+    if (releaseDurationSamples_ <= 0 && reverbTailSamples_ <= 0)
+        isPlaying_ = false;
 }
 
 StereoFrame SmackSynth::generateStereoNoise(NoiseType type, float tunedHz, float overtoneEnv) noexcept {
@@ -339,7 +383,10 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     if (!isPlaying_)
         return { 0.0f, 0.0f };
     const int sample = totalSamplesPlayed_++;
-    if (sample >= totalDurationSamples_) {
+    const int gateReleaseSamples = noteOffReceived_ ? releaseDurationSamples_ : 0;
+    if ((!fullAdsrEnabled_ && sample >= totalDurationSamples_)
+        || (fullAdsrEnabled_ && noteOffReceived_
+            && sample >= releaseStartSample_ + gateReleaseSamples + reverbTailSamples_)) {
         isPlaying_ = false;
         return { 0.0f, 0.0f };
     }
@@ -348,18 +395,31 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     const float dt = 1.0f / sr;
     const float maxHz = sr * 0.44f;
     const float rootHz = noteToHz(settings.note, settings.octave, settings.fineCents);
-    const float amp = amplitudeEnvelope(sample, dryDurationSamples_, settings, sr);
+    float amp = fullAdsrEnabled_ ? gatedEnvelope(sample, settings, sr)
+        : amplitudeEnvelope(sample, dryDurationSamples_, settings, sr);
+    if (fullAdsrEnabled_ && noteOffReceived_) {
+        if (gateReleaseSamples <= 0 || sample >= releaseStartSample_ + gateReleaseSamples) {
+            amp = 0.0f;
+        } else {
+            const float phase = static_cast<float>(sample - releaseStartSample_) / static_cast<float>(gateReleaseSamples);
+            amp = releaseStartLevel_ * 0.5f * (1.0f + std::cos(kPi * phase));
+        }
+    }
     const int mainAge = sample - mainSmackSample_;
     const float mainTime = std::max(0, mainAge) / sr;
     const float bodyDecay = std::max(1.0f, std::clamp(settings.toneDecayMs, 15.0f, 1200.0f) * 0.001f * sr);
     const float pitchFall = std::exp(-mainTime / std::max(0.003f, settings.tonePitchDecayMs * 0.001f));
     const float pitchSemitones = std::clamp(static_cast<float>(semitoneOffset_) + settings.tonePitchEnv * pitchFall, -48.0f, 48.0f);
     const float tunedHz = std::clamp(rootHz * std::exp2(pitchSemitones / 12.0f), 25.0f, maxHz);
-    const float bodyEnv = mainAge < 0 ? 0.0f : std::exp(-static_cast<float>(mainAge) / bodyDecay);
-    const float overtoneEnv = mainAge < 0 ? 0.0f : std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.34f));
+    const float bodyEnv = mainAge < 0 ? 0.0f : (fullAdsrEnabled_ ? 1.0f
+        : std::exp(-static_cast<float>(mainAge) / bodyDecay));
+    const float overtoneEnv = mainAge < 0 ? 0.0f : (fullAdsrEnabled_ ? 1.0f
+        : std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.34f)));
 
     float wireEnv = 0.0f;
-    if (mainAge >= 0) {
+    if (fullAdsrEnabled_ && mainAge >= 0) {
+        wireEnv = 1.0f;
+    } else if (mainAge >= 0) {
         const float t = static_cast<float>(mainAge);
         const float attack = std::clamp(settings.noiseAttackMs, 0.0f, 20.0f) * 0.001f * sr;
         const float hold = std::clamp(settings.noiseHoldMs, 0.0f, 30.0f) * 0.001f * sr;
@@ -403,7 +463,8 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     if (mainAge >= 0 && mainAge < static_cast<int>(0.012f * sr)) {
         const float t = static_cast<float>(mainAge);
         const float fast = std::exp(-t / (0.0016f * sr));
-        const float frequency = std::clamp(settings.clickFreqHz, 500.0f, maxHz);
+        const float trackedClick = settings.clickFreqHz * std::exp2(static_cast<float>(semitoneOffset_) / 12.0f);
+        const float frequency = std::clamp(trackedClick, 500.0f, maxHz);
         switch (settings.clickType) {
             case ClickType::Stick: {
                 const float sweep = frequency + 3600.0f * fast;
@@ -527,7 +588,7 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     const float dryL = wireOutL + bodyOutL + transientOutL;
     const float dryR = wireOutR + bodyOutR + transientOutR;
     const auto wet = reverb_.process(dryL, dryR, settings.reverbSize, settings.reverbDecayMs,
-                                     settings.reverbDamp, settings.reverbGateMs, sampleRate_);
+                                     settings.reverbDamp, fullAdsrEnabled_ ? 0.0f : settings.reverbGateMs, sampleRate_);
     const float reverbMix = std::clamp(settings.reverbMix, 0.0f, 1.0f);
     const float outL = dryL * (1.0f - 0.4f * reverbMix) + wet.left * reverbMix;
     const float outR = dryR * (1.0f - 0.4f * reverbMix) + wet.right * reverbMix;

@@ -32,6 +32,7 @@ void OpenSmackerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
     engine_.prepare(sampleRate);
     const auto capacity = static_cast<size_t>(std::max(256, samplesPerBlock * 4));
     midiTriggers_.reserve(capacity);
+    midiNoteOffs_.reserve(capacity);
     midiCcEvents_.reserve(capacity);
     midiPressureEvents_.reserve(capacity);
 }
@@ -83,6 +84,7 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
 
     midiTriggers_.clear();
+    midiNoteOffs_.clear();
     midiCcEvents_.clear();
     midiPressureEvents_.clear();
 
@@ -96,6 +98,12 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                 .noteNumber = msg.getNoteNumber(),
                 .velocity = vel,
                 .audition = false,
+                .channel = msg.getChannel()
+            });
+        } else if (msg.isNoteOff()) {
+            midiNoteOffs_.push_back({
+                .sampleOffset = meta.samplePosition,
+                .noteNumber = msg.getNoteNumber(),
                 .channel = msg.getChannel()
             });
         } else if (msg.isController()) {
@@ -158,13 +166,27 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
 
     engine_.process(settings, transport, midiTriggers_, channelPointers, 2, numSamples,
-        midiCcEvents_, midiPressureEvents_, layerOutputs);
+        midiCcEvents_, midiPressureEvents_, layerOutputs, midiNoteOffs_);
 
     displayPeak.store(engine_.currentPeak());
     displayBeatPhase.store(engine_.currentBeatPhase());
     displaySmackProgress.store(engine_.currentSmackProgress());
     displayTriggerCount.store(engine_.triggerSerial());
     displayLockedIn.store(engine_.isSmackLocked());
+}
+
+double OpenSmackerProcessor::getTailLengthSeconds() const {
+    const auto* enabled = parameters.getRawParameterValue(opensmacker::params::kAmpEnabled);
+    if (enabled == nullptr || enabled->load(std::memory_order_relaxed) < 0.5f)
+        return 0.0;
+
+    const float releaseMs = parameters.getRawParameterValue(opensmacker::params::kAmpRelease)->load(std::memory_order_relaxed);
+    const float reverbMix = parameters.getRawParameterValue(opensmacker::params::kReverbMix)->load(std::memory_order_relaxed);
+    const float reverbGate = parameters.getRawParameterValue(opensmacker::params::kReverbGate)->load(std::memory_order_relaxed);
+    const float reverbDecay = parameters.getRawParameterValue(opensmacker::params::kReverbDecay)->load(std::memory_order_relaxed);
+    const double effectTail = reverbMix > 0.001f
+        ? std::max(reverbGate, std::min(reverbDecay * 0.60f, 900.0f)) * 0.001 : 0.0;
+    return std::clamp(static_cast<double>(releaseMs) * 0.001 + effectTail, 0.0, 23.0);
 }
 
 juce::AudioProcessorEditor* OpenSmackerProcessor::createEditor() {

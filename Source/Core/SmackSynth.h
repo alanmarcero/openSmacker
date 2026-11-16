@@ -71,11 +71,12 @@ struct SmackSynthSettings {
     float wirePerformanceGain = 1.0f;
     float transientPerformanceGain = 1.0f;
 
-    // One-shot amplitude envelope; release ends at the dry-hit boundary.
+    // Full ADSR is MIDI-gated; false keeps the legacy one-shot envelope.
+    bool fullAdsrEnabled = false;
     float ampAttackMs = 0.35f;     // 0.05..20 ms
     float ampDecayMs = 72.0f;      // 1..600 ms
     float ampSustain = 0.70f;      // 0..1
-    float ampReleaseMs = 180.0f;   // 5..800 ms
+    float ampReleaseMs = 180.0f;   // Full ADSR 0..20000 ms; legacy one-shot caps at 800 ms
 
     // Snare Wires, Sizzle & Air
     NoiseType noiseType = NoiseType::SnareWires;
@@ -201,7 +202,9 @@ class SmackSynth {
 public:
     void prepare(double sampleRate);
     void reset() noexcept;
-    void trigger(const SmackSynthSettings& settings, float velocity = 1.0f, int semitoneOffset = 0) noexcept;
+    void trigger(const SmackSynthSettings& settings, float velocity = 1.0f, int semitoneOffset = 0,
+        int noteNumber = -1, int channel = 1) noexcept;
+    void noteOff(int noteNumber, int channel, const SmackSynthSettings& settings) noexcept;
     [[nodiscard]] StereoFrame processSample(const SmackSynthSettings& settings) noexcept;
     [[nodiscard]] bool isPlaying() const noexcept { return isPlaying_; }
     [[nodiscard]] float getEnvelopeProgress() const noexcept;
@@ -235,6 +238,14 @@ private:
     int totalSamplesPlayed_ = 0;
     int totalDurationSamples_ = 0;
     int dryDurationSamples_ = 0;
+    bool fullAdsrEnabled_ = false;
+    bool noteOffReceived_ = false;
+    int activeNoteNumber_ = -1;
+    int activeChannel_ = 1;
+    int releaseStartSample_ = -1;
+    int releaseDurationSamples_ = 0;
+    int reverbTailSamples_ = 0;
+    float releaseStartLevel_ = 0.0f;
 
     // Micro-strike flam / roll timing
     int preStrikeCount_ = 1;

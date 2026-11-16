@@ -253,3 +253,88 @@ TEST_CASE("SmackSynth aftertouch increases only the selected layer response", "[
 
     REQUIRE(touchedBodyPeak > bodyPeak * 1.5f);
 }
+
+TEST_CASE("SmackSynth Full ADSR sustains until note-off and supports a 20-second release", "[core][synth][adsr]") {
+    SmackSynth synth;
+    synth.prepare(8000.0);
+    SmackSynthSettings settings;
+    settings.fullAdsrEnabled = true;
+    settings.ampAttackMs = 0.0f;
+    settings.ampDecayMs = 1.0f;
+    settings.ampSustain = 0.65f;
+    settings.ampReleaseMs = 20000.0f;
+    settings.toneDecayMs = 15.0f;
+    settings.noiseLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.preStrikeCount = 1;
+    settings.reverbMix = 0.0f;
+    synth.trigger(settings, 1.0f, 0, 60, 2);
+
+    float lateSustain = 0.0f;
+    for (int i = 0; i < 8000; ++i) {
+        const auto frame = synth.processSample(settings);
+        if (i >= 7600)
+            lateSustain += std::abs(frame.bodyLeft);
+    }
+    REQUIRE(lateSustain > 0.1f);
+    REQUIRE(synth.isPlaying());
+
+    synth.noteOff(60, 2, settings);
+    float firstRelease = 0.0f;
+    for (int i = 0; i < 8000; ++i) {
+        const auto frame = synth.processSample(settings);
+        firstRelease += std::abs(frame.bodyLeft);
+    }
+    REQUIRE(firstRelease > 0.1f);
+    REQUIRE(synth.isPlaying());
+    for (int i = 0; i < 160000; ++i)
+        (void) synth.processSample(settings);
+    REQUIRE_FALSE(synth.isPlaying());
+}
+
+TEST_CASE("SmackSynth one-shot mode ignores MIDI note-off and retains identical output", "[core][synth][adsr][compatibility]") {
+    SmackSynth baseline;
+    SmackSynth withNoteOff;
+    baseline.prepare(48000.0);
+    withNoteOff.prepare(48000.0);
+    SmackSynthSettings settings;
+    settings.fullAdsrEnabled = false;
+    baseline.trigger(settings, 1.0f, 0, 69, 1);
+    withNoteOff.trigger(settings, 1.0f, 0, 69, 1);
+    for (int i = 0; i < 256; ++i) {
+        if (i == 64)
+            withNoteOff.noteOff(69, 1, settings);
+        const auto expected = baseline.processSample(settings);
+        const auto actual = withNoteOff.processSample(settings);
+        REQUIRE(actual.left == expected.left);
+        REQUIRE(actual.right == expected.right);
+    }
+}
+
+TEST_CASE("SmackSynth tracks an octave shift in its tuned metallic noise", "[core][synth][pitch_tracking]") {
+    const auto render = [](int semitoneOffset) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.fullAdsrEnabled = true;
+        settings.voiceMode = VoiceMode::ClubTom;
+        settings.noiseType = NoiseType::MetallicRing;
+        settings.toneLevel = 0.0f;
+        settings.noiseLevel = 1.0f;
+        settings.clickLevel = 0.0f;
+        settings.noiseDecayMs = 1200.0f;
+        settings.ampSustain = 1.0f;
+        settings.reverbMix = 0.0f;
+        synth.trigger(settings, 1.0f, semitoneOffset, 69, 1);
+        std::vector<float> samples(24000);
+        for (auto& sample : samples)
+            sample = synth.processSample(settings).wireLeft;
+        return samples;
+    };
+    const auto low = render(0);
+    const auto high = render(12);
+    float difference = 0.0f;
+    for (size_t i = 0; i < low.size(); ++i)
+        difference += std::abs(low[i] - high[i]);
+    REQUIRE(difference > 100.0f);
+}

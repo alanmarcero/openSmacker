@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <numeric>
 #include <new>
+#include <tuple>
 
 namespace {
 thread_local bool countAllocations = false;
@@ -28,6 +29,15 @@ void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
 void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
 
 using namespace opensmacker::core;
+
+namespace {
+void completeLockCapture(SmackEngine& engine, const EngineSettings& settings) {
+    std::array<float, 512> left{}, right{};
+    float* channels[2] = { left.data(), right.data() };
+    for (int callback = 0; callback < 2000 && !engine.isSmackLocked(); ++callback)
+        engine.process(settings, Transport{}, {}, channels, 2, static_cast<int>(left.size()));
+}
+}
 
 TEST_CASE("SmackEngine responds to MIDI trigger and processes audio", "[core][engine]") {
     SmackEngine engine;
@@ -58,6 +68,7 @@ TEST_CASE("SmackEngine WAV Lock-In captures and recalls audio bit-exact", "[core
 
     EngineSettings settings;
     engine.lockCurrentSmack(settings);
+    completeLockCapture(engine, settings);
 
     REQUIRE(engine.isSmackLocked());
     REQUIRE(!engine.wavCache().left().empty());
@@ -134,6 +145,32 @@ TEST_CASE("SmackEngine schedules rolls on host beat subdivisions and honors prob
     transport.ppqPosition = 1.0;
     engine.process(settings, transport, {}, channels, 2, 256);
     REQUIRE(engine.triggerSerial() == 2);
+}
+
+TEST_CASE("SmackEngine host roll hits remain one-shot with Full ADSR enabled", "[core][engine][roll][adsr]") {
+    SmackEngine engine;
+    engine.prepare(8000.0);
+    EngineSettings settings;
+    settings.synth.fullAdsrEnabled = true;
+    settings.synth.reverbMix = 0.0f;
+    settings.rollEnabled = true;
+    settings.rollProbability = 1.0f;
+    Transport transport;
+    transport.isPlaying = true;
+    transport.ppqPosition = 0.0;
+    std::array<float, 64> attackLeft{}, attackRight{};
+    float* attackChannels[2] = { attackLeft.data(), attackRight.data() };
+    engine.process(settings, transport, {}, attackChannels, 2, static_cast<int>(attackLeft.size()));
+    REQUIRE(engine.triggerSerial() == 1);
+
+    transport.isPlaying = false;
+    std::vector<float> tailLeft(8000), tailRight(8000);
+    float* tailChannels[2] = { tailLeft.data(), tailRight.data() };
+    engine.process(settings, transport, {}, tailChannels, 2, static_cast<int>(tailLeft.size()));
+
+    const float tailEnergy = std::accumulate(tailLeft.begin() + 4000, tailLeft.end(), 0.0f,
+        [](float total, float sample) { return total + std::abs(sample); });
+    REQUIRE(tailEnergy < 0.001f);
 }
 
 TEST_CASE("SmackEngine applies assignable MIDI CC to the mapped layer output", "[core][engine][midi_cc][layers]") {
@@ -243,6 +280,44 @@ TEST_CASE("SmackEngine applies channel aftertouch only to the matching active vo
     REQUIRE(touched > untouched * 1.5f);
 }
 
+TEST_CASE("SmackEngine applies sample-accurate note-off only to the matching MIDI note and channel", "[core][engine][adsr][midi]") {
+    const auto renderAfterRelease = [](int offChannel, int noteOffOffset) {
+        SmackEngine engine;
+        engine.prepare(8000.0);
+        EngineSettings settings;
+        settings.synth.fullAdsrEnabled = true;
+        settings.synth.ampAttackMs = 0.0f;
+        settings.synth.ampDecayMs = 1.0f;
+        settings.synth.ampSustain = 0.8f;
+        settings.synth.ampReleaseMs = 100.0f;
+        settings.synth.toneDecayMs = 15.0f;
+        settings.synth.noiseLevel = 0.0f;
+        settings.synth.clickLevel = 0.0f;
+        settings.synth.preStrikeCount = 1;
+        settings.synth.reverbMix = 0.0f;
+        const std::array<MidiTrigger, 1> on{{
+            { .sampleOffset = 0, .noteNumber = 60, .velocity = 1.0f, .audition = false, .channel = 2 }
+        }};
+        std::array<float, 128> left{}, right{};
+        float* channels[2] = { left.data(), right.data() };
+        engine.process(settings, Transport{}, on, channels, 2, 128);
+
+        const std::array<MidiNoteOff, 1> off{{
+            { .sampleOffset = noteOffOffset, .noteNumber = 60, .channel = offChannel }
+        }};
+        std::array<float, 256> tailL{}, tailR{};
+        float* tailChannels[2] = { tailL.data(), tailR.data() };
+        engine.process(settings, Transport{}, {}, tailChannels, 2, 256, {}, {}, {}, off);
+        return std::pair{ tailL, engine.triggerSerial() };
+    };
+
+    const auto noMatch = renderAfterRelease(1, 64);
+    const auto match = renderAfterRelease(2, 64);
+    for (int i = 0; i < 64; ++i)
+        REQUIRE(match.first[static_cast<size_t>(i)] == noMatch.first[static_cast<size_t>(i)]);
+    REQUIRE(std::abs(match.first[200]) < std::abs(noMatch.first[200]));
+}
+
 TEST_CASE("SmackEngine accents host-synced roll steps with the configured velocity", "[core][engine][roll]") {
     const auto rollPeakAtPpq = [](double ppq) {
         SmackEngine engine;
@@ -297,6 +372,157 @@ TEST_CASE("SmackEngine keeps dense host rolls with synced reverse allocation-fre
     REQUIRE(engine.maxReverseSamplesPerHit() > static_cast<uint64_t>(maxQuarterBeatSamples));
     REQUIRE(engine.lastReverseRenderSamples()
         <= engine.triggerSerial() * static_cast<uint64_t>(maxQuarterBeatSamples));
+    REQUIRE(engine.maxCallbackPreparationSamples() <= SmackEngine::kMaxPreparationSamplesPerCallback);
+}
+
+TEST_CASE("SmackEngine applies cached layer performance gains to the audible main mix", "[core][engine][lock_in][layers][performance]") {
+    const auto render = [](bool attenuateBody, bool applyAftertouch) {
+        SmackEngine engine;
+        engine.prepare(48000.0);
+        EngineSettings settings;
+        settings.synth.reverbMix = 0.0f;
+        settings.synth.bodyVelocityDepth = 0.0f;
+        settings.synth.wireVelocityDepth = 0.0f;
+        settings.synth.transientVelocityDepth = 0.0f;
+        settings.synth.bodyAftertouchDepth = applyAftertouch ? 1.0f : 0.0f;
+        engine.lockCurrentSmack(settings);
+        completeLockCapture(engine, settings);
+        if (attenuateBody)
+            settings.midiCcForBody = 20;
+        const std::array<MidiTrigger, 1> trigger{{
+            { .sampleOffset = 0, .noteNumber = 69, .velocity = 1.0f, .audition = false, .channel = 1 }
+        }};
+        const std::array<MidiCcEvent, 1> cc{{
+            { .sampleOffset = 0, .controller = 20, .value = 0, .channel = 1 }
+        }};
+        const std::array<MidiPressureEvent, 1> pressure{{
+            { .sampleOffset = 0, .channel = 1, .noteNumber = -1, .value = applyAftertouch ? 127 : 0, .polyphonic = false }
+        }};
+        std::vector<float> left(4096), right(4096);
+        float* channels[2] = { left.data(), right.data() };
+        engine.process(settings, Transport{}, trigger, channels, 2, static_cast<int>(left.size()),
+            attenuateBody ? std::span<const MidiCcEvent>(cc) : std::span<const MidiCcEvent>{}, pressure);
+        return std::accumulate(left.begin(), left.end(), 0.0f,
+            [](float total, float sample) { return total + std::abs(sample); });
+    };
+
+    const float base = render(false, false);
+    const float ccMuted = render(true, false);
+    const float aftertouch = render(false, true);
+    REQUIRE(ccMuted < base * 0.90f);
+    REQUIRE(aftertouch > base * 1.05f);
+}
+
+TEST_CASE("Cached reverse playback preserves pitch and host duration across sample rates", "[core][engine][reverse][sample_rate]") {
+    constexpr double sourceRate = 48000.0;
+    constexpr double hostRate = 96000.0;
+    std::vector<float> source(48000);
+    for (size_t i = 0; i < source.size(); ++i)
+        source[i] = 0.7f * std::sin(2.0 * std::numbers::pi * 440.0 * static_cast<double>(i) / sourceRate);
+    SmackWavCache cache;
+    cache.capture(source, source, sourceRate);
+
+    const std::array<MidiTrigger, 1> trigger{{
+        { .sampleOffset = 0, .noteNumber = 69, .velocity = 1.0f, .audition = false }
+    }};
+    const auto render = [&](ReverseSyncMode mode) {
+        SmackEngine engine;
+        engine.prepare(hostRate);
+        REQUIRE(engine.restoreLockedWav(cache.toWavBytes()));
+        REQUIRE(engine.wavCache().sampleRate() == sourceRate);
+        EngineSettings settings;
+        settings.lockIn = true;
+        settings.effects.reverseMode = mode;
+        settings.effects.reverseMix = 1.0f;
+        Transport transport;
+        transport.bpm = 120.0;
+        transport.ppqPosition = 0.0;
+        std::vector<float> left(16000), right(16000);
+        float* channels[2] = { left.data(), right.data() };
+        engine.process(settings, transport, trigger, channels, 2, static_cast<int>(left.size()));
+        return std::tuple{ left, engine.reverseDurationSamples(), engine.reverseSourceFrames() };
+    };
+    const auto [dry, unusedDryDuration, unusedDryFrames] = render(ReverseSyncMode::Off);
+    const auto [withReverse, reverseDuration, reverseFrames] = render(ReverseSyncMode::QuarterBeat);
+    (void) unusedDryDuration;
+    (void) unusedDryFrames;
+    std::vector<float> reverseOnly(dry.size());
+    for (size_t i = 0; i < dry.size(); ++i)
+        reverseOnly[i] = withReverse[i] - dry[i];
+
+    int crossings = 0;
+    constexpr int windowStart = 1000;
+    constexpr int windowLength = 6000;
+    for (int i = windowStart + 1; i < windowStart + windowLength; ++i) {
+        if ((reverseOnly[static_cast<size_t>(i - 1)] < 0.0f) != (reverseOnly[static_cast<size_t>(i)] < 0.0f))
+            ++crossings;
+    }
+    const float measuredHz = static_cast<float>(crossings) * static_cast<float>(hostRate)
+        / (2.0f * static_cast<float>(windowLength));
+    CAPTURE(crossings, measuredHz, reverseDuration, reverseFrames,
+        reverseOnly[1000], reverseOnly[1100], reverseOnly[1200], reverseOnly[1300]);
+    REQUIRE(std::abs(measuredHz - 440.0f) < 20.0f);
+    float clipEnergy = 0.0f;
+    float afterClipEnergy = 0.0f;
+    for (int i = 0; i < 12000; ++i)
+        clipEnergy += std::abs(reverseOnly[static_cast<size_t>(i)]);
+    for (int i = 12000; i < static_cast<int>(reverseOnly.size()); ++i)
+        afterClipEnergy += std::abs(reverseOnly[static_cast<size_t>(i)]);
+    REQUIRE(clipEnergy > 100.0f);
+    REQUIRE(afterClipEnergy < 0.001f);
+}
+
+TEST_CASE("SmackEngine advances Lock-In capture in bounded callback slices", "[core][engine][lock_in][realtime]") {
+    SmackEngine engine;
+    engine.prepare(48000.0);
+    EngineSettings settings;
+    settings.lockIn = true;
+    std::vector<float> left(2048), right(2048);
+    float* channels[2] = { left.data(), right.data() };
+
+    for (int callback = 0; callback < 2000 && !engine.isSmackLocked(); ++callback) {
+        engine.process(settings, Transport{}, {}, channels, 2, static_cast<int>(left.size()));
+        REQUIRE(engine.lastCallbackPreparationSamples() <= SmackEngine::kMaxPreparationSamplesPerCallback);
+    }
+
+    REQUIRE(engine.isSmackLocked());
+}
+
+TEST_CASE("Full ADSR keeps MIDI gating active while a Lock-In bank is loaded", "[core][engine][adsr][lock_in]") {
+    SmackEngine engine;
+    engine.prepare(8000.0);
+    EngineSettings settings;
+    settings.lockIn = true;
+    settings.synth.fullAdsrEnabled = true;
+    settings.synth.ampAttackMs = 0.0f;
+    settings.synth.ampDecayMs = 1.0f;
+    settings.synth.ampSustain = 0.7f;
+    settings.synth.ampReleaseMs = 100.0f;
+    settings.synth.noiseLevel = 0.0f;
+    settings.synth.clickLevel = 0.0f;
+    settings.synth.toneDecayMs = 15.0f;
+    settings.synth.reverbMix = 0.0f;
+    engine.lockCurrentSmack(settings);
+    completeLockCapture(engine, settings);
+    REQUIRE(engine.isSmackLocked());
+
+    const std::array<MidiTrigger, 1> on{{
+        { .sampleOffset = 0, .noteNumber = 60, .velocity = 1.0f, .audition = false, .channel = 1 }
+    }};
+    const std::array<MidiNoteOff, 1> off{{
+        { .sampleOffset = 7000, .noteNumber = 60, .channel = 1 }
+    }};
+    std::vector<float> left(8192), right(8192);
+    float* channels[2] = { left.data(), right.data() };
+    engine.process(settings, Transport{}, on, channels, 2, static_cast<int>(left.size()), {}, {}, {}, off);
+    float heldEnergy = 0.0f;
+    float releaseEnergy = 0.0f;
+    for (int i = 4000; i < 6900; ++i)
+        heldEnergy += std::abs(left[static_cast<size_t>(i)]);
+    for (int i = 7000; i < 8192; ++i)
+        releaseEnergy += std::abs(left[static_cast<size_t>(i)]);
+    REQUIRE(heldEnergy > 1.0f);
+    REQUIRE(releaseEnergy > 0.1f);
 }
 
 TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][engine][lock_in][layers][zones]") {
@@ -306,6 +532,7 @@ TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][e
     settings.synth.reverbMix = 0.0f;
     settings.synth.voiceMode = VoiceMode::FmBell;
     engine.lockCurrentSmack(settings);
+    completeLockCapture(engine, settings);
     REQUIRE(engine.isSmackLocked());
     REQUIRE(&engine.wavCache().left() == &engine.wavCache().voice(VoiceMode::FmBell).left);
 
@@ -358,7 +585,8 @@ TEST_CASE("Prepared Lock-In capture does not allocate in the audio callback", "[
 
     allocationCount = 0;
     countAllocations = true;
-    engine.process(settings, Transport{}, {}, channels, 2, static_cast<int>(left.size()));
+    for (int callback = 0; callback < 2000 && !engine.isSmackLocked(); ++callback)
+        engine.process(settings, Transport{}, {}, channels, 2, static_cast<int>(left.size()));
     countAllocations = false;
 
     REQUIRE(allocationCount == 0);
@@ -381,14 +609,27 @@ TEST_CASE("SmackEngine routes reverse synthesis into its source layer stems", "[
         const std::array<MidiTrigger, 1> trigger{{
             { .sampleOffset = 0, .noteNumber = 69, .velocity = 1.0f, .audition = false }
         }};
-        std::vector<float> left(4096, 0.0f), right(4096, 0.0f);
-        RenderedLayers output{ std::vector<float>(4096), std::vector<float>(4096), std::vector<float>(4096) };
-        std::vector<float> bodyR(4096), wireR(4096), transientR(4096);
+        constexpr int blockSize = 512;
+        constexpr int blocks = 64;
+        std::vector<float> left(blockSize), right(blockSize);
+        RenderedLayers output{ std::vector<float>(blockSize * blocks), std::vector<float>(blockSize * blocks),
+            std::vector<float>(blockSize * blocks) };
+        std::vector<float> bodyR(blockSize), wireR(blockSize), transientR(blockSize);
         float* channels[2] = { left.data(), right.data() };
-        LayerOutputChannels layers{
-            output.body.data(), bodyR.data(), output.wire.data(), wireR.data(), output.transient.data(), transientR.data()
-        };
-        engine.process(settings, Transport{}, trigger, channels, 2, static_cast<int>(left.size()), {}, {}, layers);
+        for (int block = 0; block < blocks; ++block) {
+            std::fill(left.begin(), left.end(), 0.0f);
+            std::fill(right.begin(), right.end(), 0.0f);
+            std::fill(bodyR.begin(), bodyR.end(), 0.0f);
+            std::fill(wireR.begin(), wireR.end(), 0.0f);
+            std::fill(transientR.begin(), transientR.end(), 0.0f);
+            LayerOutputChannels layers{
+                output.body.data() + block * blockSize, bodyR.data(),
+                output.wire.data() + block * blockSize, wireR.data(),
+                output.transient.data() + block * blockSize, transientR.data()
+            };
+            engine.process(settings, Transport{}, block == 0 ? std::span<const MidiTrigger>(trigger) : std::span<const MidiTrigger>{},
+                channels, 2, blockSize, {}, {}, layers);
+        }
         return output;
     };
 
