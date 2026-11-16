@@ -25,6 +25,9 @@ inline constexpr const char* kTonePitchEnv = "tone_pitch_env";
 inline constexpr const char* kTonePitchDecay = "tone_pitch_decay";
 inline constexpr const char* kFmAmount = "fm_amount";
 inline constexpr const char* kToneLevel = "tone_level";
+inline constexpr const char* kBodyHPF = "body_hpf";
+inline constexpr const char* kBodyLPF = "body_lpf";
+inline constexpr const char* kBodyPan = "body_pan";
 inline constexpr const char* kAmpAttack = "amp_attack";
 inline constexpr const char* kAmpEnabled = "amp_enabled";
 inline constexpr const char* kAmpDecay = "amp_decay";
@@ -41,11 +44,16 @@ inline constexpr const char* kNoiseHPF = "noise_hpf";
 inline constexpr const char* kNoiseLPF = "noise_lpf";
 inline constexpr const char* kNoiseStereoWidth = "noise_stereo_width";
 inline constexpr const char* kNoiseLevel = "noise_level";
+inline constexpr const char* kWireTension = "wire_tension";
+inline constexpr const char* kWirePan = "wire_pan";
 
 // Stick / Mallet / Rim Transient
 inline constexpr const char* kClickType = "click_type";
 inline constexpr const char* kClickLevel = "click_level";
 inline constexpr const char* kClickFreq = "click_freq";
+inline constexpr const char* kTransientHPF = "transient_hpf";
+inline constexpr const char* kTransientLPF = "transient_lpf";
+inline constexpr const char* kTransientPan = "transient_pan";
 
 // Impact Distortion
 inline constexpr const char* kDistType = "dist_type";

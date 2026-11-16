@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
 #include <cmath>
+#include <utility>
 
 TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]") {
     OpenSmackerProcessor processor;
@@ -34,6 +35,46 @@ TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]")
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kRollEnabled) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kRollProbability) != nullptr);
     REQUIRE(processor.parameters.getParameter(opensmacker::params::kMidiCcTransient) != nullptr);
+    for (const auto* id : { opensmacker::params::kBodyHPF, opensmacker::params::kBodyLPF,
+                            opensmacker::params::kBodyPan, opensmacker::params::kWireTension,
+                            opensmacker::params::kWirePan, opensmacker::params::kTransientHPF,
+                            opensmacker::params::kTransientLPF, opensmacker::params::kTransientPan }) {
+        auto* parameter = processor.parameters.getParameter(id);
+        REQUIRE(parameter != nullptr);
+        CHECK(parameter->isAutomatable());
+    }
+}
+
+TEST_CASE("OpenSmacker layer controls map to engine settings and survive state restore", "[plugin][parameters][state]") {
+    OpenSmackerProcessor source;
+    const std::array<std::pair<const char*, float>, 8> values {{
+        { opensmacker::params::kBodyHPF, 420.0f },
+        { opensmacker::params::kBodyLPF, 6700.0f },
+        { opensmacker::params::kBodyPan, -0.6f },
+        { opensmacker::params::kWireTension, 0.9f },
+        { opensmacker::params::kWirePan, 0.35f },
+        { opensmacker::params::kTransientHPF, 1500.0f },
+        { opensmacker::params::kTransientLPF, 9800.0f },
+        { opensmacker::params::kTransientPan, 0.75f }
+    }};
+    for (const auto& [id, value] : values) {
+        auto* parameter = source.parameters.getParameter(id);
+        REQUIRE(parameter != nullptr);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    }
+
+    const auto settings = opensmacker::params::readSettings(source.parameters);
+    CHECK(std::abs(settings.synth.bodyHPF - 420.0f) < 1.1f);
+    CHECK(std::abs(settings.synth.bodyPan + 0.6f) < 0.011f);
+    CHECK(std::abs(settings.synth.wireTension - 0.9f) < 0.011f);
+    CHECK(std::abs(settings.synth.transientLPF - 9800.0f) < 1.1f);
+
+    juce::MemoryBlock state;
+    source.getStateInformation(state);
+    OpenSmackerProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    for (const auto& [id, value] : values)
+        CHECK(std::abs(restored.parameters.getRawParameterValue(id)->load() - value) < 1.1f);
 }
 
 TEST_CASE("OpenSmackerProcessor provides 72 factory presets organized into 24 SN, 24 BL, and 24 TM", "[plugin]") {
@@ -161,7 +202,12 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     REQUIRE(editor->getWidth() == 1100);
     REQUIRE(editor->getHeight() == 972);
 
-    juce::File assetsDir = juce::File::getCurrentWorkingDirectory().getChildFile("assets");
+    juce::File assetsDir;
+#if defined(OPENSMACKER_SOURCE_DIR)
+    assetsDir = juce::File(OPENSMACKER_SOURCE_DIR).getChildFile("assets");
+#endif
+    if (!assetsDir.exists())
+        assetsDir = juce::File::getCurrentWorkingDirectory().getChildFile("assets");
     if (!assetsDir.exists()) {
         assetsDir = juce::File::getCurrentWorkingDirectory().getParentDirectory().getChildFile("assets");
     }

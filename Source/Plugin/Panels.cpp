@@ -300,21 +300,25 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
       preStrikeCard_(processor, "PRE-STRIKE FLAMS", presets::Section::PreStrike, theme::kAccentCyan),
       wiresCard_(processor, "WIRES, SIZZLE & AIR", presets::Section::WiresAir, theme::kAccentViolet) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 17> voice{
+    const std::array<std::pair<const char*, const char*>, 20> voice{
         std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" }, { kToneFine, "Fine ct" },
         { kToneFreq, "Shell Hz" }, { kToneQ, "Shell Q" }, { kToneDecay, "Body Decay" }, { kTonePitchEnv, "Pitch Env" },
-        { kTonePitchDecay, "Pitch Time" }, { kFmAmount, "FM / Ring" }, { kToneLevel, "Body Level" }, { kLockPitch, "Lock Pitch" },
+        { kTonePitchDecay, "Pitch Time" }, { kFmAmount, "FM / Ring" }, { kToneLevel, "Body Level" },
+        { kBodyHPF, "Body HPF" }, { kBodyLPF, "Body LPF" }, { kBodyPan, "Body Pan" }, { kLockPitch, "Lock Pitch" },
         { kAmpEnabled, "Full ADSR" }, { kAmpAttack, "Amp Attack" }, { kAmpDecay, "Amp Decay" },
         { kAmpSustain, "Amp Sustain" }, { kAmpRelease, "Amp Release" }
     };
     for (const auto& [id, title] : voice)
         voiceCard_.addParameter(id, title);
-    voiceCard_.setRows({ 4, 4, 4, 4, 1 });
+    voiceCard_.setRows({ 4, 4, 4, 4, 4 });
 
     transientCard_.addParameter(kClickType, "Strike Type");
     transientCard_.addParameter(kClickLevel, "Strike Level");
     transientCard_.addParameter(kClickFreq, "Strike Freq");
-    transientCard_.setRows({ 3 });
+    transientCard_.addParameter(kTransientHPF, "Transient HPF");
+    transientCard_.addParameter(kTransientLPF, "Transient LPF");
+    transientCard_.addParameter(kTransientPan, "Transient Pan");
+    transientCard_.setRows({ 3, 3 });
 
     const std::array<std::pair<const char*, const char*>, 6> pre{
         std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spread ms" }, { kPreDecay, "Decay ms" },
@@ -324,14 +328,15 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         preStrikeCard_.addParameter(id, title);
     preStrikeCard_.setRows({ 6 });
 
-    const std::array<std::pair<const char*, const char*>, 9> air{
+    const std::array<std::pair<const char*, const char*>, 11> air{
         std::pair{ kNoiseType, "Layer" }, { kNoiseAttack, "Attack ms" }, { kNoiseHold, "Hold ms" },
         { kNoiseDecay, "Decay ms" }, { kNoiseCurve, "Curve" }, { kNoiseHPF, "HPF" },
-        { kNoiseLPF, "LPF" }, { kNoiseStereoWidth, "Width" }, { kNoiseLevel, "Level" }
+        { kNoiseLPF, "LPF" }, { kNoiseStereoWidth, "Width" }, { kNoiseLevel, "Level" },
+        { kWireTension, "Wire Tension" }, { kWirePan, "Wire Pan" }
     };
     for (const auto& [id, title] : air)
         wiresCard_.addParameter(id, title);
-    wiresCard_.setRows({ 5, 4 });
+    wiresCard_.setRows({ 4, 4, 3 });
 
     addAndMakeVisible(voiceCard_);
     addAndMakeVisible(transientCard_);

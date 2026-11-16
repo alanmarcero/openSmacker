@@ -38,6 +38,105 @@ TEST_CASE("SmackSynth produces valid audio block without NaNs", "[core][synth]")
     REQUIRE(maxPeak > 0.05f);
 }
 
+TEST_CASE("SmackSynth body and transient filters affect only their own layers", "[core][synth][filters]") {
+    const auto renderEnergy = [](bool transient, float highpass, float lowpass) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.voiceMode = VoiceMode::ClubTom;
+        settings.toneFreqHz = 180.0f;
+        settings.toneLevel = transient ? 0.0f : 1.0f;
+        settings.noiseLevel = 0.0f;
+        settings.clickLevel = transient ? 1.0f : 0.0f;
+        settings.clickFreqHz = 8500.0f;
+        settings.reverbMix = 0.0f;
+        if (transient) {
+            settings.transientHPF = highpass;
+            settings.transientLPF = lowpass;
+        } else {
+            settings.bodyHPF = highpass;
+            settings.bodyLPF = lowpass;
+        }
+        std::vector<float> left, right;
+        std::array<StereoLayerBuffer, 3> layers;
+        synth.renderBlock(left, right, settings, 1.0f, 0, &layers);
+        const auto& layer = layers[transient ? 2U : 0U];
+        float energy = 0.0f;
+        for (size_t i = 0; i < layer.left.size(); ++i)
+            energy += layer.left[i] * layer.left[i] + layer.right[i] * layer.right[i];
+        return energy;
+    };
+
+    const float bodyOpen = renderEnergy(false, 20.0f, 20000.0f);
+    CHECK(renderEnergy(false, 1800.0f, 20000.0f) < bodyOpen * 0.65f);
+    CHECK(renderEnergy(false, 20.0f, 120.0f) < bodyOpen * 0.65f);
+
+    const float transientOpen = renderEnergy(true, 20.0f, 20000.0f);
+    CHECK(renderEnergy(true, 7500.0f, 20000.0f) < transientOpen * 0.75f);
+    CHECK(renderEnergy(true, 20.0f, 1400.0f) < transientOpen * 0.75f);
+}
+
+TEST_CASE("SmackSynth body, wire, and transient pan controls place each layer", "[core][synth][pan]") {
+    const auto renderPan = [](int layerIndex, float pan) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.voiceMode = VoiceMode::ClubTom;
+        settings.toneLevel = layerIndex == 0 ? 1.0f : 0.0f;
+        settings.noiseLevel = layerIndex == 1 ? 1.0f : 0.0f;
+        settings.clickLevel = layerIndex == 2 ? 1.0f : 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.bodyPan = layerIndex == 0 ? pan : 0.0f;
+        settings.wirePan = layerIndex == 1 ? pan : 0.0f;
+        settings.transientPan = layerIndex == 2 ? pan : 0.0f;
+        std::vector<float> left, right;
+        std::array<StereoLayerBuffer, 3> layers;
+        synth.renderBlock(left, right, settings, 1.0f, 0, &layers);
+        float leftEnergy = 0.0f, rightEnergy = 0.0f;
+        for (size_t i = 0; i < layers[static_cast<size_t>(layerIndex)].left.size(); ++i) {
+            const auto& layer = layers[static_cast<size_t>(layerIndex)];
+            leftEnergy += layer.left[i] * layer.left[i];
+            rightEnergy += layer.right[i] * layer.right[i];
+        }
+        return std::pair{leftEnergy, rightEnergy};
+    };
+
+    for (int layer = 0; layer < 3; ++layer) {
+        const auto left = renderPan(layer, -1.0f);
+        const auto right = renderPan(layer, 1.0f);
+        CHECK(left.first > left.second * 100.0f);
+        CHECK(right.second > right.first * 100.0f);
+    }
+}
+
+TEST_CASE("SmackSynth wire tension changes snare-wire texture", "[core][synth][wires]") {
+    const auto render = [](float tension) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.toneLevel = 0.0f;
+        settings.clickLevel = 0.0f;
+        settings.noiseType = NoiseType::SnareWires;
+        settings.noiseLevel = 1.0f;
+        settings.noiseDecayMs = 120.0f;
+        settings.noiseHPF = 20.0f;
+        settings.noiseLPF = 20000.0f;
+        settings.reverbMix = 0.0f;
+        settings.wireTension = tension;
+        std::vector<float> left, right;
+        std::array<StereoLayerBuffer, 3> layers;
+        synth.renderBlock(left, right, settings, 1.0f, 0, &layers);
+        return layers[1].left;
+    };
+
+    const auto loose = render(0.0f);
+    const auto tight = render(1.0f);
+    float difference = 0.0f;
+    for (size_t i = 0; i < std::min(loose.size(), tight.size()); ++i)
+        difference += std::abs(loose[i] - tight[i]);
+    REQUIRE(difference > 1.0f);
+}
+
 TEST_CASE("SmackSynth finishes and stops playing after duration", "[core][synth]") {
     SmackSynth synth;
     synth.prepare(48000.0);

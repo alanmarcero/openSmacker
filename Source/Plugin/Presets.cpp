@@ -25,6 +25,9 @@ struct PresetDef {
     float tonePitchDecay = 0.0f;
     float fmAmount = 0.0f;
     float toneLevel = 0.0f;
+    float bodyHPF = 20.0f;
+    float bodyLPF = 20000.0f;
+    float bodyPan = 0.0f;
     float ampAttack = 0.0f;
     float ampDecay = 0.0f;
     float ampSustain = 0.0f;
@@ -38,9 +41,14 @@ struct PresetDef {
     float noiseLPF = 0.0f;
     float noiseStereoWidth = 0.0f;
     float noiseLevel = 0.0f;
+    float wireTension = 0.55f;
+    float wirePan = 0.0f;
     float clickType = 0.0f;
     float clickLevel = 0.0f;
     float clickFreq = 0.0f;
+    float transientHPF = 20.0f;
+    float transientLPF = 20000.0f;
+    float transientPan = 0.0f;
     float distType = 0.0f;
     float distDrive = 0.0f;
     float distTone = 0.0f;
@@ -4483,6 +4491,9 @@ FactoryPreset toFactoryPreset(const PresetDef& p) {
         { kTonePitchDecay, p.tonePitchDecay },
         { kFmAmount, p.fmAmount },
         { kToneLevel, p.toneLevel },
+        { kBodyHPF, p.bodyHPF },
+        { kBodyLPF, p.bodyLPF },
+        { kBodyPan, p.bodyPan },
         { kAmpAttack, p.ampAttack },
         { kAmpDecay, p.ampDecay },
         { kAmpSustain, p.ampSustain },
@@ -4496,9 +4507,14 @@ FactoryPreset toFactoryPreset(const PresetDef& p) {
         { kNoiseLPF, p.noiseLPF },
         { kNoiseStereoWidth, p.noiseStereoWidth },
         { kNoiseLevel, p.noiseLevel },
+        { kWireTension, p.wireTension },
+        { kWirePan, p.wirePan },
         { kClickType, p.clickType },
         { kClickLevel, p.clickLevel },
         { kClickFreq, p.clickFreq },
+        { kTransientHPF, p.transientHPF },
+        { kTransientLPF, p.transientLPF },
+        { kTransientPan, p.transientPan },
         { kDistType, p.distType },
         { kDistDrive, p.distDrive },
         { kDistTone, p.distTone },
@@ -4545,9 +4561,12 @@ Section sectionFor(const juce::String& id) {
     if (id == kPreBursts || id == kPreSpread || id == kPreDecay || id == kPreJitter || id == kFlamSpread || id == kPreLevel)
         return Section::PreStrike;
     if (id == kNoiseType || id == kNoiseAttack || id == kNoiseHold || id == kNoiseDecay || id == kNoiseCurve
-        || id == kNoiseHPF || id == kNoiseLPF || id == kNoiseStereoWidth || id == kNoiseLevel)
+        || id == kNoiseHPF || id == kNoiseLPF || id == kNoiseStereoWidth || id == kNoiseLevel
+        || id == kWireTension || id == kWirePan)
         return Section::WiresAir;
     if (id == kClickType || id == kClickLevel || id == kClickFreq)
+        return Section::Transient;
+    if (id == kTransientHPF || id == kTransientLPF || id == kTransientPan)
         return Section::Transient;
     if (id == kDistType || id == kDistDrive || id == kDistTone || id == kDistMix || id == kCompThresh || id == kCompRatio
         || id == kCompAttack || id == kCompRelease || id == kCompMakeup || id == kCompMix || id == kLimiterCeiling
