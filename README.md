@@ -1,4 +1,4 @@
-# openSmacker v2.2.0
+# openSmacker v2.2.1
 
 <p align="center">
   <strong>Trance percussion, tuned for impact.</strong><br>

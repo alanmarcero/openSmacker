@@ -187,6 +187,7 @@ TEST_CASE("Section locks preserve preset values and restore with the session", "
 }
 
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
+    juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;
     processor.prepareToPlay(48000.0, 512);
     processor.setCurrentProgram(1);
