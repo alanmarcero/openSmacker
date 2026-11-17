@@ -7,6 +7,20 @@
 #include <cmath>
 #include <utility>
 
+namespace {
+void checkVisibleButtonTargets(juce::Component& component) {
+    for (auto* child : component.getChildren()) {
+        if (!child->isVisible()) continue;
+        if (auto* button = dynamic_cast<juce::TextButton*>(child)) {
+            INFO(button->getButtonText());
+            CHECK(button->getHeight() >= 36);
+            CHECK(button->getLookAndFeel().getTextButtonFont(*button, button->getHeight()).getHeight() >= 14.0f);
+        }
+        checkVisibleButtonTargets(*child);
+    }
+}
+}
+
 TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]") {
     OpenSmackerProcessor processor;
     REQUIRE(processor.getName() == "openSmacker");
@@ -200,8 +214,8 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
 
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
-    REQUIRE(editor->getWidth() == 1100);
-    REQUIRE(editor->getHeight() == 972);
+    REQUIRE(editor->getWidth() == 1440);
+    REQUIRE(editor->getHeight() == 1000);
 
     juce::File assetsDir;
 #if defined(OPENSMACKER_SOURCE_DIR)
@@ -220,10 +234,11 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
         editor->setPage(page);
         for (int mode = 0; mode < 2; ++mode) {
             editor->setAdvancedView(mode == 1);
+            checkVisibleButtonTargets(*editor);
             const auto snapshot = editor->createComponentSnapshot(editor->getLocalBounds());
             REQUIRE(snapshot.isValid());
-            REQUIRE(snapshot.getWidth() == 1100);
-            REQUIRE(snapshot.getHeight() == 972);
+            REQUIRE(snapshot.getWidth() == 1440);
+            REQUIRE(snapshot.getHeight() == 1000);
             const juce::String suffix = mode == 0 ? "" : "-advanced";
             const juce::File screenshot = assetsDir.getChildFile(
                 "openSmacker-" + juce::String(pageNames[static_cast<size_t>(page)]) + suffix + ".png");

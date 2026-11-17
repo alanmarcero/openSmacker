@@ -26,6 +26,7 @@ SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor)
 
     auditionBtn_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
     auditionBtn_.setColour(juce::TextButton::textColourOffId, theme::kAccentNeonGreen);
+    auditionBtn_.setTooltip("Play a short preview hit using the current sound settings.");
     auditionBtn_.onClick = [this]() {
         processor_.triggerAudition();
     };
@@ -50,7 +51,7 @@ void SmackerStagePanel::timerCallback() {
 
 void SmackerStagePanel::resized() {
     auto area = getLocalBounds().reduced(12, 10);
-    auditionBtn_.setBounds(area.removeFromBottom(24).reduced(area.getWidth() / 4, 0));
+    auditionBtn_.setBounds(area.removeFromBottom(40).reduced(area.getWidth() / 4, 0));
 }
 
 void SmackerStagePanel::paint(juce::Graphics& g) {
@@ -260,16 +261,16 @@ void ParameterCard::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(bounds.reduced(0.5f), 8.0f);
     g.setColour(theme::kPanelEdge);
     g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
-    auto heading = getLocalBounds().removeFromTop(30).reduced(12, 2);
+    auto heading = getLocalBounds().removeFromTop(44).reduced(12, 2);
     g.setColour(accent_);
     g.fillRoundedRectangle(juce::Rectangle<float>(static_cast<float>(heading.getX()), static_cast<float>(heading.getY()) + 2.0f, 3.0f,
         static_cast<float>(heading.getHeight() - 4)), 1.5f);
     g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
-    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 94 : 8), juce::Justification::centredLeft, true);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 164 : 8), juce::Justification::centredLeft, true);
     const bool locked = processor_.isSectionLocked(section_);
     if (lockable_) {
-        lockButton_.setButtonText(locked ? "HELD" : "LOCK");
+        lockButton_.setButtonText(locked ? "SECTION HELD" : "LOCK SECTION");
         lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_.withAlpha(0.22f) : theme::kKnobBody);
         lockButton_.setColour(juce::TextButton::textColourOffId, locked ? accent_ : theme::kTextDim);
     }
@@ -277,8 +278,8 @@ void ParameterCard::paint(juce::Graphics& g) {
 
 void ParameterCard::resized() {
     auto area = getLocalBounds();
-    auto header = area.removeFromTop(30).reduced(10, 3);
-    lockButton_.setBounds(lockable_ ? header.removeFromRight(70) : juce::Rectangle<int>{});
+    auto header = area.removeFromTop(44).reduced(8, 4);
+    lockButton_.setBounds(lockable_ ? header.removeFromRight(148) : juce::Rectangle<int>{});
     area = area.reduced(8, 8);
     const int gap = 4;
     int y = area.getY();

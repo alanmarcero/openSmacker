@@ -14,15 +14,15 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     juce::LookAndFeel::setDefaultLookAndFeel(&lookAndFeel_);
 
     const auto& presets = opensmacker::presets::factoryPresets();
-    presetBox_.addSectionHeading("SN — TRANCE SNARES (24)");
+    presetBox_.addSectionHeading("TRANCE SNARES (24)");
     for (int i = 0; i < 24; ++i)
         presetBox_.addItem(presets[static_cast<size_t>(i)].name, i + 1);
     presetBox_.addSeparator();
-    presetBox_.addSectionHeading("BL — BELLS & CHIMES (24)");
+    presetBox_.addSectionHeading("BELLS & CHIMES (24)");
     for (int i = 24; i < 48; ++i)
         presetBox_.addItem(presets[static_cast<size_t>(i)].name, i + 1);
     presetBox_.addSeparator();
-    presetBox_.addSectionHeading("TM — TRANCE TOMS (24)");
+    presetBox_.addSectionHeading("TRANCE TOMS (24)");
     for (int i = 48; i < 72; ++i)
         presetBox_.addItem(presets[static_cast<size_t>(i)].name, i + 1);
     presetBox_.onChange = [this] {
@@ -44,8 +44,8 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     bellCatBtn_.setTooltip("Jump to the 24 new bells and chimes.");
     tomCatBtn_.setTooltip("Jump to the 24 new trance toms.");
 
-    prevPresetBtn_.setTooltip("Previous preset");
-    nextPresetBtn_.setTooltip("Next preset");
+    prevPresetBtn_.setTooltip("Select the previous factory preset.");
+    nextPresetBtn_.setTooltip("Select the next factory preset.");
     prevPresetBtn_.onClick = [this] {
         processor_.setCurrentProgram((processor_.getCurrentProgram() + 71) % 72);
         syncPresetBox();
@@ -73,7 +73,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     addAndMakeVisible(performancePanel_);
 
     setAdvancedView(false);
-    setSize(1100, 972);
+    setSize(1440, 1000);
     setResizable(false, false);
     setPage(0);
     syncPresetBox();
@@ -98,7 +98,7 @@ void OpenSmackerEditor::setAdvancedView(bool advanced) {
     synthPanel_.setAdvancedMode(advanced);
     effectsPanel_.setAdvancedMode(advanced);
     performancePanel_.setAdvancedMode(advanced);
-    viewToggleBtn_.setButtonText(advanced ? "ADVANCED" : "SIMPLE");
+    viewToggleBtn_.setButtonText(advanced ? "ADVANCED VIEW" : "SIMPLE VIEW");
     viewToggleBtn_.setColour(juce::TextButton::textColourOffId,
         advanced ? opensmacker::theme::kAccentAmber : opensmacker::theme::kAccentCyan);
     repaint();
@@ -148,12 +148,12 @@ void OpenSmackerEditor::timerCallback() {
 
 void OpenSmackerEditor::paint(juce::Graphics& g) {
     g.fillAll(opensmacker::theme::kBackground);
-    auto header = getLocalBounds().removeFromTop(120);
+    auto header = getLocalBounds().removeFromTop(152);
     g.setGradientFill(juce::ColourGradient(opensmacker::theme::kSteel, 0.0f, 0.0f,
-        opensmacker::theme::kInk, 0.0f, 120.0f, false));
+        opensmacker::theme::kInk, 0.0f, 152.0f, false));
     g.fillRect(header);
     g.setColour(opensmacker::theme::kPanelEdge);
-    g.drawHorizontalLine(119, 0.0f, static_cast<float>(getWidth()));
+    g.drawHorizontalLine(151, 0.0f, static_cast<float>(getWidth()));
     g.setColour(opensmacker::theme::kSignalCyan);
     g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
     g.drawText("openSmacker", 16, 8, 190, 30, juce::Justification::centredLeft, true);
@@ -161,37 +161,36 @@ void OpenSmackerEditor::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     g.drawText("TRANCE PERCUSSION SYNTH  /  v" JucePlugin_VersionString, 18, 39, 340, 16, juce::Justification::centredLeft, true);
     g.setColour(opensmacker::theme::kAccentAmber);
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawText("72 NEW PROGRAMS  |  SN 24  /  BL 24  /  TM 24", getWidth() - 340, 18, 324, 18,
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.drawText("72 FACTORY PROGRAMS  |  24 SNARES  /  24 BELLS  /  24 TOMS", getWidth() - 760, 16, 744, 22,
         juce::Justification::centredRight, true);
-    g.setColour(opensmacker::theme::kTextDim);
-    g.setFont(juce::FontOptions(10.5f));
-    const auto mode = synthPanel_.isAdvancedMode() ? "ADVANCED VIEW  |  numeric readouts" : "SIMPLE VIEW  |  no numeric readouts";
-    g.drawText(mode, getWidth() - 340, 43, 324, 16, juce::Justification::centredRight, true);
 }
 
 void OpenSmackerEditor::resized() {
     const int margin = 14;
+    constexpr int gap = 8;
+    constexpr int buttonHeight = 40;
     int x = margin;
-    const int y = 52;
-    const int h = 27;
-    const int categoryW = 42;
-    snareCatBtn_.setBounds(x, y, categoryW, h); x += categoryW + 4;
-    bellCatBtn_.setBounds(x, y, categoryW, h); x += categoryW + 4;
-    tomCatBtn_.setBounds(x, y, categoryW, h); x += categoryW + 10;
-    prevPresetBtn_.setBounds(x, y, 26, h); x += 30;
-    presetBox_.setBounds(x, y, 390, h); x += 394;
-    nextPresetBtn_.setBounds(x, y, 26, h); x += 36;
-    viewToggleBtn_.setBounds(x, y, 96, h); x += 110;
-    hitPageBtn_.setBounds(x, y, 64, h); x += 68;
-    layersPageBtn_.setBounds(x, y, 78, h); x += 82;
-    fxPageBtn_.setBounds(x, y, 58, h);
-    x += 62;
-    midiPageBtn_.setBounds(x, y, 64, h);
+    const int presetRowY = 50;
+    snareCatBtn_.setBounds(x, presetRowY, 116, buttonHeight); x += 116 + gap;
+    bellCatBtn_.setBounds(x, presetRowY, 164, buttonHeight); x += 164 + gap;
+    tomCatBtn_.setBounds(x, presetRowY, 100, buttonHeight); x += 100 + 14;
+    prevPresetBtn_.setBounds(x, presetRowY, 140, buttonHeight); x += 140 + gap;
+    presetBox_.setBounds(x, presetRowY, 470, buttonHeight); x += 470 + gap;
+    nextPresetBtn_.setBounds(x, presetRowY, 140, buttonHeight);
 
-    auto content = getLocalBounds().withTrimmedTop(128).reduced(margin, 8);
+    const int pageRowWidth = 190 + 4 * 128 + 4 * gap;
+    x = (getWidth() - pageRowWidth) / 2;
+    const int pageRowY = 100;
+    viewToggleBtn_.setBounds(x, pageRowY, 190, buttonHeight); x += 190 + gap;
+    hitPageBtn_.setBounds(x, pageRowY, 128, buttonHeight); x += 128 + gap;
+    layersPageBtn_.setBounds(x, pageRowY, 128, buttonHeight); x += 128 + gap;
+    fxPageBtn_.setBounds(x, pageRowY, 128, buttonHeight); x += 128 + gap;
+    midiPageBtn_.setBounds(x, pageRowY, 128, buttonHeight);
+
+    auto content = getLocalBounds().withTrimmedTop(160).reduced(margin, 8);
     if (currentPage_ == 0) {
-        const int stageWidth = 330;
+        const int stageWidth = 360;
         stagePanel_.setBounds(content.removeFromLeft(stageWidth).reduced(0, 0));
         content.removeFromLeft(10);
         synthPanel_.setBounds(content);
