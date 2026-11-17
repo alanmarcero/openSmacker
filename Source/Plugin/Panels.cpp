@@ -1,201 +1,86 @@
 #include "Panels.h"
-#include "BinaryData.h"
 #include "Parameters.h"
 #include "PluginProcessor.h"
 #include "Theme.h"
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 namespace opensmacker::ui {
 
-namespace {
-
-constexpr int kRefreshHz = 60;
-
-} // namespace
-
-// ============================================================================
-// SmackerStagePanel
-// ============================================================================
-
-SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor)
-    : processor_(processor) {
-    stageArtwork_ = juce::ImageCache::getFromMemory(
-        BinaryData::opensmackerstage_png, BinaryData::opensmackerstage_pngSize);
-
-    auditionBtn_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
-    auditionBtn_.setColour(juce::TextButton::textColourOffId, theme::kAccentNeonGreen);
-    auditionBtn_.setTooltip("Play a short preview hit using the current sound settings.");
-    auditionBtn_.onClick = [this]() {
-        processor_.triggerAudition();
-    };
-    addAndMakeVisible(auditionBtn_);
-
-    startTimerHz(kRefreshHz);
-}
-
-SmackerStagePanel::~SmackerStagePanel() {
-    stopTimer();
+SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor) : processor_(processor) {
+    startTimerHz(12);
 }
 
 void SmackerStagePanel::timerCallback() {
-    const uint32_t serial = processor_.displayTriggerCount.load(std::memory_order_relaxed);
-    if (serial != seenTriggers_) {
-        seenTriggers_ = serial;
-        smackTriggerTimeMs_ = juce::Time::getMillisecondCounterHiRes();
-        impactIntensity_ = std::clamp(processor_.displayVelocity.load(std::memory_order_relaxed), 0.35f, 1.0f);
-    }
-    repaint();
+    if (isShowing()) repaint();
 }
 
-void SmackerStagePanel::resized() {
-    auto area = getLocalBounds().reduced(12, 10);
-    auditionBtn_.setBounds(area.removeFromBottom(40).reduced(area.getWidth() / 4, 0));
+void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings) {
+    if (lastSettings_ && *lastSettings_ == settings) return;
+    lastSettings_ = settings;
+    auto dry = settings;
+    dry.fullAdsrEnabled = false;
+    dry.reverbMix = 0;
+    core::SmackSynth synth;
+    constexpr int rate = 24000;
+    synth.prepare(rate);
+    std::vector<float> left, right;
+    const int samples = synth.renderPrefix(left, right, dry, rate / 2);
+    previewMs_ = juce::roundToInt(1000.0 * samples / rate);
+    waveform_.fill(0);
+    for (size_t i = 0; i < left.size(); ++i) {
+        auto& peak = waveform_[i * waveform_.size() / left.size()];
+        peak = std::max({ peak, std::abs(left[i]), std::abs(right[i]) });
+    }
 }
 
 void SmackerStagePanel::paint(juce::Graphics& g) {
-    drawPanel(g, getLocalBounds(), "Smack Visualizer Stage", theme::kAccentMagenta);
-
-    auto stage = getLocalBounds().reduced(8, 28).withTrimmedBottom(28).toFloat();
-    const juce::Graphics::ScopedSaveState saved(g);
-    g.reduceClipRegion(stage.toNearestInt());
-
-    g.setGradientFill(juce::ColourGradient(
-        theme::kSteel, stage.getTopLeft(),
-        theme::kInk, stage.getBottomRight(), false));
-    g.fillRoundedRectangle(stage, 8.0f);
-
-    const float peak = std::clamp(processor_.displayPeak.load(), 0.0f, 1.0f);
-    const float beatPhase = std::clamp(processor_.displayBeatPhase.load(), 0.0f, 1.0f);
-    const float pulse = std::max(peak, 0.35f * std::pow(1.0f - beatPhase, 3.0f));
-    const bool locked = processor_.isSmackLockedIn();
-
-    const double smackAgeMs = juce::Time::getMillisecondCounterHiRes() - smackTriggerTimeMs_;
-    constexpr double kAnimDurationMs = 520.0;
-    const float smackPhase = (smackAgeMs < 0.0 || smackAgeMs > kAnimDurationMs)
-        ? 1.0f
-        : static_cast<float>(smackAgeMs / kAnimDurationMs);
-    const bool isTriggerActive = (smackPhase < 1.0f);
-
-    if (smackPhase < 0.14f) {
-        const float flutter = std::sin(smackPhase * 48.0f * std::numbers::pi_v<float>);
-        smackPose_ = -(1.0f - smackPhase / 0.14f) * 0.9f + flutter * 0.25f;
-        shockwave_ = 0.0f;
-        impactFlash_ = 0.0f;
-    } else if (smackPhase < 0.28f) {
-        const float strike = (smackPhase - 0.14f) / 0.14f;
-        smackPose_ = -std::sin(strike * std::numbers::pi_v<float>) * 1.0f;
-        shockwave_ = (1.0f - strike) * impactIntensity_;
-        impactFlash_ = std::pow(1.0f - strike, 1.4f) * impactIntensity_;
-    } else if (smackPhase < 1.0f) {
-        const float recoil = (smackPhase - 0.28f) / 0.72f;
-        const float decay = std::exp(-recoil * 3.8f);
-        smackPose_ = std::sin(recoil * std::numbers::pi_v<float> * 3.0f) * decay * 0.85f;
-        shockwave_ = std::max(0.0f, (1.0f - recoil * 2.2f) * impactIntensity_);
-        impactFlash_ = std::max(0.0f, impactFlash_ * 0.92f);
-    } else {
-        smackPose_ = 0.0f;
-        shockwave_ = 0.0f;
-        impactFlash_ = 0.0f;
-        idleBob_ = std::sin(beatPhase * 2.0f * std::numbers::pi_v<float>) * 2.0f;
-    }
-
-    const bool isSmackOn = (smackPhase < 0.75f && isTriggerActive);
-
-    // Draw embedded holographic stage artwork with beat-reactive zoom
-    if (stageArtwork_.isValid()) {
-        const juce::Graphics::ScopedSaveState imgState(g);
-        g.setOpacity(0.82f + impactFlash_ * 0.18f);
-        const float zoom = 1.0f + pulse * 0.035f + impactFlash_ * 0.045f;
-        const auto artBounds = stage.withSizeKeepingCentre(stage.getWidth() * zoom, stage.getHeight() * zoom);
-        g.drawImage(stageArtwork_, artBounds, juce::RectanglePlacement::fillDestination);
-    }
-
-    // Read current voice mode and tuning for stage telemetry
-    const int voiceIdx = static_cast<int>(*processor_.parameters.getRawParameterValue(opensmacker::params::kVoiceMode));
-    const int noteIdx = static_cast<int>(*processor_.parameters.getRawParameterValue(opensmacker::params::kToneNote));
-    const int octave = static_cast<int>(*processor_.parameters.getRawParameterValue(opensmacker::params::kToneOctave));
-    const float fineCents = *processor_.parameters.getRawParameterValue(opensmacker::params::kToneFine);
-    const float tunedHz = opensmacker::core::noteToHz(noteIdx, octave, fineCents);
-
-    const std::array<const char*, 4> modeNames = {
-        "DANCE SNARE", "CLUB TOM-TOM", "FM BELL / CHIME", "PRYDA RIM SMACK"
-    };
-    const std::array<juce::Colour, 4> modeColours = {
-        theme::kAccentMagenta, theme::kAccentAmber, theme::kAccentCyan, theme::kAccentNeonGreen
-    };
-    const auto activeCol = modeColours[static_cast<size_t>( std::clamp(voiceIdx, 0, 3) )];
-
-    // Acoustic bass & harmonic ring overlay
-    const juce::Point<float> coneCentre{ stage.getCentreX(), stage.getCentreY() + 6.0f + idleBob_ * 0.5f };
-    const float baseRadius = std::min(stage.getWidth(), stage.getHeight()) * 0.34f;
-    const float pumpExtra = (pulse * 12.0f) + (impactFlash_ * 14.0f);
-
-    if (pulse > 0.10f || impactFlash_ > 0.05f) {
-        for (int r = 1; r <= 3; ++r) {
-            const float rippleR = baseRadius * (0.42f + 0.22f * static_cast<float>(r)) + pumpExtra * 0.45f;
-            g.setColour(activeCol.withAlpha((0.40f - static_cast<float>(r) * 0.09f) * (pulse + impactFlash_)));
-            g.drawEllipse(coneCentre.x - rippleR, coneCentre.y - rippleR, rippleR * 2.0f, rippleR * 2.0f, 1.6f);
-        }
-    }
-
-    // Shockwave flare on trigger
-    if (shockwave_ > 0.01f) {
-        const float flareRadius = 26.0f + (1.0f - shockwave_) * 44.0f;
-        g.setGradientFill(juce::ColourGradient(
-            juce::Colour(0xffffffff).withAlpha(shockwave_ * 0.85f), coneCentre,
-            activeCol.withAlpha(0.0f), coneCentre.translated(flareRadius, 0.0f), true));
-        g.fillEllipse(coneCentre.x - flareRadius, coneCentre.y - flareRadius, flareRadius * 2.0f, flareRadius * 2.0f);
-    }
-
-    // Slogan banner at top of stage
-    const auto bannerRect = stage.removeFromTop(26.0f);
-    g.setColour(juce::Colour(0xcc060911));
-    g.fillRoundedRectangle(bannerRect.reduced(12.0f, 2.0f), 4.0f);
-
-    const auto sloganCol = isSmackOn ? theme::kAccentNeonGreen : theme::kAccentMagenta;
-    g.setColour(sloganCol);
-    g.setFont(juce::FontOptions(12.5f, juce::Font::bold));
-    g.drawText("SMACK IT. TUNE IT. DROP IT.", bannerRect, juce::Justification::centred, true);
-
-    // Neon State Indicator LED
-    const auto ledRect = juce::Rectangle<float>(stage.getX() + 12.0f, stage.getY() + 4.0f, 76.0f, 18.0f);
-    g.setColour(juce::Colour(0xd9080d16));
-    g.fillRoundedRectangle(ledRect, 3.0f);
-    g.setColour(isSmackOn ? theme::kAccentNeonGreen : theme::kPanelEdge);
-    g.drawRoundedRectangle(ledRect, 3.0f, 1.0f);
-    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-    g.setColour(isSmackOn ? theme::kAccentNeonGreen : theme::kTextDim);
-    g.drawText(isSmackOn ? "SMACK ON" : "SMACK OFF", ledRect, juce::Justification::centred, true);
-
-    // Tuned Note & Frequency Readout Pill at bottom of stage
-    const auto bottomPill = juce::Rectangle<float>(stage.getX() + 14.0f, stage.getBottom() - 28.0f, stage.getWidth() - 28.0f, 22.0f);
-    g.setColour(juce::Colour(0xd9070b12));
-    g.fillRoundedRectangle(bottomPill, 4.0f);
-    g.setColour(activeCol.withAlpha(0.75f));
-    g.drawRoundedRectangle(bottomPill, 4.0f, 1.0f);
-
-    const juce::String noteStr = juce::String(std::string(opensmacker::core::kNoteNames[static_cast<size_t>(std::clamp(noteIdx, 0, 11))]))
-        + juce::String(octave);
-    const juce::String telemetryText = juce::String(modeNames[static_cast<size_t>(std::clamp(voiceIdx, 0, 3))])
-        + "  |  KEY: " + noteStr + " (" + juce::String(tunedHz, 1) + " Hz)";
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    const auto settings = processor_.currentSettings().synth;
+    updateWaveform(settings);
+    auto area = getLocalBounds();
+    g.setColour(theme::kKnobBody);
+    g.fillRoundedRectangle(area.toFloat(), 8);
+    auto name = area.removeFromLeft(194).reduced(18, 13);
+    const auto* voice = processor_.parameters.getParameter(params::kVoiceMode);
+    g.setColour(theme::kTextDim);
+    g.setFont(juce::FontOptions(15.0f));
+    g.drawText(voice->getCurrentValueAsText(), name.removeFromTop(24), juce::Justification::centredLeft);
+    const auto note = juce::String(core::kNoteNames[static_cast<size_t>(settings.note)].data()) + juce::String(settings.octave);
     g.setColour(theme::kText);
-    g.drawText(telemetryText, bottomPill, juce::Justification::centred, true);
-
-    // Locked WAV badge if active
-    if (locked) {
-        const auto lockRect = juce::Rectangle<float>(stage.getRight() - 78.0f, stage.getY() + 4.0f, 66.0f, 18.0f);
-        g.setColour(juce::Colour(0xd9080d16));
-        g.fillRoundedRectangle(lockRect, 3.0f);
-        g.setColour(theme::kAccentAmber);
-        g.drawRoundedRectangle(lockRect, 3.0f, 1.0f);
-        g.drawText("LOCKED", lockRect, juce::Justification::centred, true);
+    const bool compact = getHeight() < 140;
+    g.setFont(juce::FontOptions(compact ? 41.0f : 54.0f, juce::Font::bold));
+    g.drawText(note, name.removeFromTop(compact ? 44 : 61), juce::Justification::centredLeft);
+    g.setColour(theme::kApricot);
+    g.setFont(juce::FontOptions(16.0f));
+    g.drawText(juce::String(core::noteToHz(settings.note, settings.octave, settings.fineCents), 1) + " Hz",
+               name, juce::Justification::topLeft);
+    auto plot = area.reduced(16, 11);
+    g.setColour(theme::kText);
+    g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+    g.drawText("Dry one-shot waveform", plot.removeFromTop(23), juce::Justification::centredLeft);
+    auto axis = plot.removeFromBottom(21);
+    g.setColour(theme::kTextDim);
+    g.setFont(juce::FontOptions(13.0f));
+    g.drawText("0 ms", axis, juce::Justification::bottomLeft);
+    g.drawText(juce::String(previewMs_) + " ms", axis, juce::Justification::bottomRight);
+    const auto bounds = plot.toFloat().reduced(1, 2);
+    const float middle = bounds.getCentreY();
+    for (int i = 0; i <= 8; ++i) {
+        const auto x = bounds.getX() + bounds.getWidth() * static_cast<float>(i) / 8;
+        g.setColour(theme::kPanelEdge);
+        g.drawVerticalLine(juce::roundToInt(x), bounds.getY(), bounds.getBottom());
     }
-
-    g.setColour(theme::kPanelEdge.withAlpha(0.8f));
-    g.drawRoundedRectangle(getLocalBounds().reduced(8, 28).withTrimmedBottom(28).toFloat().reduced(0.5f), 8.0f, 1.0f);
+    const float scale = bounds.getHeight() * 0.46f / std::max(0.05f, *std::max_element(waveform_.begin(), waveform_.end()));
+    juce::Path wave;
+    wave.startNewSubPath(bounds.getX(), middle);
+    for (size_t i = 0; i < waveform_.size(); ++i)
+        wave.lineTo(bounds.getX() + bounds.getWidth() * float(i) / float(waveform_.size() - 1), middle - waveform_[i] * scale);
+    for (size_t i = waveform_.size(); i-- > 0;)
+        wave.lineTo(bounds.getX() + bounds.getWidth() * float(i) / float(waveform_.size() - 1), middle + waveform_[i] * scale);
+    wave.closeSubPath();
+    g.setColour(theme::kApricot);
+    g.fillPath(wave);
+    g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
 ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
@@ -216,102 +101,99 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
 void ParameterCard::addParameter(const juce::String& id, const juce::String& title) {
     std::unique_ptr<juce::Component> component;
     auto& state = processor_.parameters;
-    if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr) {
+    if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr || id == params::kAmpEnabled) {
         component = std::make_unique<Choice>(state, id, title, accent_);
-    } else if (dynamic_cast<juce::AudioParameterBool*>(state.getParameter(id)) != nullptr) {
+    } else if (dynamic_cast<juce::AudioParameterBool*>(parameter) != nullptr) {
         component = std::make_unique<Toggle>(state, id, title, accent_);
     } else {
         component = std::make_unique<Knob>(state, id, title, accent_);
     }
-    if (id == opensmacker::params::kAmpEnabled) {
-        if (auto* toggle = dynamic_cast<Toggle*>(component.get()))
-            toggle->setTooltip("Enable MIDI-gated Full ADSR. When off, hits keep their one-shot envelopes.");
-    } else if (id == opensmacker::params::kAmpRelease) {
-        if (auto* knob = dynamic_cast<Knob*>(component.get()))
-            knob->setTooltip("Full ADSR release time after a matching MIDI note-off (up to 20 seconds).");
-    }
+    const auto tip = id == params::kAmpEnabled
+        ? juce::String("Play a one-shot or sustain until the matching MIDI note is released.")
+        : state.getParameter(id)->getName(80);
+    if (auto* knob = dynamic_cast<Knob*>(component.get())) knob->setTooltip(tip);
+    if (auto* menu = dynamic_cast<Choice*>(component.get())) menu->setTooltip(tip);
+    if (auto* toggle = dynamic_cast<Toggle*>(component.get())) toggle->setTooltip(tip);
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
 }
 
-void ParameterCard::setRows(std::vector<int> rows) {
-    rows_ = std::move(rows);
-    int total = 0;
-    for (const auto row : rows_)
-        total += row;
-    jassert(total == static_cast<int>(controls_.size()));
-    juce::ignoreUnused(total);
+void ParameterCard::setRows(std::vector<int> basic, std::vector<int> advanced) {
+    basicRows_ = std::move(basic);
+    advancedRows_ = advanced.empty() ? basicRows_ : std::move(advanced);
 }
 
 void ParameterCard::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
-    for (auto& control : controls_) {
-        if (auto* knob = dynamic_cast<Knob*>(control.get()))
-            knob->setAdvancedMode(advanced);
-    }
     resized();
 }
 
 void ParameterCard::paint(juce::Graphics& g) {
-    const auto bounds = getLocalBounds().toFloat().reduced(0.5f);
     g.setColour(theme::kPanel);
-    g.fillRoundedRectangle(bounds, 8.0f);
-    g.setGradientFill(juce::ColourGradient(theme::kSteel, bounds.getTopLeft(),
-        theme::kInk, bounds.getBottomLeft(), false));
-    g.fillRoundedRectangle(bounds.reduced(0.5f), 8.0f);
-    g.setColour(theme::kPanelEdge);
-    g.drawRoundedRectangle(bounds, 8.0f, 1.0f);
+    g.fillRoundedRectangle(getLocalBounds().toFloat(), 7.0f);
     auto heading = getLocalBounds().removeFromTop(44).reduced(12, 2);
     g.setColour(accent_);
     g.fillRoundedRectangle(juce::Rectangle<float>(static_cast<float>(heading.getX()), static_cast<float>(heading.getY()) + 2.0f, 3.0f,
         static_cast<float>(heading.getHeight() - 4)), 1.5f);
     g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 164 : 8), juce::Justification::centredLeft, true);
+    g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
+    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 90 : 8), juce::Justification::centredLeft, true);
     const bool locked = processor_.isSectionLocked(section_);
     if (lockable_) {
-        lockButton_.setButtonText(locked ? "SECTION HELD" : "LOCK SECTION");
-        lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_.withAlpha(0.22f) : theme::kKnobBody);
-        lockButton_.setColour(juce::TextButton::textColourOffId, locked ? accent_ : theme::kTextDim);
+        lockButton_.setButtonText(locked ? "Locked" : "Lock");
+        lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_ : theme::kKnobBody);
+        lockButton_.setColour(juce::TextButton::textColourOffId, locked ? theme::kInk : theme::kTextDim);
     }
 }
 
 void ParameterCard::resized() {
     auto area = getLocalBounds();
     auto header = area.removeFromTop(44).reduced(8, 4);
-    lockButton_.setBounds(lockable_ ? header.removeFromRight(148) : juce::Rectangle<int>{});
+    lockButton_.setBounds(lockable_ ? header.removeFromRight(70) : juce::Rectangle<int>{});
     area = area.reduced(8, 8);
     const int gap = 4;
     int y = area.getY();
     size_t controlIndex = 0;
-    const int rowCount = std::max(1, static_cast<int>(rows_.size()));
+    const auto& rows = advancedMode_ ? advancedRows_ : basicRows_;
+    if (rows.empty()) return;
+    const int rowCount = static_cast<int>(rows.size());
     const int rowHeight = std::max(1, (area.getHeight() - gap * (rowCount - 1)) / rowCount);
     for (int row = 0; row < rowCount; ++row) {
-        const int columns = std::max(1, rows_[static_cast<size_t>(row)]);
+        const int columns = std::max(1, rows[static_cast<size_t>(row)]);
         const int cellWidth = std::max(1, (area.getWidth() - gap * (columns - 1)) / columns);
-        for (int column = 0; column < columns && controlIndex < controls_.size(); ++column, ++controlIndex)
+        for (int column = 0; column < columns && controlIndex < controls_.size(); ++column, ++controlIndex) {
+            controls_[controlIndex]->setVisible(true);
             controls_[controlIndex]->setBounds(area.getX() + column * (cellWidth + gap), y, cellWidth, rowHeight);
+        }
         y += rowHeight + gap;
     }
+    for (; controlIndex < controls_.size(); ++controlIndex)
+        controls_[controlIndex]->setVisible(false);
 }
 
 SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
-    : voiceCard_(processor, "VOICE & TUNING  /  AMPLITUDE ENVELOPE", presets::Section::VoiceTuning, theme::kAccentAmber),
-      transientCard_(processor, "TRANSIENT STRIKE", presets::Section::Transient, theme::kAccentNeonGreen),
-      preStrikeCard_(processor, "PRE-STRIKE FLAMS", presets::Section::PreStrike, theme::kAccentCyan),
-      wiresCard_(processor, "WIRES, SIZZLE & AIR", presets::Section::WiresAir, theme::kAccentViolet) {
+    : voiceCard_(processor, "Body & tuning", presets::Section::VoiceTuning, theme::kApricot),
+      transientCard_(processor, "Transient strike", presets::Section::Transient, theme::kIce),
+      envelopeCard_(processor, "Amplitude envelope", presets::Section::VoiceTuning, theme::kLilac, false),
+      preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
+      wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 20> voice{
-        std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" }, { kToneFine, "Fine ct" },
-        { kToneFreq, "Shell Hz" }, { kToneQ, "Shell Q" }, { kToneDecay, "Body Decay" }, { kTonePitchEnv, "Pitch Env" },
-        { kTonePitchDecay, "Pitch Time" }, { kFmAmount, "FM / Ring" }, { kToneLevel, "Body Level" },
-        { kBodyHPF, "Body HPF" }, { kBodyLPF, "Body LPF" }, { kBodyPan, "Body Pan" }, { kLockPitch, "Lock Pitch" },
-        { kAmpEnabled, "Full ADSR" }, { kAmpAttack, "Amp Attack" }, { kAmpDecay, "Amp Decay" },
-        { kAmpSustain, "Amp Sustain" }, { kAmpRelease, "Amp Release" }
+    const std::array<std::pair<const char*, const char*>, 15> voice{
+        std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" },
+        { kToneDecay, "Body decay" }, { kTonePitchEnv, "Pitch sweep" }, { kToneLevel, "Body level" },
+        { kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" },
+        { kTonePitchDecay, "Pitch decay" }, { kToneFine, "Fine tune" },
+        { kBodyHPF, "High-pass" }, { kBodyLPF, "Low-pass" }, { kBodyPan, "Pan" }, { kLockPitch, "Lock pitch" }
     };
     for (const auto& [id, title] : voice)
         voiceCard_.addParameter(id, title);
-    voiceCard_.setRows({ 4, 4, 4, 4, 4 });
+    voiceCard_.setRows({ 3, 3 }, { 3, 6, 6 });
+    envelopeCard_.addParameter(kAmpEnabled, "MIDI gate");
+    envelopeCard_.addParameter(kAmpAttack, "Attack");
+    envelopeCard_.addParameter(kAmpDecay, "Decay");
+    envelopeCard_.addParameter(kAmpSustain, "Sustain");
+    envelopeCard_.addParameter(kAmpRelease, "Release");
+    envelopeCard_.setRows({ 5 });
 
     transientCard_.addParameter(kClickType, "Strike Type");
     transientCard_.addParameter(kClickLevel, "Strike Level");
@@ -319,27 +201,28 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     transientCard_.addParameter(kTransientHPF, "Transient HPF");
     transientCard_.addParameter(kTransientLPF, "Transient LPF");
     transientCard_.addParameter(kTransientPan, "Transient Pan");
-    transientCard_.setRows({ 3, 3 });
+    transientCard_.setRows({ 1, 2 }, { 3, 3 });
 
     const std::array<std::pair<const char*, const char*>, 6> pre{
-        std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spread ms" }, { kPreDecay, "Decay ms" },
+        std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spacing" }, { kPreDecay, "Decay" },
         { kPreJitter, "Humanize" }, { kFlamSpread, "Stereo Pan" }, { kPreLevel, "Level" }
     };
     for (const auto& [id, title] : pre)
         preStrikeCard_.addParameter(id, title);
-    preStrikeCard_.setRows({ 6 });
+    preStrikeCard_.setRows({ 3 }, { 3, 3 });
 
     const std::array<std::pair<const char*, const char*>, 11> air{
-        std::pair{ kNoiseType, "Layer" }, { kNoiseAttack, "Attack ms" }, { kNoiseHold, "Hold ms" },
-        { kNoiseDecay, "Decay ms" }, { kNoiseCurve, "Curve" }, { kNoiseHPF, "HPF" },
-        { kNoiseLPF, "LPF" }, { kNoiseStereoWidth, "Width" }, { kNoiseLevel, "Level" },
-        { kWireTension, "Wire Tension" }, { kWirePan, "Wire Pan" }
+        std::pair{ kNoiseType, "Texture" }, { kNoiseLevel, "Level" }, { kNoiseDecay, "Decay" },
+        { kWireTension, "Wire tension" }, { kNoiseHPF, "High-pass" }, { kNoiseLPF, "Low-pass" },
+        { kNoiseAttack, "Attack" }, { kNoiseHold, "Hold" }, { kNoiseCurve, "Curve" },
+        { kNoiseStereoWidth, "Width" }, { kWirePan, "Pan" }
     };
     for (const auto& [id, title] : air)
         wiresCard_.addParameter(id, title);
-    wiresCard_.setRows({ 4, 4, 3 });
+    wiresCard_.setRows({ 3, 3 }, { 3, 4, 4 });
 
     addAndMakeVisible(voiceCard_);
+    addAndMakeVisible(envelopeCard_);
     addAndMakeVisible(transientCard_);
     addAndMakeVisible(preStrikeCard_);
     addAndMakeVisible(wiresCard_);
@@ -349,6 +232,7 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
 void SmackSynthPanel::setPage(int page) {
     page_ = juce::jlimit(0, 1, page);
     voiceCard_.setVisible(page_ == 0);
+    envelopeCard_.setVisible(page_ == 0);
     transientCard_.setVisible(page_ == 0);
     preStrikeCard_.setVisible(page_ == 1);
     wiresCard_.setVisible(page_ == 1);
@@ -369,41 +253,40 @@ void SmackSynthPanel::resized() {
     auto area = getLocalBounds();
     const int gap = 10;
     if (page_ == 0) {
-        const int transHeight = std::max(190, area.getHeight() / 4);
-        voiceCard_.setBounds(area.removeFromTop(area.getHeight() - transHeight - gap));
-        area.removeFromTop(gap);
+        envelopeCard_.setBounds(area.removeFromBottom(148));
+        area.removeFromBottom(gap);
+        voiceCard_.setBounds(area.removeFromLeft(area.getWidth() * 65 / 100));
+        area.removeFromLeft(gap);
         transientCard_.setBounds(area);
     } else {
-        const int preHeight = std::max(250, area.getHeight() / 3);
-        preStrikeCard_.setBounds(area.removeFromTop(preHeight));
+        preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * 4 / 10));
         area.removeFromTop(gap);
         wiresCard_.setBounds(area);
     }
 }
 
 EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
-    : dynamicsCard_(processor, "SATURATION & DYNAMICS", presets::Section::SaturationDynamics, theme::kAccentFlame),
-      spaceCard_(processor, "SPACE & OUTPUT", presets::Section::SpaceOutput, theme::kAccentCyan) {
+    : dynamicsCard_(processor, "Saturation & dynamics", presets::Section::SaturationDynamics, theme::kApricot),
+      spaceCard_(processor, "Space & output", presets::Section::SpaceOutput, theme::kIce) {
     using namespace opensmacker::params;
     const std::array<std::pair<const char*, const char*>, 13> dynamics{
         std::pair{ kDistType, "Saturation" }, { kDistDrive, "Drive" }, { kDistTone, "Tone" }, { kDistMix, "Mix" },
-        { kCompThresh, "Comp Thresh" }, { kCompRatio, "Comp Ratio" }, { kCompAttack, "Comp Attack" },
+        { kCompThresh, "Threshold" }, { kCompRatio, "Ratio" }, { kCompAttack, "Comp Attack" },
         { kCompRelease, "Comp Release" }, { kCompMakeup, "Makeup" }, { kCompMix, "Comp Mix" },
-        { kLimiterCeiling, "Limit Ceiling" }, { kLimiterRelease, "Limit Release" }, { kLimiterEnabled, "Limiter" }
+        { kLimiterCeiling, "Ceiling" }, { kLimiterRelease, "Limit Release" }, { kLimiterEnabled, "Limiter" }
     };
     for (const auto& [id, title] : dynamics)
         dynamicsCard_.addParameter(id, title);
-    dynamicsCard_.setRows({ 4, 5, 4 });
+    dynamicsCard_.setRows({ 2, 2, 2 }, { 3, 3, 3, 4 });
 
-    const std::array<std::pair<const char*, const char*>, 11> space{
-        std::pair{ kReverbSize, "Hall Size" }, { kReverbDecay, "Hall Decay" }, { kReverbDamp, "Damping" },
-        { kReverbGate, "Gate Time" }, { kReverbMix, "Hall Mix" }, { kReverseMode, "Reverse Sync" },
-        { kReverseMix, "Reverse Mix" }, { kMidiMode, "MIDI Pitch" }, { kLockIn, "Lock WAV" },
-        { kStereoWidth, "Master Width" }, { kOutputGain, "Output dB" }
+    const std::array<std::pair<const char*, const char*>, 10> space{
+        std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kStereoWidth, "Stereo width" },
+        { kOutputGain, "Output" }, { kReverbSize, "Room size" }, { kReverbDecay, "Room decay" },
+        { kReverbDamp, "Damping" }, { kReverseMode, "Reverse sync" }, { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
     };
     for (const auto& [id, title] : space)
         spaceCard_.addParameter(id, title);
-    spaceCard_.setRows({ 6, 5 });
+    spaceCard_.setRows({ 2, 2, 2 }, { 3, 3, 2, 2 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
 }
@@ -419,19 +302,18 @@ void EffectsPanel::setAdvancedMode(bool advanced) {
 void EffectsPanel::resized() {
     auto area = getLocalBounds();
     const int gap = 10;
-    const int dynamicsHeight = std::max(430, static_cast<int>(static_cast<float>(area.getHeight()) * 0.56f));
-    dynamicsCard_.setBounds(area.removeFromTop(dynamicsHeight));
-    area.removeFromTop(gap);
+    dynamicsCard_.setBounds(area.removeFromLeft(area.getWidth() / 2));
+    area.removeFromLeft(gap);
     spaceCard_.setBounds(area);
 }
 
 PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
-    : zonesCard_(processor, "FOUR VOICE KEY ZONES", presets::Section::VoiceTuning, theme::kAccentMagenta, false),
-      responseCard_(processor, "LAYER VELOCITY & AFTERTOUCH", presets::Section::Transient, theme::kAccentAmber, false),
-      rollCard_(processor, "HOST SYNC ROLL & MIDI CC", presets::Section::PreStrike, theme::kAccentCyan, false) {
+    : zonesCard_(processor, "MIDI pitch & key zones", presets::Section::VoiceTuning, theme::kLilac, false),
+      responseCard_(processor, "Velocity & aftertouch", presets::Section::Transient, theme::kApricot, false),
+      rollCard_(processor, "Host roll & controllers", presets::Section::PreStrike, theme::kIce, false) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 9> zones{
-        std::pair{ kKeyZonesEnabled, "Enable Zones" },
+    const std::array<std::pair<const char*, const char*>, 10> zones{
+        std::pair{ kMidiMode, "MIDI pitch" }, { kKeyZonesEnabled, "Key zones" },
         { kSnareZoneLow, "Snare Low" }, { kSnareZoneHigh, "Snare High" },
         { kTomZoneLow, "Tom Low" }, { kTomZoneHigh, "Tom High" },
         { kBellZoneLow, "Bell Low" }, { kBellZoneHigh, "Bell High" },
@@ -439,12 +321,12 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
     };
     for (const auto& [id, title] : zones)
         zonesCard_.addParameter(id, title);
-    zonesCard_.setRows({ 3, 3, 3 });
+    zonesCard_.setRows({ 2, 4, 4 });
 
     const std::array<std::pair<const char*, const char*>, 6> response{
-        std::pair{ kBodyVelocityDepth, "Body Vel" }, { kWireVelocityDepth, "Wire Vel" },
-        { kTransientVelocityDepth, "Transient Vel" }, { kBodyAftertouchDepth, "Body AT" },
-        { kWireAftertouchDepth, "Wire AT" }, { kTransientAftertouchDepth, "Transient AT" }
+        std::pair{ kBodyVelocityDepth, "Body velocity" }, { kWireVelocityDepth, "Wire velocity" },
+        { kTransientVelocityDepth, "Strike velocity" }, { kBodyAftertouchDepth, "Body aftertouch" },
+        { kWireAftertouchDepth, "Wire aftertouch" }, { kTransientAftertouchDepth, "Strike aftertouch" }
     };
     for (const auto& [id, title] : response)
         responseCard_.addParameter(id, title);
@@ -459,7 +341,7 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
     };
     for (const auto& [id, title] : roll)
         rollCard_.addParameter(id, title);
-    rollCard_.setRows({ 5, 5 });
+    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3 });
 
     addAndMakeVisible(zonesCard_);
     addAndMakeVisible(responseCard_);
@@ -477,13 +359,11 @@ void PerformancePanel::setAdvancedMode(bool advanced) {
 void PerformancePanel::resized() {
     auto area = getLocalBounds();
     const int gap = 8;
-    const int zonesHeight = static_cast<int>(static_cast<float>(area.getHeight()) * 0.34f);
-    const int responseHeight = static_cast<int>(static_cast<float>(area.getHeight()) * 0.25f);
-    zonesCard_.setBounds(area.removeFromTop(zonesHeight));
+    rollCard_.setBounds(area.removeFromRight(area.getWidth() * 42 / 100));
+    area.removeFromRight(gap);
+    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 55 / 100));
     area.removeFromTop(gap);
-    responseCard_.setBounds(area.removeFromTop(responseHeight));
-    area.removeFromTop(gap);
-    rollCard_.setBounds(area);
+    responseCard_.setBounds(area);
 }
 
 } // namespace opensmacker::ui

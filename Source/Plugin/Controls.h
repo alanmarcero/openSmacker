@@ -13,7 +13,6 @@ public:
     void resized() override;
     void bind(Apvts& state, const juce::String& parameterId);
     void setTooltip(const juce::String& text);
-    void setAdvancedMode(bool advanced);
     [[nodiscard]] juce::Slider& slider() noexcept { return slider_; }
 
 private:
@@ -47,10 +46,5 @@ private:
     juce::TextButton button_;
     Apvts::ButtonAttachment attachment_;
 };
-
-void layoutRow(juce::Rectangle<int> area, std::initializer_list<juce::Component*> components);
-void drawPanel(juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title, juce::Colour accent);
-void drawCaption(juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text);
-void drawGlow(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour);
 
 } // namespace opensmacker::ui

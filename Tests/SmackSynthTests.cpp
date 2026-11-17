@@ -437,3 +437,43 @@ TEST_CASE("SmackSynth tracks an octave shift in its tuned metallic noise", "[cor
         difference += std::abs(low[i] - high[i]);
     REQUIRE(difference > 100.0f);
 }
+
+TEST_CASE("Velocity shapes the struck overtones and a held body settles to its root", "[core][synth][modes]") {
+    for (const auto rate : { 44100, 96000 }) {
+        for (const auto octave : { 3, 5 }) {
+            for (auto mode : { VoiceMode::DanceSnare, VoiceMode::ClubTom, VoiceMode::FmBell, VoiceMode::PrydaRimSmack }) {
+                SmackSynthSettings settings;
+                settings.voiceMode = mode;
+                settings.octave = octave;
+                settings.fullAdsrEnabled = true;
+                settings.tonePitchEnv = 0;
+                settings.fmAmount = 0.8f;
+                settings.toneDecayMs = 75.0f;
+                settings.noiseLevel = settings.clickLevel = settings.reverbMix = 0;
+                SmackSynth soft, hard;
+                soft.prepare(rate);
+                hard.prepare(rate);
+                soft.trigger(settings, 0.4f, 0, 60, 1);
+                hard.trigger(settings, 1.0f, 0, 60, 1);
+                double attackDiff = 0, heldDiff = 0, heldEnergy = 0;
+                for (int i = 0; i < rate / 3; ++i) {
+                    const auto quiet = soft.processSample(settings).bodyLeft / 0.4f;
+                    const auto loud = hard.processSample(settings).bodyLeft;
+                    const double diff = std::abs(quiet - loud);
+                    if (i < rate / 40) attackDiff += diff;
+                    if (i > rate / 4) {
+                        heldDiff += diff;
+                        heldEnergy += std::abs(loud);
+                    }
+                }
+                CAPTURE(rate, octave, static_cast<int>(mode));
+                CHECK(attackDiff / (rate / 40) > 0.01);
+                CHECK(heldEnergy / (rate / 12) > 0.03);
+                CHECK(heldDiff < heldEnergy * 0.01);
+                hard.noteOff(60, 1, settings);
+                for (int i = 0; i < rate / 4; ++i) (void) hard.processSample(settings);
+                CHECK_FALSE(hard.isPlaying());
+            }
+        }
+    }
+}

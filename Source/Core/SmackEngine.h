@@ -190,7 +190,7 @@ private:
         bool reverseCue,
         int noteNumber,
         int channel,
-        bool hostRoll = false) noexcept;
+        bool oneShot = false) noexcept;
     void beginLockCapture(const EngineSettings& settings);
     [[nodiscard]] uint32_t advanceLockCapture(uint32_t sampleBudget) noexcept;
     [[nodiscard]] uint32_t advanceReversePreparation(uint32_t sampleBudget) noexcept;

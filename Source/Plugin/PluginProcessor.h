@@ -32,6 +32,8 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    opensmacker::core::EngineSettings currentSettings() const;
+    bool isRestoredCustomSound() const noexcept { return restoredCustom_.load(); }
     void triggerAudition() noexcept { auditionPending_.store(true); }
     [[nodiscard]] bool isSmackLockedIn() const noexcept { return displayLockedIn.load(); }
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
@@ -40,7 +42,8 @@ public:
     juce::AudioProcessorValueTreeState parameters;
 
     std::atomic<float> displayPeak{ 0.0f };
-    std::atomic<float> displayBeatPhase{ 0.0f };
+    float animationBeatPhase(double seconds) const noexcept;
+    std::atomic<float> displayBeatPhase{ -1.0f };
     std::atomic<float> displayBpm{ 138.0f };
     std::atomic<float> displayBeatsPerBar{ 4.0f };
     std::atomic<float> displaySmackProgress{ 1.0f };
@@ -51,7 +54,8 @@ public:
 private:
     opensmacker::core::SmackEngine engine_;
     std::atomic<bool> auditionPending_{ false };
-    int currentProgram_ = 0;
+    std::atomic<int> currentProgram_{ 0 };
+    std::atomic<bool> restoredCustom_{ false };
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
     std::vector<opensmacker::core::MidiTrigger> midiTriggers_;
     std::vector<opensmacker::core::MidiNoteOff> midiNoteOffs_;

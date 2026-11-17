@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OpenSmacker VERSION 2.2.2 LANGUAGES C CXX)
+project(OpenSmacker VERSION 2.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,10 +29,8 @@ if(OS_BUILD_PLUGIN)
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(juce)
 
-    juce_add_binary_data(SmackerAssets SOURCES
-        assets/opensmacker-faceplate.png
-        assets/opensmacker-stage.png)
-    set_target_properties(SmackerAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    juce_add_binary_data(SmackerArt SOURCES assets/membrane.svg)
+    set_target_properties(SmackerArt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     juce_add_plugin(OpenSmacker
         COMPANY_NAME "Alan Marcero"
@@ -72,7 +70,7 @@ if(OS_BUILD_PLUGIN)
     target_link_libraries(OpenSmacker
         PRIVATE
             opensmacker_core
-            SmackerAssets
+            SmackerArt
             juce::juce_audio_processors
             juce::juce_audio_utils
             juce::juce_gui_basics
@@ -107,7 +105,7 @@ if(OS_BUILD_TESTS)
         target_compile_definitions(opensmacker_plugin_tests PRIVATE
             OPENSMACKER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
             $<TARGET_PROPERTY:OpenSmacker,COMPILE_DEFINITIONS>)
-        target_link_libraries(opensmacker_plugin_tests PRIVATE OpenSmacker SmackerAssets juce::juce_audio_utils Catch2::Catch2WithMain)
+        target_link_libraries(opensmacker_plugin_tests PRIVATE OpenSmacker juce::juce_audio_utils Catch2::Catch2WithMain)
         catch_discover_tests(opensmacker_plugin_tests)
     endif()
 endif()

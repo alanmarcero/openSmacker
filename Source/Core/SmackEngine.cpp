@@ -558,7 +558,7 @@ void SmackEngine::triggerSmack(
     bool reverseCue,
     int noteNumber,
     int channel,
-    bool hostRoll) noexcept {
+    bool oneShot) noexcept {
     if (settings.keyZonesEnabled) {
         const auto mode = resolveVoiceModeForNote(noteNumber, settings.voiceZones);
         if (!mode)
@@ -575,7 +575,7 @@ void SmackEngine::triggerSmack(
     activePressure_ = channelPressure_[static_cast<size_t>(activeChannel_ - 1)];
     auto triggerSettings = settings.synth;
     triggerSettings.voiceMode = activeVoiceMode_;
-    triggerSettings.fullAdsrEnabled = triggerSettings.fullAdsrEnabled && !hostRoll;
+    triggerSettings.fullAdsrEnabled = triggerSettings.fullAdsrEnabled && !oneShot;
     triggerSettings.aftertouchValue = activePressure_;
     triggerSettings.bodyPerformanceGain = ccBodyGain_;
     triggerSettings.wirePerformanceGain = ccWireGain_;
@@ -708,7 +708,7 @@ void SmackEngine::process(
             }
             triggerSmack(settings, ppq, bpm, beatsPerBar,
                 std::clamp(std::isfinite(trig.velocity) ? trig.velocity : 1.0f, 0.0f, 1.0f), semitoneOffset,
-                trig.audition, trig.noteNumber, trig.channel);
+                trig.audition, trig.noteNumber, trig.channel, trig.audition);
         }
 
         if (settings.rollEnabled && transport.isPlaying) {
