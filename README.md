@@ -1,4 +1,4 @@
-# openSmacker v2.2.1
+# openSmacker v2.2.2
 
 <p align="center">
   <strong>Trance percussion, tuned for impact.</strong><br>
@@ -6,19 +6,19 @@
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-hit.png" alt="openSmacker v2 Hit page" width="900">
+  <img src="assets/openSmacker-hit.png" alt="openSmacker v2 Hit page with larger labeled controls" width="900">
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-layers.png" alt="openSmacker v2 Layers page" width="900">
+  <img src="assets/openSmacker-layers.png" alt="openSmacker v2 Layers page with larger labeled controls" width="900">
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-fx.png" alt="openSmacker v2 FX page" width="900">
+  <img src="assets/openSmacker-fx.png" alt="openSmacker v2 Effects page with larger labeled controls" width="900">
 </p>
 
 <p align="center">
-  <img src="assets/openSmacker-midi.png" alt="openSmacker v2 MIDI performance page" width="900">
+  <img src="assets/openSmacker-midi.png" alt="openSmacker v2 MIDI performance page with larger labeled controls" width="900">
 </p>
 
 openSmacker is a C++20 instrument built with JUCE 8. Version 2 replaces the sound engine, effects, preset catalog, and editor while keeping the previous voice types, synthesis controls, MIDI mappings, program navigation, lock-in WAV workflow, and plugin formats. Its new envelopes and multi-part drum and metallic voices keep the transient and tuned body audible together for a more forceful dance and trance hit.
@@ -53,11 +53,11 @@ The factory bank contains 72 new presets: 24 snares (`SN`), 24 bells and chimes 
 
 ## Editor
 
-The redesigned editor is 1100 × 972 with four pages:
+The redesigned editor is 1440 × 1000 with a two-row navigation header and four pages:
 
 - **Hit:** voice, tuning, ADSR, transient, and animated stage.
 - **Layers:** pre-strikes, snare wires, sizzle, and air.
-- **FX:** saturation, dynamics, reverb, reverse sync, MIDI mode, output, and WAV lock.
+- **Effects:** saturation, dynamics, reverb, reverse sync, MIDI mode, output, and WAV lock.
 - **MIDI:** four voice key zones, layer velocity and aftertouch, host-synced rolls, and assignable layer CCs.
 
 Simple and Advanced views are retained. Simple removes numeric boxes for a clearer surface; Advanced adds exact value readouts. Every parameter remains on its page and editable in both views. Screenshots are in [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).

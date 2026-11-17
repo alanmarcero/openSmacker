@@ -21,7 +21,7 @@ private:
     void timerCallback() override;
     OpenSmackerProcessor& processor_;
     juce::Image stageArtwork_;
-    juce::TextButton auditionBtn_{ "PUSH IT" };
+    juce::TextButton auditionBtn_{ "AUDITION HIT" };
     uint32_t seenTriggers_ = 0;
     double smackTriggerTimeMs_ = 0.0;
     float smackPose_ = 0.0f;

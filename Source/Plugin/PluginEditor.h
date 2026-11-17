@@ -24,16 +24,16 @@ private:
     opensmacker::ui::EdmLookAndFeel lookAndFeel_;
     juce::Image faceplate_;
 
-    juce::TextButton snareCatBtn_{ "SN" };
-    juce::TextButton bellCatBtn_{ "BL" };
-    juce::TextButton tomCatBtn_{ "TM" };
+    juce::TextButton snareCatBtn_{ "Snares" };
+    juce::TextButton bellCatBtn_{ "Bells & Chimes" };
+    juce::TextButton tomCatBtn_{ "Toms" };
     juce::ComboBox presetBox_;
-    juce::TextButton prevPresetBtn_{ "<" };
-    juce::TextButton nextPresetBtn_{ ">" };
-    juce::TextButton viewToggleBtn_{ "SIMPLE" };
-    juce::TextButton hitPageBtn_{ "HIT" };
-    juce::TextButton layersPageBtn_{ "LAYERS" };
-    juce::TextButton fxPageBtn_{ "FX" };
+    juce::TextButton prevPresetBtn_{ "Previous preset" };
+    juce::TextButton nextPresetBtn_{ "Next preset" };
+    juce::TextButton viewToggleBtn_{ "SIMPLE VIEW" };
+    juce::TextButton hitPageBtn_{ "Hit" };
+    juce::TextButton layersPageBtn_{ "Layers" };
+    juce::TextButton fxPageBtn_{ "Effects" };
     juce::TextButton midiPageBtn_{ "MIDI" };
     int currentPage_ = 0;
 

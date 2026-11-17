@@ -93,8 +93,8 @@ Toggle::Toggle(Apvts& state, const juce::String& parameterId, const juce::String
 
 void Toggle::resized() {
     auto area = getLocalBounds().reduced(4);
-    const int width = std::min(124, area.getWidth());
-    const int height = std::min(32, area.getHeight());
+    const int width = std::min(160, area.getWidth());
+    const int height = std::min(40, area.getHeight());
     button_.setBounds(area.withSizeKeepingCentre(width, height));
 }
 
