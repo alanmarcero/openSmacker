@@ -277,6 +277,13 @@ void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int
     isPlaying_ = true;
     const float normalizedVelocity = std::clamp(std::isfinite(velocity) ? velocity : 1.0f, 0.0f, 1.0f);
     bodyVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.bodyVelocityDepth, 0.0f, 1.0f));
+    constexpr std::array<float, 3> originalRatios{ 1.593f, 2.136f, 2.877f };
+    constexpr std::array<std::array<float, 3>, 4> struckModes{{
+        { 1.62f, 2.42f, 3.14f }, { 1.51f, 2.02f, 2.74f },
+        { 2.00f, 2.71f, 4.09f }, { 1.86f, 2.85f, 4.18f }
+    }};
+    modeRatios_ = settings.articulatedModes ? struckModes[static_cast<size_t>(settings.voiceMode)] : originalRatios;
+    strikeBrightness_ = std::lerp(0.38f, 1.0f, bodyVelocity_);
     wireVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.wireVelocityDepth, 0.0f, 1.0f));
     transientVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.transientVelocityDepth, 0.0f, 1.0f));
     semitoneOffset_ = std::clamp(semitoneOffset, -96, 96);
@@ -419,8 +426,10 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     const float tunedHz = std::clamp(rootHz * std::exp2(pitchSemitones / 12.0f), 25.0f, maxHz);
     const float bodyEnv = mainAge < 0 ? 0.0f : (fullAdsrEnabled_ ? 1.0f
         : std::exp(-static_cast<float>(mainAge) / bodyDecay));
-    const float overtoneEnv = mainAge < 0 ? 0.0f : (fullAdsrEnabled_ ? 1.0f
-        : std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.34f)));
+    const float struckOvertones = mainAge < 0 ? 0.0f
+        : std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.34f));
+    const float overtoneEnv = fullAdsrEnabled_ && mainAge >= 0 ? 1.0f : struckOvertones;
+    const float fmEnvelope = settings.articulatedModes ? struckOvertones * strikeBrightness_ : overtoneEnv;
 
     float wireEnv = 0.0f;
     if (fullAdsrEnabled_ && mainAge >= 0) {
@@ -523,9 +532,9 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
             lastShellQ_ = settings.toneQ;
             bandpassCoefficients(lastShellFreq_, lastShellQ_, sampleRate_, b0_s_, b1_s_, b2_s_, a1_s_, a2_s_);
         }
-        const float mode2 = std::min(maxHz, tunedHz * 1.593f);
-        const float mode3 = std::min(maxHz, tunedHz * 2.136f);
-        const float mode4 = std::min(maxHz, tunedHz * 2.877f);
+        const float mode2 = std::min(maxHz, tunedHz * modeRatios_[0]);
+        const float mode3 = std::min(maxHz, tunedHz * modeRatios_[1]);
+        const float mode4 = std::min(maxHz, tunedHz * modeRatios_[2]);
         phaseFund_ = wrapPhase(phaseFund_ + kTwoPi * tunedHz * dt);
         phaseFundR_ = wrapPhase(phaseFundR_ + kTwoPi * tunedHz * 1.0007f * dt);
         phaseMode2_ = wrapPhase(phaseMode2_ + kTwoPi * mode2 * dt);
@@ -535,7 +544,7 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         phaseMod1_ = wrapPhase(phaseMod1_ + kTwoPi * std::min(maxHz, tunedHz * (1.37f + settings.fmAmount * 1.8f)) * dt);
         phaseMod2_ = wrapPhase(phaseMod2_ + kTwoPi * std::min(maxHz, tunedHz * 3.17f) * dt);
 
-        const float fmIndex = std::clamp(settings.fmAmount, 0.0f, 1.0f) * 2.6f * overtoneEnv;
+        const float fmIndex = std::clamp(settings.fmAmount, 0.0f, 1.0f) * 2.6f * fmEnvelope;
         const float fundamentalL = std::sin(phaseFund_ + fmIndex * std::sin(phaseMod1_));
         const float fundamentalR = std::sin(phaseFundR_ + fmIndex * std::sin(phaseMod1_ + 0.07f));
         const float highModesL = 0.48f * std::sin(phaseMode2_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.48f))
@@ -557,8 +566,8 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
                 rawR = fundamentalR * bodyEnv * 1.08f + highModesR * 0.52f;
                 break;
             case VoiceMode::FmBell: {
-                const float bellL = std::sin(phaseFund_ + std::sin(phaseMod1_) * (0.7f + 3.8f * settings.fmAmount) * overtoneEnv);
-                const float bellR = std::sin(phaseFundR_ + std::sin(phaseMod1_ + 0.11f) * (0.7f + 3.8f * settings.fmAmount) * overtoneEnv);
+                const float bellL = std::sin(phaseFund_ + std::sin(phaseMod1_) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
+                const float bellR = std::sin(phaseFundR_ + std::sin(phaseMod1_ + 0.11f) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
                 const float chime = 0.45f * std::sin(phaseMode3_) + 0.24f * std::sin(phaseMod2_);
                 rawL = bellL * bodyEnv * 0.72f + chime * overtoneEnv;
                 rawR = bellR * bodyEnv * 0.72f + chime * overtoneEnv;

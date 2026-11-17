@@ -5,18 +5,46 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
 #include <cmath>
+#include <iostream>
+#include <set>
 #include <utility>
 
 namespace {
-void checkVisibleButtonTargets(juce::Component& component) {
+template<class T, class Predicate>
+T* findVisible(juce::Component& parent, const Predicate& matches) {
+    for (auto* child : parent.getChildren()) {
+        if (!child->isVisible()) continue;
+        if (auto* component = dynamic_cast<T*>(child); component && matches(*component)) return component;
+        if (auto* found = findVisible<T>(*child, matches)) return found;
+    }
+    return nullptr;
+}
+void checkVisibleButtonTargets(juce::Component& component, juce::Component& editor,
+                               std::vector<juce::Rectangle<int>>& targets) {
     for (auto* child : component.getChildren()) {
         if (!child->isVisible()) continue;
+        const auto rect = editor.getLocalArea(child, child->getLocalBounds());
+        CAPTURE(child->getName().toStdString(), rect.toString().toStdString());
         if (auto* button = dynamic_cast<juce::TextButton*>(child)) {
             INFO(button->getButtonText());
-            CHECK(button->getHeight() >= 36);
+            const juce::Font font(juce::FontOptions(14.0f, juce::Font::bold));
+            CHECK(juce::GlyphArrangement::getStringWidthInt(font, button->getButtonText()) + 8 <= rect.getWidth());
             CHECK(button->getLookAndFeel().getTextButtonFont(*button, button->getHeight()).getHeight() >= 14.0f);
+        } else if (auto* box = dynamic_cast<juce::ComboBox*>(child)) {
+            const auto font = box->getLookAndFeel().getComboBoxFont(*box);
+            for (int i = 0; i < box->getNumItems(); ++i) {
+                INFO(box->getItemText(i));
+                CHECK(juce::GlyphArrangement::getStringWidthInt(font, box->getItemText(i)) + 38 <= rect.getWidth());
+            }
+        } else if (!dynamic_cast<juce::Slider*>(child)) {
+            checkVisibleButtonTargets(*child, editor, targets);
+            continue;
         }
-        checkVisibleButtonTargets(*child);
+        CHECK(rect.getHeight() >= 36);
+        CHECK(rect.getWidth() >= 44);
+        CHECK(editor.getLocalBounds().contains(rect));
+        CHECK(std::none_of(targets.begin(), targets.end(), [rect](auto other) { return rect.intersects(other); }));
+        targets.push_back(rect);
     }
 }
 }
@@ -91,24 +119,17 @@ TEST_CASE("OpenSmacker layer controls map to engine settings and survive state r
         CHECK(std::abs(restored.parameters.getRawParameterValue(id)->load() - value) < 1.1f);
 }
 
-TEST_CASE("OpenSmackerProcessor provides 72 factory presets organized into 24 SN, 24 BL, and 24 TM", "[plugin]") {
+TEST_CASE("The factory bank has eighteen distinct programs for each of the four voices", "[plugin][presets]") {
     OpenSmackerProcessor processor;
+    std::set<std::string> names;
     REQUIRE(processor.getNumPrograms() == 72);
-
-    for (int i = 0; i < 72; ++i) {
+    const std::array<int, 4> modes{ 0, 2, 1, 3 };
+    for (int i = 0; i < processor.getNumPrograms(); ++i) {
         processor.setCurrentProgram(i);
         REQUIRE(processor.getCurrentProgram() == i);
-        const juce::String name = processor.getProgramName(i);
-        REQUIRE(name.isNotEmpty());
-        if (i < 24) {
-            REQUIRE(name.startsWith("SN "));
-        }
-        if (i >= 24 && i < 48) {
-            REQUIRE(name.startsWith("BL "));
-        }
-        if (i >= 48) {
-            REQUIRE(name.startsWith("TM "));
-        }
+        CHECK(names.insert(processor.getProgramName(i).toStdString()).second);
+        CHECK(static_cast<int>(processor.currentSettings().synth.voiceMode) == modes[static_cast<size_t>(i / 18)]);
+        CHECK_FALSE(processor.currentSettings().synth.fullAdsrEnabled);
     }
 }
 
@@ -204,9 +225,9 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;
     processor.prepareToPlay(48000.0, 512);
-    processor.setCurrentProgram(1);
+    processor.setCurrentProgram(0);
 
-    // Trigger a hit so the live visualizer stage is active in the screenshot
+    // Exercise the real processor before opening the editor.
     juce::AudioBuffer<float> buffer(2, 512);
     juce::MidiBuffer midi;
     midi.addEvent(juce::MidiMessage::noteOn(1, 69, (juce::uint8)120), 0);
@@ -214,8 +235,58 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
 
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
-    REQUIRE(editor->getWidth() == 1440);
-    REQUIRE(editor->getHeight() == 1000);
+    REQUIRE(editor->getWidth() == 1120);
+    REQUIRE(editor->getHeight() == 704);
+
+    auto click = [&editor](juce::String name) {
+        auto* button = findVisible<juce::TextButton>(*editor, [name](const auto& b) { return b.getButtonText() == name; });
+        REQUIRE(button != nullptr);
+        button->onClick();
+    };
+    auto* gate = findVisible<juce::ComboBox>(*editor, [](const auto& c) { return c.getName() == "MIDI gate"; });
+    REQUIRE(gate != nullptr);
+    gate->setSelectedId(2, juce::sendNotificationSync);
+    REQUIRE(processor.currentSettings().synth.fullAdsrEnabled);
+    for (auto name : { "Attack", "Decay", "Sustain", "Release" }) {
+        auto* slider = findVisible<juce::Slider>(*editor, [name](auto& c) { return c.getName() == name; });
+        REQUIRE(slider != nullptr);
+        if (juce::String(name) == "Release") {
+            slider->setValue(20000, juce::sendNotificationSync);
+            CHECK(processor.currentSettings().synth.ampReleaseMs == 20000.0f);
+        }
+    }
+    click("Audition hit");
+    midi.clear();
+    processor.processBlock(buffer, midi);
+    REQUIRE(processor.displayTriggerCount == 2);
+    for (int block = 0; block < 70; ++block) processor.processBlock(buffer, midi);
+    CHECK(buffer.getMagnitude(0, 512) < 0.0001f);
+    click("MIDI");
+    auto* pitch = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "MIDI pitch"; });
+    REQUIRE(pitch != nullptr);
+    pitch->setSelectedId(2, juce::sendNotificationSync);
+    CHECK(processor.currentSettings().noteTracking);
+    click("Hit");
+    (void) editor->createComponentSnapshot(editor->getLocalBounds());
+    click("Lock");
+    REQUIRE(processor.isSectionLocked(opensmacker::presets::Section::VoiceTuning));
+    (void) editor->createComponentSnapshot(editor->getLocalBounds());
+    click("Locked");
+    REQUIRE_FALSE(processor.isSectionLocked(opensmacker::presets::Section::VoiceTuning));
+    click("Rim smacks");
+    CHECK(processor.getCurrentProgram() == 54);
+    CHECK_FALSE(processor.currentSettings().synth.fullAdsrEnabled);
+    click("Next");
+    CHECK(processor.getCurrentProgram() == 55);
+    click("Previous");
+    CHECK(processor.getCurrentProgram() == 54);
+    click("Snares");
+    auto* browser = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Factory preset"; });
+    REQUIRE(browser != nullptr);
+    browser->setSelectedId(2, juce::sendNotificationSync);
+    CHECK(processor.getCurrentProgram() == 1);
+    browser->setSelectedId(1, juce::sendNotificationSync);
+    const std::array<const char*, 4> pages{ "Hit", "Layers", "Effects", "MIDI" };
 
     juce::File assetsDir;
 #if defined(OPENSMACKER_SOURCE_DIR)
@@ -229,16 +300,16 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     REQUIRE(assetsDir.exists());
     const std::array<const char*, 4> pageNames{ "hit", "layers", "fx", "midi" };
     for (int page = 0; page < 4; ++page) {
-        if (page < 3)
-            processor.setCurrentProgram(page * 24 + 1);
-        editor->setPage(page);
+        click(pages[static_cast<size_t>(page)]);
         for (int mode = 0; mode < 2; ++mode) {
-            editor->setAdvancedView(mode == 1);
-            checkVisibleButtonTargets(*editor);
+            if (mode == 1) click("Advanced controls");
+            if (page == 0) gate->setSelectedId(mode + 1, juce::sendNotificationSync);
+            std::vector<juce::Rectangle<int>> targets;
+            checkVisibleButtonTargets(*editor, *editor, targets);
             const auto snapshot = editor->createComponentSnapshot(editor->getLocalBounds());
             REQUIRE(snapshot.isValid());
-            REQUIRE(snapshot.getWidth() == 1440);
-            REQUIRE(snapshot.getHeight() == 1000);
+            REQUIRE(snapshot.getWidth() == 1120);
+            REQUIRE(snapshot.getHeight() == 704);
             const juce::String suffix = mode == 0 ? "" : "-advanced";
             const juce::File screenshot = assetsDir.getChildFile(
                 "openSmacker-" + juce::String(pageNames[static_cast<size_t>(page)]) + suffix + ".png");
@@ -248,6 +319,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
             juce::PNGImageFormat png;
             REQUIRE(png.writeImageToStream(snapshot, stream));
         }
+        click("Advanced controls");
     }
 }
 
@@ -274,42 +346,77 @@ TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset chang
 
     lockParam->setValueNotifyingHost(1.0f);
 
-    processor.setCurrentProgram(48);
+    processor.setCurrentProgram(36);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 6.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFreq)->load() - 2400.0f) < 2.0f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneNote)->load() - 4.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFine)->load() - 15.0f) < 0.5f);
 
     lockParam->setValueNotifyingHost(0.0f);
-    processor.setCurrentProgram(48);
+    processor.setCurrentProgram(36);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 2.0f) < 0.05f);
 }
 
-TEST_CASE("All 72 factory presets render clean audio without NaNs or silences", "[plugin][presets]") {
+TEST_CASE("All factory hits have attack, body, headroom and a compact tail", "[plugin][audio][presets]") {
+    constexpr int rate = 48000, samples = rate / 2;
     OpenSmackerProcessor processor;
-    constexpr int renderSamples = 4096; // Covers the longest factory flam lead-in at 48 kHz.
-    processor.prepareToPlay(48000.0, renderSamples);
-
-    for (int p = 0; p < 72; ++p) {
-        processor.setCurrentProgram(p);
-        juce::AudioBuffer<float> buffer(2, renderSamples);
-        juce::MidiBuffer midi;
-        midi.addEvent(juce::MidiMessage::noteOn(1, 69, (juce::uint8)110), 0);
-
-        processor.processBlock(buffer, midi);
-
-        float peak = 0.0f;
-        for (int ch = 0; ch < 2; ++ch) {
-            for (int i = 0; i < renderSamples; ++i) {
-                const float s = buffer.getSample(ch, i);
-                REQUIRE_FALSE(std::isnan(s));
-                REQUIRE_FALSE(std::isinf(s));
-                peak = std::max(peak, std::abs(s));
+    for (int family = 0; family < 4; ++family) {
+        float lowPeak = 1, highPeak = 0;
+        int shortest = 500, longest = 0;
+        for (int patch = 0; patch < opensmacker::presets::kFamilySize; ++patch) {
+            const int index = family * opensmacker::presets::kFamilySize + patch;
+            processor.setCurrentProgram(index);
+            CAPTURE(processor.getProgramName(index).toStdString());
+            processor.prepareToPlay(rate, samples);
+            juce::AudioBuffer<float> buffer(2, samples);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 69, static_cast<juce::uint8>(110)), 0);
+            processor.processBlock(buffer, midi);
+            const float peak = buffer.getMagnitude(0, samples);
+            REQUIRE(peak > 0.25f);
+            REQUIRE(peak <= 1.0f);
+            CHECK(buffer.getMagnitude(0, 960) > peak * 0.2f);
+            CHECK(buffer.getRMSLevel(0, 960, 960) > 0.025f);
+            const auto cutoff = peak * 0.01f;
+            int end = 0;
+            for (int i = 0; i < samples; ++i) {
+                const float l = buffer.getSample(0, i), r = buffer.getSample(1, i);
+                REQUIRE((std::isfinite(l) && std::isfinite(r)));
+                if (std::max(std::abs(l), std::abs(r)) >= cutoff) end = i;
             }
+            const auto endMs = end * 1000 / rate;
+            CHECK(endMs < 280);
+            lowPeak = std::min(lowPeak, peak);
+            highPeak = std::max(highPeak, peak);
+            shortest = std::min(shortest, endMs);
+            longest = std::max(longest, endMs);
         }
-        REQUIRE(peak > 0.05f);
-        REQUIRE(peak <= 1.5f);
+        std::cout << opensmacker::presets::kFamilyNames[static_cast<size_t>(family)]
+                  << " peak " << lowPeak << " to " << highPeak << ", -40 dB tail "
+                  << shortest << " to " << longest << " ms\n";
     }
+}
+
+TEST_CASE("Earlier sessions keep their exact voice settings and original resonances", "[plugin][state][presets]") {
+    OpenSmackerProcessor source, restored;
+    auto* hold = source.parameters.getParameter(opensmacker::params::kAmpEnabled);
+    hold->setValueNotifyingHost(1);
+    auto tree = source.parameters.copyState();
+    auto xml = tree.createXml();
+    juce::MemoryBlock state;
+    juce::AudioProcessor::copyXmlToBinary(*xml, state);
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    REQUIRE(restored.isRestoredCustomSound());
+    auto expected = source.currentSettings().synth;
+    expected.articulatedModes = false;
+    REQUIRE(restored.currentSettings().synth == expected);
+    restored.getStateInformation(state);
+    OpenSmackerProcessor reopened;
+    reopened.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    CHECK(reopened.currentSettings().synth == expected);
+    reopened.setCurrentProgram(0);
+    CHECK(reopened.currentSettings().synth.articulatedModes);
+    CHECK_FALSE(reopened.currentSettings().synth.fullAdsrEnabled);
 }
 
 TEST_CASE("OpenSmacker provides stereo component output buses", "[plugin][layers]") {
@@ -451,3 +558,45 @@ TEST_CASE("Lock-In state restores all voice zones and separated layer stems", "[
     }
 }
 
+
+
+TEST_CASE("Drumhead animation follows transport tempo and seeks and rests when stopped", "[plugin][gui_clock]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    struct Host : juce::AudioPlayHead {
+        PositionInfo position;
+        juce::Optional<PositionInfo> getPosition() const override { return position; }
+    } host;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000, 480);
+    host.position.setBpm(120);
+    host.position.setIsPlaying(true);
+    host.position.setPpqPosition(3.25);
+    processor.setPlayHead(&host);
+    juce::AudioBuffer<float> audio(2, 480);
+    juce::MidiBuffer midi;
+    processor.processBlock(audio, midi);
+    CHECK(std::abs(processor.animationBeatPhase(0) - 0.27f) < 0.001f);
+    host.position.setPpqPosition(-1.5);
+    host.position.setBpm(60);
+    processor.processBlock(audio, midi);
+    CHECK(std::abs(processor.animationBeatPhase(0) - 0.51f) < 0.001f);
+    host.position.setIsPlaying(false);
+    processor.processBlock(audio, midi);
+    CHECK(processor.animationBeatPhase(0) == 1.0f);
+    CHECK(processor.animationBeatPhase(20) == 1.0f);
+    std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
+    const juce::Rectangle<int> drumhead(22, 525, 150, 71);
+    auto resting = editor->createComponentSnapshot(drumhead);
+    host.position.setIsPlaying(true);
+    host.position.setPpqPosition(0.0);
+    processor.processBlock(audio, midi);
+    auto struck = editor->createComponentSnapshot(drumhead);
+    int changedPixels = 0;
+    for (int y = 0; y < struck.getHeight(); ++y)
+        for (int x = 0; x < struck.getWidth(); ++x)
+            if (struck.getPixelAt(x, y) != resting.getPixelAt(x, y)) ++changedPixels;
+    CHECK(changedPixels > 200);
+    processor.setPlayHead(nullptr);
+    processor.processBlock(audio, midi);
+    CHECK(std::abs(processor.animationBeatPhase(2.75) - 0.75f) < 0.001f);
+}

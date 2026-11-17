@@ -15,6 +15,12 @@ OpenSmackerProcessor::OpenSmackerProcessor()
     setCurrentProgram(0);
 }
 
+opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const {
+    auto settings = opensmacker::params::readSettings(parameters);
+    settings.synth.articulatedModes = !restoredCustom_.load();
+    return settings;
+}
+
 bool OpenSmackerProcessor::isSectionLocked(opensmacker::presets::Section section) const noexcept {
     const auto index = static_cast<size_t>(section);
     return index < sectionLocks_.size() && sectionLocks_[index].load(std::memory_order_relaxed);
@@ -66,8 +72,10 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     }
 
     opensmacker::core::Transport transport;
+    bool hostTimeline = false;
     if (auto* playHead = getPlayHead()) {
         if (auto posOpt = playHead->getPosition()) {
+            hostTimeline = wrapperType != wrapperType_Standalone;
             if (posOpt->getBpm()) {
                 transport.bpm = *posOpt->getBpm();
                 displayBpm.store(static_cast<float>(transport.bpm));
@@ -143,7 +151,7 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         });
     }
 
-    const auto settings = opensmacker::params::readSettings(parameters);
+    const auto settings = currentSettings();
     auto mainOutput = getBusBuffer(buffer, false, 0);
     if (mainOutput.getNumChannels() < 2)
         return;
@@ -169,10 +177,19 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         midiCcEvents_, midiPressureEvents_, layerOutputs, midiNoteOffs_);
 
     displayPeak.store(engine_.currentPeak());
-    displayBeatPhase.store(engine_.currentBeatPhase());
+    float beatPhase = -1.0f;
+    if (hostTimeline) beatPhase = transport.isPlaying ? engine_.currentBeatPhase() : 1.0f;
+    displayBeatPhase.store(beatPhase, std::memory_order_relaxed);
     displaySmackProgress.store(engine_.currentSmackProgress());
     displayTriggerCount.store(engine_.triggerSerial());
     displayLockedIn.store(engine_.isSmackLocked());
+}
+
+float OpenSmackerProcessor::animationBeatPhase(double seconds) const noexcept {
+    const float hostPhase = displayBeatPhase.load(std::memory_order_relaxed);
+    if (hostPhase >= 0.0f) return hostPhase;
+    const auto beats = seconds * displayBpm.load(std::memory_order_relaxed) / 60.0;
+    return static_cast<float>(beats - std::floor(beats));
 }
 
 double OpenSmackerProcessor::getTailLengthSeconds() const {
@@ -209,6 +226,7 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
     const auto& presets = opensmacker::presets::factoryPresets();
     if (index >= 0 && index < static_cast<int>(presets.size())) {
         currentProgram_ = index;
+        restoredCustom_.store(false);
         const bool preservePitch = parameters.getRawParameterValue(opensmacker::params::kLockPitch) != nullptr
             && *parameters.getRawParameterValue(opensmacker::params::kLockPitch) > 0.5f;
         opensmacker::presets::SectionLocks locks{};
@@ -223,6 +241,8 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
 
 void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto state = parameters.copyState();
+    state.setProperty("factoryBank", 1, nullptr);
+    state.setProperty("customSound", restoredCustom_.load(), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     if (engine_.isSmackLocked()) {
@@ -242,9 +262,14 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
         const auto currentSchema = parameters.copyState();
         for (int i = 0; i < currentSchema.getNumChildren(); ++i) {
             const auto child = currentSchema.getChild(i);
-            if (child.hasProperty("id") && !state.getChildWithProperty("id", child.getProperty("id")).isValid())
-                state.addChild(child.createCopy(), -1, nullptr);
+            const auto id = child.getProperty("id").toString();
+            if (id.isEmpty() || state.getChildWithProperty("id", id).isValid()) continue;
+            auto missing = child.createCopy();
+            if (auto* param = parameters.getParameter(id))
+                missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
+            state.addChild(missing, -1, nullptr);
         }
+        restoredCustom_.store(int(state.getProperty("factoryBank", 0)) != 1 || bool(state.getProperty("customSound", false)));
         parameters.replaceState(state);
         for (size_t i = 0; i < sectionLocks_.size(); ++i) {
             const auto key = "section_lock_" + juce::String(static_cast<int>(i));
@@ -258,7 +283,7 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
             block.fromBase64Encoding(state.getProperty(wavProperty).toString());
             const auto* bytePtr = static_cast<const uint8_t*>(block.getData());
             std::vector<uint8_t> wavBytes(bytePtr, bytePtr + block.getSize());
-            const auto restoredSettings = opensmacker::params::readSettings(parameters);
+            const auto restoredSettings = currentSettings();
             const bool restored = engine_.restoreLockedWav(wavBytes, restoredSettings.synth.voiceMode);
             displayLockedIn.store(restored);
         } else {

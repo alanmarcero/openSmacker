@@ -2,6 +2,8 @@
 
 #include "Controls.h"
 #include "Presets.h"
+#include "SmackSynth.h"
+#include <optional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <memory>
@@ -14,21 +16,15 @@ namespace opensmacker::ui {
 class SmackerStagePanel : public juce::Component, private juce::Timer {
 public:
     explicit SmackerStagePanel(OpenSmackerProcessor& processor);
-    ~SmackerStagePanel() override;
     void paint(juce::Graphics& g) override;
-    void resized() override;
 private:
     void timerCallback() override;
+    void updateWaveform(const core::SmackSynthSettings& settings);
     OpenSmackerProcessor& processor_;
-    juce::Image stageArtwork_;
-    juce::TextButton auditionBtn_{ "AUDITION HIT" };
-    uint32_t seenTriggers_ = 0;
-    double smackTriggerTimeMs_ = 0.0;
-    float smackPose_ = 0.0f;
-    float shockwave_ = 0.0f;
-    float impactIntensity_ = 1.0f;
-    float impactFlash_ = 0.0f;
-    float idleBob_ = 0.0f;
+    std::optional<core::SmackSynthSettings> lastSettings_;
+    std::array<float, 400> waveform_{};
+    int previewMs_ = 0;
+
 };
 
 class ParameterCard : public juce::Component {
@@ -36,7 +32,7 @@ public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                   presets::Section section, juce::Colour accent, bool lockable = true);
     void addParameter(const juce::String& id, const juce::String& title);
-    void setRows(std::vector<int> rows);
+    void setRows(std::vector<int> basic, std::vector<int> advanced = {});
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -48,7 +44,7 @@ private:
     bool lockable_ = true;
     juce::TextButton lockButton_{ "LOCK" };
     std::vector<std::unique_ptr<juce::Component>> controls_;
-    std::vector<int> rows_;
+    std::vector<int> basicRows_, advancedRows_;
     bool advancedMode_ = false;
 };
 
@@ -64,6 +60,7 @@ private:
     int page_ = 0;
     ParameterCard voiceCard_;
     ParameterCard transientCard_;
+    ParameterCard envelopeCard_;
     ParameterCard preStrikeCard_;
     ParameterCard wiresCard_;
 };

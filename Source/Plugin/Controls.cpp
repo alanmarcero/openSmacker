@@ -6,43 +6,47 @@ namespace opensmacker::ui {
 
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
     slider_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 56, 16);
+    slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
     slider_.setWantsKeyboardFocus(true);
+    slider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+    slider_.setColour(juce::Slider::textBoxBackgroundColourId, theme::kInk);
+    slider_.setColour(juce::Slider::textBoxTextColourId, theme::kText);
     slider_.setColour(juce::Slider::rotarySliderFillColourId, accent);
     addAndMakeVisible(slider_);
 
     title_.setText(title, juce::dontSendNotification);
-    title_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
-    title_.setColour(juce::Label::textColourId, theme::kTextDim.brighter(0.2f));
+    title_.setColour(juce::Label::textColourId, theme::kTextDim);
     addAndMakeVisible(title_);
 
     bind(state, parameterId);
 }
 
 void Knob::bind(Apvts& state, const juce::String& parameterId) {
+    attachment_ = std::make_unique<Apvts::SliderAttachment>(state, parameterId, slider_);
     if (auto* param = state.getParameter(parameterId)) {
+        slider_.setName(title_.getText());
+        const auto unit = param->getLabel();
+        slider_.textFromValueFunction = [param, unit](double value) {
+            const auto display = param->getText(param->convertTo0to1(static_cast<float>(value)), 12);
+            return unit.isEmpty() ? display : display + " " + unit;
+        };
+        slider_.updateText();
         slider_.setDoubleClickReturnValue(true, param->convertFrom0to1(param->getDefaultValue()));
     }
-    attachment_ = std::make_unique<Apvts::SliderAttachment>(state, parameterId, slider_);
 }
 
 void Knob::resized() {
     auto area = getLocalBounds();
-    title_.setBounds(area.removeFromTop(16));
+    area = area.withSizeKeepingCentre(area.getWidth(), std::min(106, area.getHeight()));
+    title_.setBounds(area.removeFromTop(18));
     slider_.setBounds(area);
 }
 
 void Knob::setTooltip(const juce::String& text) {
     slider_.setTooltip(text);
     title_.setTooltip(text);
-}
-
-void Knob::setAdvancedMode(bool advanced) {
-    slider_.setTextBoxStyle(advanced ? juce::Slider::TextBoxBelow : juce::Slider::NoTextBox,
-        false, 56, 16);
-    slider_.resized();
-    resized();
 }
 
 Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
@@ -52,9 +56,9 @@ Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String
     addAndMakeVisible(box_);
 
     title_.setText(title, juce::dontSendNotification);
-    title_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
-    title_.setColour(juce::Label::textColourId, theme::kTextDim.brighter(0.2f));
+    title_.setColour(juce::Label::textColourId, theme::kTextDim);
     addAndMakeVisible(title_);
 
     bind(state, parameterId);
@@ -65,14 +69,18 @@ void Choice::bind(Apvts& state, const juce::String& parameterId) {
     box_.clear(juce::dontSendNotification);
     if (auto* param = dynamic_cast<juce::AudioParameterChoice*>(state.getParameter(parameterId))) {
         box_.addItemList(param->choices, 1);
-        attachment_ = std::make_unique<Apvts::ComboBoxAttachment>(state, parameterId, box_);
+    } else if (dynamic_cast<juce::AudioParameterBool*>(state.getParameter(parameterId)) != nullptr) {
+        box_.addItemList({ "One-shot", "Hold notes" }, 1);
     }
+    box_.setName(title_.getText());
+    attachment_ = std::make_unique<Apvts::ComboBoxAttachment>(state, parameterId, box_);
 }
 
 void Choice::resized() {
     auto area = getLocalBounds();
-    title_.setBounds(area.removeFromTop(16));
-    box_.setBounds(area.reduced(2, 4));
+    area = area.withSizeKeepingCentre(area.getWidth(), std::min(64, area.getHeight()));
+    title_.setBounds(area.removeFromTop(19));
+    box_.setBounds(area.reduced(3, 3));
 }
 
 void Choice::setTooltip(const juce::String& text) {
@@ -85,9 +93,9 @@ Toggle::Toggle(Apvts& state, const juce::String& parameterId, const juce::String
     button_.setButtonText(text);
     button_.setClickingTogglesState(true);
     button_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
-    button_.setColour(juce::TextButton::buttonOnColourId, accent.withAlpha(0.32f));
+    button_.setColour(juce::TextButton::buttonOnColourId, accent);
     button_.setColour(juce::TextButton::textColourOffId, theme::kTextDim);
-    button_.setColour(juce::TextButton::textColourOnId, accent);
+    button_.setColour(juce::TextButton::textColourOnId, theme::kInk);
     addAndMakeVisible(button_);
 }
 
@@ -100,61 +108,6 @@ void Toggle::resized() {
 
 void Toggle::setTooltip(const juce::String& text) {
     button_.setTooltip(text);
-}
-
-void layoutRow(juce::Rectangle<int> area, std::initializer_list<juce::Component*> components) {
-    if (components.size() == 0) return;
-    const int count = static_cast<int>(components.size());
-    const int itemWidth = area.getWidth() / count;
-    int idx = 0;
-    for (auto* c : components) {
-        if (c != nullptr) {
-            c->setBounds(area.getX() + idx * itemWidth, area.getY(), itemWidth, area.getHeight());
-        }
-        idx++;
-    }
-}
-
-void drawPanel(juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title, juce::Colour accent) {
-    auto bounds = area.toFloat().reduced(0.5f);
-
-    g.setColour(theme::kPanel);
-    g.fillRoundedRectangle(bounds, 6.0f);
-
-    g.setGradientFill(juce::ColourGradient(
-        theme::kSteel, bounds.getTopLeft(),
-        theme::kInk, bounds.getBottomLeft(), false));
-    g.fillRoundedRectangle(bounds.reduced(0.5f), 6.0f);
-
-    g.setColour(theme::kPanelEdge);
-    g.drawRoundedRectangle(bounds, 6.0f, 1.0f);
-
-    auto titleBar = bounds.removeFromTop(22.0f);
-    g.setColour(theme::kInk);
-    g.fillRoundedRectangle(titleBar, 6.0f);
-    g.fillRect(titleBar.removeFromBottom(6.0f));
-
-    const auto topBar = bounds.removeFromTop(3.0f).reduced(6.0f, 0.0f);
-    g.setColour(accent);
-    g.fillRoundedRectangle(topBar, 1.5f);
-
-    if (title.isNotEmpty()) {
-        g.setColour(theme::kText);
-        g.setFont(juce::FontOptions(12.0f, juce::Font::bold));
-        g.drawText(title, area.getX() + 12, area.getY() + 3, area.getWidth() - 24, 18, juce::Justification::left, true);
-    }
-}
-
-void drawCaption(juce::Graphics& g, juce::Rectangle<int> area, const juce::String& text) {
-    g.setColour(theme::kTextDim);
-    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-    g.drawText(text, area, juce::Justification::centred, true);
-}
-
-void drawGlow(juce::Graphics& g, juce::Rectangle<float> area, juce::Colour colour) {
-    const juce::Graphics::ScopedSaveState state(g);
-    g.setColour(colour.withAlpha(0.25f));
-    g.fillEllipse(area);
 }
 
 } // namespace opensmacker::ui

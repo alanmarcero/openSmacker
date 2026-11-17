@@ -1,39 +1,43 @@
-# openSmacker v2.2.2
+# openSmacker v2.3.0
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
-openSmacker makes pitched trance percussion. Choose Dance Snare, Club Tom-Tom, FM Bell / Chime, or Pryda / Rim Smack. Play each hit from MIDI or use the built-in audition controls.
+openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a tom fill to your bass line, or hold a metallic note from a MIDI keyboard.
+
+![The Hit editor with the Backbeat snare, its waveform, body tuning, strike and amplitude envelope](assets/openSmacker-hit.png)
+
+## Find a sound
+
+Choose **Snares**, **Bells & chimes**, **Toms**, or **Rim smacks** to load the first of 18 sounds in that family. The **Factory preset** menu lists all 72. **Previous**, **Next**, and **Audition hit** work on every page.
+
+Try *Backbeat* for a snare with a pitched shell and tight wires, *Glass Pin* for a struck FM chime, *Floor Pocket* for a low tom, or *Rim Tick* for a short side accent. Each voice has its own overtone spacing. Harder strikes produce a brighter attack. The **Hit** page shows a preview of the dry one-shot at its root pitch. The illustrated drumhead in the sidebar pulses on the host beat, rests when playback stops, and runs on an internal clock in Standalone.
+
+## Play one-shots or held notes
+
+The factory sounds start in **One-shot**. Use **Body decay**, **Pitch sweep**, and **Strike Level** to fit the hit to your rhythm. On the **Layers** page, set the number and spacing of flam strikes, or adjust the wire texture, level and decay.
+
+Choose **Hold notes** under **MIDI gate** on the Hit page to sustain the voice from a keyboard. **Attack**, **Decay**, **Sustain**, and **Release** are editable in both views. A matching note-off on the same MIDI channel starts the release, which can run up to 20 seconds. The struck FM overtones fade while the body continues to sound. **Audition hit** and the host roll play one-shots.
+
+Select **Note Tracking** under **MIDI pitch** on the MIDI page to play melodies. **Fixed (Root)** keeps the pitch set on the Hit page. Set the velocity or aftertouch response separately for the body, wires, and transient.
+
+## Shape and route the layers
+
+Enable **Advanced controls** for shell resonance and FM, pitch decay, the body and transient filters, pan, wire attack and hold, and flam humanization. Lock a section to keep its values while browsing. Locked controls stay editable.
+
+On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, limiting, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. Three additional stereo output buses carry the dry body, wires, and transient.
+
+The MIDI page also has editable voice zones. The default ranges are 36–47 for snare, 48–59 for tom, 60–71 for bell, and 72–84 for rim. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign CCs to each layer. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
 
 ## Screenshots
 
-![Hit page](assets/openSmacker-hit.png)
+![Layer editor showing flam timing and wire controls](assets/openSmacker-layers.png)
 
-![Layers page](assets/openSmacker-layers.png)
+![Advanced effects editor with saturation, dynamics and space controls](assets/openSmacker-fx-advanced.png)
 
-![Effects page](assets/openSmacker-fx.png)
-
-![MIDI page](assets/openSmacker-midi.png)
-
-## Shape each hit
-
-Set the root note, octave, and cents. Use fixed pitch or track MIDI notes, and lock the pitch when you want a voice to stay tuned. The default hit is a one-shot. Enable **Full ADSR** to hold a sound until the matching MIDI note and channel end; set release up to 20 seconds.
-
-Add one to five pre-strikes with adjustable spread, decay, humanization, pan, and level. Choose Stick, Mallet, Rimshot, or Laser for the transient. Add Snare Wires, White Sizzle, Velvet Air, or Metallic Ring. Each layer has its own envelope, filters, level, and width. Set wire tension to change the snare-wire sound. Body and transient have separate filters and pan controls.
-
-Choose Tape, Tube, Hard Clip, or Wavefold saturation. Add compression, limiting, gated reverb, reverse swell, stereo width, and output gain. Use the animated stage or **Push It** to audition. Lock a rendered hit as a WAV for repeatable playback; the lock saves with the project.
-
-## Presets and controls
-
-The factory bank has 72 presets: 24 snares, 24 bells and chimes, and 24 toms. Browse by voice category, preset menu, or previous and next controls. Lock any of the six sound sections to keep its values while browsing; locked controls remain editable. The editor has Hit, Layers, Effects, and MIDI pages, each with Simple and Advanced views.
-
-## Play with MIDI
-
-MIDI notes trigger hits, and velocity changes their level. Turn on key zones to map notes 36–47 to Dance Snare, 48–59 to Club Tom-Tom, 60–71 to FM Bell / Chime, and 72–84 to Pryda / Rim Smack. Set layer velocity and aftertouch response. Use host-synced rolls at eighth, sixteenth, or thirty-second notes, with adjustable probability and accent.
-
-Assign MIDI CCs to the body, wire, and transient layers. CC 7 controls output level, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers. Three stereo outputs provide separate dry Body, Wires, and Transient signals.
+![MIDI pitch, key zones, velocity, aftertouch and host roll](assets/openSmacker-midi-advanced.png)
 
 ## Formats and license
 
-VST3, LV2, and Standalone formats are available on macOS, Windows, and Linux. AU is available on macOS.
+VST3, LV2, and Standalone are available on macOS, Windows, and Linux. AU is available on macOS. Earlier projects open as **Custom sound** with their saved parameters, original synthesis, section locks and embedded audio. Selecting a new factory program loads the new sound.
 
 MIT License. See [LICENSE](LICENSE).

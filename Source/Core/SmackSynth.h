@@ -38,6 +38,8 @@ enum class ClickType {
 };
 
 struct SmackSynthSettings {
+    bool articulatedModes = true;
+
     // Pitch & Tuning
     int note = 9;                  // 0..11 (A), default A
     int octave = 3;                // 1..8, default 3
@@ -239,6 +241,8 @@ private:
     double sampleRate_ = 48000.0;
     bool isPlaying_ = false;
     float bodyVelocity_ = 1.0f;
+    float strikeBrightness_ = 1.0f;
+    std::array<float, 3> modeRatios_{};
     float wireVelocity_ = 1.0f;
     float transientVelocity_ = 1.0f;
     int semitoneOffset_ = 0;
