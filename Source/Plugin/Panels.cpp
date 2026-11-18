@@ -288,7 +288,7 @@ EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
     };
     for (const auto& [id, title] : space)
         spaceCard_.addParameter(id, title);
-    spaceCard_.setRows({ 2, 2, 2 }, { 3, 3, 3, 2 });
+    spaceCard_.setRows({ 2, 2, 2 }, { 3, 4, 2, 2 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
 }
