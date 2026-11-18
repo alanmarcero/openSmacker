@@ -24,6 +24,7 @@ inline constexpr const char* kToneDecay = "tone_decay";
 inline constexpr const char* kTonePitchEnv = "tone_pitch_env";
 inline constexpr const char* kTonePitchDecay = "tone_pitch_decay";
 inline constexpr const char* kFmAmount = "fm_amount";
+inline constexpr const char* kShellSpread = "shell_spread";
 inline constexpr const char* kToneLevel = "tone_level";
 inline constexpr const char* kBodyHPF = "body_hpf";
 inline constexpr const char* kBodyLPF = "body_lpf";
@@ -51,6 +52,7 @@ inline constexpr const char* kWirePan = "wire_pan";
 inline constexpr const char* kClickType = "click_type";
 inline constexpr const char* kClickLevel = "click_level";
 inline constexpr const char* kClickFreq = "click_freq";
+inline constexpr const char* kSubThump = "sub_thump";
 inline constexpr const char* kTransientHPF = "transient_hpf";
 inline constexpr const char* kTransientLPF = "transient_lpf";
 inline constexpr const char* kTransientPan = "transient_pan";
@@ -80,6 +82,7 @@ inline constexpr const char* kReverbDecay = "reverb_decay";
 inline constexpr const char* kReverbDamp = "reverb_damp";
 inline constexpr const char* kReverbGate = "reverb_gate";
 inline constexpr const char* kReverbMix = "reverb_mix";
+inline constexpr const char* kEchoMix = "echo_mix";
 
 // Reverse & Sync
 inline constexpr const char* kReverseMode = "reverse_mode";

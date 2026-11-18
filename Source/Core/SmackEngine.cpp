@@ -353,6 +353,9 @@ void SmackEngine::prepare(double sampleRate) {
 
     wavCache_.reserveFrames(static_cast<size_t>(std::ceil(sampleRate_ * 4.0)));
     resizeVoiceBuffers(reverseSource_, static_cast<size_t>(sampleRate_ * 2.0));
+    const size_t maxEchoSamples = std::max<size_t>(16, static_cast<size_t>(sampleRate_ * 2.0));
+    echoBufferL_.assign(maxEchoSamples, 0.0f);
+    echoBufferR_.assign(maxEchoSamples, 0.0f);
     reset();
 }
 
@@ -362,6 +365,9 @@ void SmackEngine::reset() noexcept {
     distR_.reset();
     compressor_.reset();
     limiter_.reset();
+    std::fill(echoBufferL_.begin(), echoBufferL_.end(), 0.0f);
+    std::fill(echoBufferR_.begin(), echoBufferR_.end(), 0.0f);
+    echoWriteIndex_ = 0;
     wavPlayPosition_ = -1.0;
     reversePlayHead_ = -1;
     reverseDuration_ = 0;
@@ -899,6 +905,23 @@ void SmackEngine::process(
                 const float wetDistR = distR_.processSample(sR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
                 sL = sL * (1.0f - settings.effects.distMix) + wetDistL * settings.effects.distMix;
                 sR = sR * (1.0f - settings.effects.distMix) + wetDistR * settings.effects.distMix;
+            }
+
+            if (!echoBufferL_.empty()) {
+                const size_t bufSize = echoBufferL_.size();
+                const double safeBpm = std::clamp(std::isfinite(bpm) && bpm > 0.0 ? bpm : 138.0, 40.0, 260.0);
+                const size_t delaySamples = std::clamp<size_t>(static_cast<size_t>(0.375 * 60.0 / safeBpm * sampleRate_), 1, bufSize - 1);
+                const size_t readIdx = (echoWriteIndex_ + bufSize - delaySamples) % bufSize;
+                const float delayedL = echoBufferL_[readIdx];
+                const float delayedR = echoBufferR_[readIdx];
+                const float echoMix = std::clamp(settings.effects.echoMix, 0.0f, 1.0f);
+                echoBufferL_[echoWriteIndex_] = std::tanh(sL + delayedR * 0.35f);
+                echoBufferR_[echoWriteIndex_] = std::tanh(sR + delayedL * 0.35f);
+                echoWriteIndex_ = (echoWriteIndex_ + 1) % bufSize;
+                if (echoMix > 0.001f) {
+                    sL += delayedL * echoMix * 0.65f;
+                    sR += delayedR * echoMix * 0.65f;
+                }
             }
 
             if (settings.effects.stereoWidth != 1.0f) {

@@ -129,7 +129,7 @@ FactoryPreset makePreset(const Patch& p, const Voicing& v) {
         { kVoiceMode, static_cast<float>(v.voice) }, { kToneNote, float(p.body.midiNote % 12) },
         { kToneOctave, float(p.body.midiNote / 12 - 1) }, { kToneFine, 0 }, { kToneFreq, float(p.body.shellHz) },
         { kToneQ, 2.7f + p.body.fm * 3 }, { kToneDecay, decay }, { kTonePitchEnv, float(p.body.pitchSweep) },
-        { kTonePitchDecay, v.pitchTime }, { kFmAmount, p.body.fm }, { kToneLevel, v.bodyLevel },
+        { kTonePitchDecay, v.pitchTime }, { kFmAmount, p.body.fm }, { kShellSpread, 0 }, { kToneLevel, v.bodyLevel },
         { kBodyHPF, 25 }, { kBodyLPF, 12700 }, { kBodyPan, 0 }, { kAmpEnabled, 0 },
         { kAmpAttack, 0.25f }, { kAmpDecay, decay * 0.4f }, { kAmpSustain, 0.69f }, { kAmpRelease, decay * 0.48f },
         { kPreBursts, float(p.strikes) }, { kPreSpread, 5 }, { kPreDecay, 4 }, { kPreJitter, 0.04f },
@@ -138,12 +138,12 @@ FactoryPreset makePreset(const Patch& p, const Voicing& v) {
         { kNoiseHPF, v.wireHP }, { kNoiseLPF, v.wireLP }, { kNoiseStereoWidth, v.width },
         { kNoiseLevel, p.wires.level }, { kWireTension, v.tension }, { kWirePan, 0 },
         { kClickType, static_cast<float>(p.strike.type) }, { kClickFreq, float(p.strike.hz) }, { kClickLevel, v.strikeLevel },
-        { kTransientHPF, 95 }, { kTransientLPF, 13500 }, { kTransientPan, 0 },
+        { kSubThump, 0 }, { kTransientHPF, 95 }, { kTransientLPF, 13500 }, { kTransientPan, 0 },
         { kDistType, 0 }, { kDistDrive, 0.065f }, { kDistTone, 0 }, { kDistMix, 0.13f },
         { kCompThresh, -12 }, { kCompRatio, 2 }, { kCompAttack, 9 }, { kCompRelease, 48 },
         { kCompMakeup, 0.5f }, { kCompMix, 0.45f }, { kLimiterEnabled, 1 }, { kLimiterCeiling, -1 },
         { kLimiterRelease, 20 }, { kReverbSize, 0.38f }, { kReverbDecay, 190 }, { kReverbDamp, 0.58f },
-        { kReverbGate, 80 }, { kReverbMix, p.room }, { kReverseMode, 0 }, { kReverseMix, 0.35f },
+        { kReverbGate, 80 }, { kReverbMix, p.room }, { kEchoMix, 0 }, { kReverseMode, 0 }, { kReverseMix, 0.35f },
         { kMidiMode, 0 }, { kLockPitch, 0 }, { kLockIn, 0 }, { kStereoWidth, 1 }, { kOutputGain, v.gain },
     } };
 }
@@ -168,7 +168,7 @@ Section sectionFor(const juce::String& id) {
         || id == kNoiseHPF || id == kNoiseLPF || id == kNoiseStereoWidth || id == kNoiseLevel
         || id == kWireTension || id == kWirePan)
         return Section::WiresAir;
-    if (id == kClickType || id == kClickLevel || id == kClickFreq)
+    if (id == kClickType || id == kClickLevel || id == kClickFreq || id == kSubThump)
         return Section::Transient;
     if (id == kTransientHPF || id == kTransientLPF || id == kTransientPan)
         return Section::Transient;
@@ -176,7 +176,7 @@ Section sectionFor(const juce::String& id) {
         || id == kCompAttack || id == kCompRelease || id == kCompMakeup || id == kCompMix || id == kLimiterCeiling
         || id == kLimiterRelease || id == kLimiterEnabled)
         return Section::SaturationDynamics;
-    if (id == kReverbSize || id == kReverbDecay || id == kReverbDamp || id == kReverbGate || id == kReverbMix
+    if (id == kReverbSize || id == kReverbDecay || id == kReverbDamp || id == kReverbGate || id == kReverbMix || id == kEchoMix
         || id == kReverseMode || id == kReverseMix || id == kMidiMode || id == kLockIn || id == kStereoWidth || id == kOutputGain)
         return Section::SpaceOutput;
     return Section::VoiceTuning;

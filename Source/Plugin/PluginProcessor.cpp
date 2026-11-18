@@ -201,9 +201,11 @@ double OpenSmackerProcessor::getTailLengthSeconds() const {
     const float reverbMix = parameters.getRawParameterValue(opensmacker::params::kReverbMix)->load(std::memory_order_relaxed);
     const float reverbGate = parameters.getRawParameterValue(opensmacker::params::kReverbGate)->load(std::memory_order_relaxed);
     const float reverbDecay = parameters.getRawParameterValue(opensmacker::params::kReverbDecay)->load(std::memory_order_relaxed);
-    const double effectTail = reverbMix > 0.001f
+    const float echoMix = parameters.getRawParameterValue(opensmacker::params::kEchoMix)->load(std::memory_order_relaxed);
+    const double reverbTail = reverbMix > 0.001f
         ? std::max(reverbGate, std::min(reverbDecay * 0.60f, 900.0f)) * 0.001 : 0.0;
-    return std::clamp(static_cast<double>(releaseMs) * 0.001 + effectTail, 0.0, 23.0);
+    const double echoTail = echoMix > 0.001f ? 0.9 : 0.0;
+    return std::clamp(static_cast<double>(releaseMs) * 0.001 + std::max(reverbTail, echoTail), 0.0, 23.0);
 }
 
 juce::AudioProcessorEditor* OpenSmackerProcessor::createEditor() {

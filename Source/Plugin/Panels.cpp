@@ -178,16 +178,16 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
       preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 15> voice{
+    const std::array<std::pair<const char*, const char*>, 16> voice{
         std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" },
         { kToneDecay, "Body decay" }, { kTonePitchEnv, "Pitch sweep" }, { kToneLevel, "Body level" },
-        { kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" },
+        { kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" }, { kShellSpread, "Mode spread" },
         { kTonePitchDecay, "Pitch decay" }, { kToneFine, "Fine tune" },
         { kBodyHPF, "High-pass" }, { kBodyLPF, "Low-pass" }, { kBodyPan, "Pan" }, { kLockPitch, "Lock pitch" }
     };
     for (const auto& [id, title] : voice)
         voiceCard_.addParameter(id, title);
-    voiceCard_.setRows({ 3, 3 }, { 3, 6, 6 });
+    voiceCard_.setRows({ 3, 3 }, { 3, 7, 6 });
     envelopeCard_.addParameter(kAmpEnabled, "MIDI gate");
     envelopeCard_.addParameter(kAmpAttack, "Attack");
     envelopeCard_.addParameter(kAmpDecay, "Decay");
@@ -198,10 +198,11 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     transientCard_.addParameter(kClickType, "Strike Type");
     transientCard_.addParameter(kClickLevel, "Strike Level");
     transientCard_.addParameter(kClickFreq, "Strike Freq");
+    transientCard_.addParameter(kSubThump, "Sub Thump");
     transientCard_.addParameter(kTransientHPF, "Transient HPF");
     transientCard_.addParameter(kTransientLPF, "Transient LPF");
     transientCard_.addParameter(kTransientPan, "Transient Pan");
-    transientCard_.setRows({ 1, 2 }, { 3, 3 });
+    transientCard_.setRows({ 1, 2 }, { 1, 3, 3 });
 
     const std::array<std::pair<const char*, const char*>, 6> pre{
         std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spacing" }, { kPreDecay, "Decay" },
@@ -253,7 +254,7 @@ void SmackSynthPanel::resized() {
     auto area = getLocalBounds();
     const int gap = 10;
     if (page_ == 0) {
-        envelopeCard_.setBounds(area.removeFromBottom(148));
+        envelopeCard_.setBounds(area.removeFromBottom(advancedMode_ ? 132 : 148));
         area.removeFromBottom(gap);
         voiceCard_.setBounds(area.removeFromLeft(area.getWidth() * 65 / 100));
         area.removeFromLeft(gap);
@@ -279,14 +280,15 @@ EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
         dynamicsCard_.addParameter(id, title);
     dynamicsCard_.setRows({ 2, 2, 2 }, { 3, 3, 3, 4 });
 
-    const std::array<std::pair<const char*, const char*>, 10> space{
+    const std::array<std::pair<const char*, const char*>, 11> space{
         std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kStereoWidth, "Stereo width" },
         { kOutputGain, "Output" }, { kReverbSize, "Room size" }, { kReverbDecay, "Room decay" },
-        { kReverbDamp, "Damping" }, { kReverseMode, "Reverse sync" }, { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
+        { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" }, { kReverseMode, "Reverse sync" },
+        { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
     };
     for (const auto& [id, title] : space)
         spaceCard_.addParameter(id, title);
-    spaceCard_.setRows({ 2, 2, 2 }, { 3, 3, 2, 2 });
+    spaceCard_.setRows({ 2, 2, 2 }, { 3, 3, 3, 2 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
 }

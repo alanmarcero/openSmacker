@@ -41,7 +41,7 @@ void EdmLookAndFeel::drawRotarySlider(
     float endAngle,
     juce::Slider& slider) {
     const auto accent = slider.findColour(juce::Slider::rotarySliderFillColourId);
-    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(3.5f);
+    const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(1.5f);
     const float radius = std::min(30.0f, 0.5f * std::min(bounds.getWidth(), bounds.getHeight()));
     if (radius < 5.0f) return;
     const auto centre = bounds.getCentre();

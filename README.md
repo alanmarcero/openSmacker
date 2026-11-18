@@ -1,4 +1,4 @@
-# openSmacker v2.3.0
+# openSmacker v2.4.0
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
