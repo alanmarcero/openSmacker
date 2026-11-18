@@ -4,6 +4,8 @@
 #include "Theme.h"
 #include <algorithm>
 #include <cmath>
+#include <numeric>
+#include <ranges>
 
 namespace opensmacker::ui {
 
@@ -40,25 +42,26 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     auto area = getLocalBounds();
     g.setColour(theme::kKnobBody);
     g.fillRoundedRectangle(area.toFloat(), 8);
-    auto name = area.removeFromLeft(194).reduced(18, 13);
+    auto name = area.removeFromLeft(194).reduced(16, 6);
     const auto* voice = processor_.parameters.getParameter(params::kVoiceMode);
     g.setColour(theme::kTextDim);
-    g.setFont(juce::FontOptions(15.0f));
-    g.drawText(voice->getCurrentValueAsText(), name.removeFromTop(24), juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(13.5f));
+    g.drawText(voice->getCurrentValueAsText(), name.removeFromTop(18), juce::Justification::centredLeft);
     const auto note = juce::String(core::kNoteNames[static_cast<size_t>(settings.note)].data()) + juce::String(settings.octave);
     g.setColour(theme::kText);
+    const bool ultraCompact = getHeight() < 110;
     const bool compact = getHeight() < 140;
-    g.setFont(juce::FontOptions(compact ? 41.0f : 54.0f, juce::Font::bold));
-    g.drawText(note, name.removeFromTop(compact ? 44 : 61), juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(ultraCompact ? 30.0f : (compact ? 41.0f : 54.0f), juce::Font::bold));
+    g.drawText(note, name.removeFromTop(ultraCompact ? 32 : (compact ? 44 : 61)), juce::Justification::centredLeft);
     g.setColour(theme::kApricot);
-    g.setFont(juce::FontOptions(16.0f));
+    g.setFont(juce::FontOptions(14.5f));
     g.drawText(juce::String(core::noteToHz(settings.note, settings.octave, settings.fineCents), 1) + " Hz",
                name, juce::Justification::topLeft);
-    auto plot = area.reduced(16, 11);
+    auto plot = area.reduced(16, ultraCompact ? 6 : 11);
     g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
-    g.drawText("Dry one-shot waveform", plot.removeFromTop(23), juce::Justification::centredLeft);
-    auto axis = plot.removeFromBottom(21);
+    g.setFont(juce::FontOptions(ultraCompact ? 14.5f : 17.0f, juce::Font::bold));
+    g.drawText("Dry one-shot waveform", plot.removeFromTop(ultraCompact ? 18 : 23), juce::Justification::centredLeft);
+    auto axis = plot.removeFromBottom(ultraCompact ? 16 : 21);
     g.setColour(theme::kTextDim);
     g.setFont(juce::FontOptions(13.0f));
     g.drawText("0 ms", axis, juce::Justification::bottomLeft);
@@ -118,9 +121,21 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     controls_.push_back(std::move(component));
 }
 
+void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& dbId,
+                              const juce::String& title, juce::Colour freqAccent, const juce::String& tip) {
+    auto knob = std::make_unique<DualEqKnob>(processor_.parameters, freqId, dbId, title, accent_, freqAccent);
+    knob->setTooltip(tip);
+    addAndMakeVisible(*knob);
+    controls_.push_back(std::move(knob));
+}
+
 void ParameterCard::setRows(std::vector<int> basic, std::vector<int> advanced) {
     basicRows_ = std::move(basic);
     advancedRows_ = advanced.empty() ? basicRows_ : std::move(advanced);
+}
+
+void ParameterCard::setWeights(std::vector<float> weights) {
+    weights_ = std::move(weights);
 }
 
 void ParameterCard::setAdvancedMode(bool advanced) {
@@ -131,7 +146,7 @@ void ParameterCard::setAdvancedMode(bool advanced) {
 void ParameterCard::paint(juce::Graphics& g) {
     g.setColour(theme::kPanel);
     g.fillRoundedRectangle(getLocalBounds().toFloat(), 7.0f);
-    auto heading = getLocalBounds().removeFromTop(44).reduced(12, 2);
+    auto heading = getLocalBounds().removeFromTop(42).reduced(12, 2);
     g.setColour(accent_);
     g.fillRoundedRectangle(juce::Rectangle<float>(static_cast<float>(heading.getX()), static_cast<float>(heading.getY()) + 2.0f, 3.0f,
         static_cast<float>(heading.getHeight() - 4)), 1.5f);
@@ -148,14 +163,26 @@ void ParameterCard::paint(juce::Graphics& g) {
 
 void ParameterCard::resized() {
     auto area = getLocalBounds();
-    auto header = area.removeFromTop(44).reduced(8, 4);
+    auto header = area.removeFromTop(42).reduced(8, 2);
     lockButton_.setBounds(lockable_ ? header.removeFromRight(70) : juce::Rectangle<int>{});
-    area = area.reduced(8, 8);
+    area = area.reduced(8, 4);
     const int gap = 4;
     int y = area.getY();
     size_t controlIndex = 0;
     const auto& rows = advancedMode_ ? advancedRows_ : basicRows_;
     if (rows.empty()) return;
+    if (rows.size() == 1 && weights_.size() == controls_.size() && !weights_.empty()) {
+        const float total = std::accumulate(weights_.begin(), weights_.end(), 0.0f);
+        const int available = std::max(0, area.getWidth() - gap * static_cast<int>(controls_.size() - 1));
+        int x = area.getX();
+        std::ranges::for_each(std::views::iota(size_t{0}, controls_.size()), [&](size_t i) {
+            const int w = juce::roundToInt(static_cast<float>(available) * (weights_[i] / total));
+            controls_[i]->setVisible(true);
+            controls_[i]->setBounds(x, area.getY(), w, area.getHeight());
+            x += w + gap;
+        });
+        return;
+    }
     const int rowCount = static_cast<int>(rows.size());
     const int rowHeight = std::max(1, (area.getHeight() - gap * (rowCount - 1)) / rowCount);
     for (int row = 0; row < rowCount; ++row) {
@@ -175,6 +202,7 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     : voiceCard_(processor, "Body & tuning", presets::Section::VoiceTuning, theme::kApricot),
       transientCard_(processor, "Transient strike", presets::Section::Transient, theme::kIce),
       envelopeCard_(processor, "Amplitude envelope", presets::Section::VoiceTuning, theme::kLilac, false),
+      outputCard_(processor, "Output", presets::Section::SpaceOutput, theme::kLilac),
       preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
@@ -225,6 +253,19 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     addAndMakeVisible(voiceCard_);
     addAndMakeVisible(envelopeCard_);
     addAndMakeVisible(transientCard_);
+
+    outputCard_.addDualEq(kEqLowFreq, kEqLowDb, "Low EQ", theme::kApricot, "Inner cap sets Low gain (-12 to +12 dB); outer collar glides cutoff frequency smoothly.");
+    outputCard_.addDualEq(kEqMidFreq, kEqMidDb, "Mid EQ", theme::kApricot, "Inner cap sets Mid gain (-12 to +12 dB); outer collar glides center frequency smoothly.");
+    outputCard_.addDualEq(kEqHighFreq, kEqHighDb, "High EQ", theme::kApricot, "Inner cap sets High gain (-12 to +12 dB); outer collar glides cutoff frequency smoothly.");
+    outputCard_.addParameter(kStereoWidth, "Stereo width");
+    outputCard_.addParameter(kOutputGain, "Output");
+    outputCard_.addParameter(kLimiterCeiling, "Ceiling");
+    outputCard_.addParameter(kLimiterRelease, "Limit Release");
+    outputCard_.addParameter(kLimiterEnabled, "Limiter");
+    outputCard_.setRows({ 8 });
+    outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f });
+    addAndMakeVisible(outputCard_);
+
     addAndMakeVisible(preStrikeCard_);
     addAndMakeVisible(wiresCard_);
     setPage(0);
@@ -235,6 +276,7 @@ void SmackSynthPanel::setPage(int page) {
     voiceCard_.setVisible(page_ == 0);
     envelopeCard_.setVisible(page_ == 0);
     transientCard_.setVisible(page_ == 0);
+    outputCard_.setVisible(page_ == 0);
     preStrikeCard_.setVisible(page_ == 1);
     wiresCard_.setVisible(page_ == 1);
     resized();
@@ -244,6 +286,7 @@ void SmackSynthPanel::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
     voiceCard_.setAdvancedMode(advanced);
     transientCard_.setAdvancedMode(advanced);
+    outputCard_.setAdvancedMode(advanced);
     preStrikeCard_.setAdvancedMode(advanced);
     wiresCard_.setAdvancedMode(advanced);
     resized();
@@ -252,43 +295,41 @@ void SmackSynthPanel::setAdvancedMode(bool advanced) {
 
 void SmackSynthPanel::resized() {
     auto area = getLocalBounds();
-    const int gap = 10;
+    const int gap = 5;
     if (page_ == 0) {
-        envelopeCard_.setBounds(area.removeFromBottom(advancedMode_ ? 132 : 148));
+        outputCard_.setBounds(area.removeFromBottom(123));
         area.removeFromBottom(gap);
-        voiceCard_.setBounds(area.removeFromLeft(area.getWidth() * 65 / 100));
-        area.removeFromLeft(gap);
+        envelopeCard_.setBounds(area.removeFromBottom(120));
+        area.removeFromBottom(gap);
+        voiceCard_.setBounds(area.removeFromLeft(area.getWidth() * 64 / 100));
+        area.removeFromLeft(8);
         transientCard_.setBounds(area);
-    } else {
-        preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * 4 / 10));
-        area.removeFromTop(gap);
-        wiresCard_.setBounds(area);
+        return;
     }
+    preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * 4 / 10));
+    area.removeFromTop(10);
+    wiresCard_.setBounds(area);
 }
 
 EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
     : dynamicsCard_(processor, "Saturation & dynamics", presets::Section::SaturationDynamics, theme::kApricot),
-      spaceCard_(processor, "Space & output", presets::Section::SpaceOutput, theme::kIce) {
+      spaceCard_(processor, "Space & WAV lock", presets::Section::SpaceOutput, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 13> dynamics{
+    const std::array<std::pair<const char*, const char*>, 10> dynamics{
         std::pair{ kDistType, "Saturation" }, { kDistDrive, "Drive" }, { kDistTone, "Tone" }, { kDistMix, "Mix" },
         { kCompThresh, "Threshold" }, { kCompRatio, "Ratio" }, { kCompAttack, "Comp Attack" },
-        { kCompRelease, "Comp Release" }, { kCompMakeup, "Makeup" }, { kCompMix, "Comp Mix" },
-        { kLimiterCeiling, "Ceiling" }, { kLimiterRelease, "Limit Release" }, { kLimiterEnabled, "Limiter" }
+        { kCompRelease, "Comp Release" }, { kCompMakeup, "Makeup" }, { kCompMix, "Comp Mix" }
     };
-    for (const auto& [id, title] : dynamics)
-        dynamicsCard_.addParameter(id, title);
-    dynamicsCard_.setRows({ 2, 2, 2 }, { 3, 3, 3, 4 });
+    std::ranges::for_each(dynamics, [&](const auto& entry) { dynamicsCard_.addParameter(entry.first, entry.second); });
+    dynamicsCard_.setRows({ 2, 2 }, { 3, 3, 4 });
 
-    const std::array<std::pair<const char*, const char*>, 11> space{
-        std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kStereoWidth, "Stereo width" },
-        { kOutputGain, "Output" }, { kReverbSize, "Room size" }, { kReverbDecay, "Room decay" },
-        { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" }, { kReverseMode, "Reverse sync" },
-        { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
+    const std::array<std::pair<const char*, const char*>, 9> space{
+        std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kReverbSize, "Room size" },
+        { kReverbDecay, "Room decay" }, { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" },
+        { kReverseMode, "Reverse sync" }, { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
     };
-    for (const auto& [id, title] : space)
-        spaceCard_.addParameter(id, title);
-    spaceCard_.setRows({ 2, 2, 2 }, { 3, 4, 2, 2 });
+    std::ranges::for_each(space, [&](const auto& entry) { spaceCard_.addParameter(entry.first, entry.second); });
+    spaceCard_.setRows({ 2, 2 }, { 3, 3, 3 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
 }

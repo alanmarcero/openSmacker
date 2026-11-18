@@ -32,7 +32,10 @@ public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                   presets::Section section, juce::Colour accent, bool lockable = true);
     void addParameter(const juce::String& id, const juce::String& title);
+    void addDualEq(const juce::String& freqId, const juce::String& dbId,
+                   const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
     void setRows(std::vector<int> basic, std::vector<int> advanced = {});
+    void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
     void resized() override;
@@ -45,6 +48,7 @@ private:
     juce::TextButton lockButton_{ "LOCK" };
     std::vector<std::unique_ptr<juce::Component>> controls_;
     std::vector<int> basicRows_, advancedRows_;
+    std::vector<float> weights_;
     bool advancedMode_ = false;
 };
 
@@ -61,6 +65,7 @@ private:
     ParameterCard voiceCard_;
     ParameterCard transientCard_;
     ParameterCard envelopeCard_;
+    ParameterCard outputCard_;
     ParameterCard preStrikeCard_;
     ParameterCard wiresCard_;
 };

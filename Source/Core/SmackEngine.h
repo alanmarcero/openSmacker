@@ -83,6 +83,7 @@ struct SmackEffectSettings {
     float reverseMix = 0.5f;       // 0..1
     float echoMix = 0.0f;          // 0..1 tempo-synced stereo slapback echo
 
+    ThreeBandEqSettings eq{};
     float stereoWidth = 1.0f;      // 0..2
     float outputGainDb = 0.0f;     // -36..+12 dB
 };
@@ -207,6 +208,7 @@ private:
     SmackSynth reverseSynth_;
     DistortionShaper distL_;
     DistortionShaper distR_;
+    ThreeBandEq eq_;
     StereoCompressor compressor_;
     BrickwallLimiter limiter_;
     std::vector<float> echoBufferL_;
@@ -231,6 +233,7 @@ private:
     bool lockCaptureActive_ = false;
     std::array<DistortionShaper, 4> captureDistL_{};
     std::array<DistortionShaper, 4> captureDistR_{};
+    std::array<ThreeBandEq, 4> captureEq_{};
     std::array<StereoCompressor, 4> captureCompressors_{};
     std::array<BrickwallLimiter, 4> captureLimiters_{};
     SmackSynthSettings reverseSettings_{};
