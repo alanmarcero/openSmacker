@@ -325,11 +325,11 @@ EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
 
     const std::array<std::pair<const char*, const char*>, 9> space{
         std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kReverbSize, "Room size" },
-        { kReverbDecay, "Room decay" }, { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" },
-        { kReverseMode, "Reverse sync" }, { kReverseMix, "Reverse mix" }, { kLockIn, "Lock WAV" }
+        std::pair{ kReverbDecay, "Room decay" }, { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" },
+        { kReverseMix, "Reverse mix" }, { kReverseMode, "Reverse sync" }, { kLockIn, "Lock WAV" }
     };
     std::ranges::for_each(space, [&](const auto& entry) { spaceCard_.addParameter(entry.first, entry.second); });
-    spaceCard_.setRows({ 2, 2 }, { 3, 3, 3 });
+    spaceCard_.setRows({ 2, 2 }, { 3, 4, 2 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
 }
