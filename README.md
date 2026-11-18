@@ -4,7 +4,7 @@
 
 openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a tom fill to your bass line, or hold a metallic note from a MIDI keyboard.
 
-![The Hit editor with the Backbeat snare, its waveform, body tuning, strike and amplitude envelope](assets/openSmacker-hit.png)
+![The Hit editor with the Backbeat snare, its waveform, body tuning, strike and amplitude envelope](docs/screenshots/preview.png)
 
 ## Find a sound
 

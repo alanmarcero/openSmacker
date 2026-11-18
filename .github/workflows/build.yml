@@ -148,5 +148,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: openSmacker-*.zip
-          body: '![openSmacker native editor](https://raw.githubusercontent.com/alanmarcero/openSmacker/${{ github.ref_name }}/assets/openSmacker-hit.png)'
+          body: '![openSmacker native editor](https://raw.githubusercontent.com/alanmarcero/openSmacker/${{ github.ref_name }}/docs/screenshots/preview.png)'
           generate_release_notes: true
