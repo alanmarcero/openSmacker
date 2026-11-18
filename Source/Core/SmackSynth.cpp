@@ -283,6 +283,10 @@ void SmackSynth::trigger(const SmackSynthSettings& settings, float velocity, int
         { 2.00f, 2.71f, 4.09f }, { 1.86f, 2.85f, 4.18f }
     }};
     modeRatios_ = settings.articulatedModes ? struckModes[static_cast<size_t>(settings.voiceMode)] : originalRatios;
+    const float spreadScale = 1.0f + std::clamp(settings.shellSpread, -0.5f, 0.5f) * 0.45f;
+    for (size_t i = 0; i < modeRatios_.size(); ++i) {
+        modeRatios_[i] = 1.0f + (modeRatios_[i] - 1.0f) * std::pow(spreadScale, static_cast<float>(i + 1) * 0.5f);
+    }
     strikeBrightness_ = std::lerp(0.38f, 1.0f, bodyVelocity_);
     wireVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.wireVelocityDepth, 0.0f, 1.0f));
     transientVelocity_ = std::lerp(1.0f, normalizedVelocity, std::clamp(settings.transientVelocityDepth, 0.0f, 1.0f));
@@ -583,6 +587,13 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         const float shellBlend = std::clamp(settings.toneQ / 15.0f, 0.08f, 0.68f);
         bodyL = std::tanh((rawL * (1.0f - shellBlend) + shellL * shellBlend * 4.0f) * 1.35f) * bodyEnv;
         bodyR = std::tanh((rawR * (1.0f - shellBlend) + shellR * shellBlend * 4.0f) * 1.35f) * bodyEnv;
+        const float subThumpAmount = std::clamp(settings.subThump, 0.0f, 1.0f);
+        if (subThumpAmount > 0.001f) {
+            const float subThumpEnv = std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.55f));
+            const float subSine = std::sin(phaseFund_ * 0.5f) * subThumpEnv * subThumpAmount * 0.55f;
+            bodyL += subSine;
+            bodyR += subSine;
+        }
         bodyL *= std::clamp(settings.toneLevel, 0.0f, 1.0f);
         bodyR *= std::clamp(settings.toneLevel, 0.0f, 1.0f);
     }

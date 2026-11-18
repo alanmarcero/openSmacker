@@ -40,7 +40,10 @@ void Knob::bind(Apvts& state, const juce::String& parameterId) {
 void Knob::resized() {
     auto area = getLocalBounds();
     area = area.withSizeKeepingCentre(area.getWidth(), std::min(106, area.getHeight()));
-    title_.setBounds(area.removeFromTop(18));
+    const int labelHeight = area.getHeight() < 86 ? 15 : 18;
+    const int boxHeight = area.getHeight() < 86 ? 15 : 17;
+    title_.setBounds(area.removeFromTop(labelHeight));
+    slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, std::min(88, area.getWidth()), boxHeight);
     slider_.setBounds(area);
 }
 

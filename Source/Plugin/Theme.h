@@ -4,16 +4,16 @@
 
 namespace opensmacker::theme {
 
-inline const juce::Colour kInk{ 0xff171622 };
-inline const juce::Colour kBackground{ 0xff1d1b2a };
-inline const juce::Colour kPanel{ 0xff282536 };
-inline const juce::Colour kKnobBody{ 0xff343043 };
-inline const juce::Colour kPanelEdge{ 0xff484253 };
-inline const juce::Colour kTrack{ 0xff4c455c };
-inline const juce::Colour kText{ 0xfff5f1f2 };
-inline const juce::Colour kTextDim{ 0xffbdb6c9 };
-inline const juce::Colour kApricot{ 0xffffa181 };
-inline const juce::Colour kLilac{ 0xffc4acff };
-inline const juce::Colour kIce{ 0xff88d9df };
+inline const juce::Colour kInk{ 0xff0a1014 };
+inline const juce::Colour kBackground{ 0xff0d1317 };
+inline const juce::Colour kPanel{ 0xff152026 };
+inline const juce::Colour kKnobBody{ 0xff1b272d };
+inline const juce::Colour kPanelEdge{ 0xff283842 };
+inline const juce::Colour kTrack{ 0xff283842 };
+inline const juce::Colour kText{ 0xffe6f0f5 };
+inline const juce::Colour kTextDim{ 0xff869ca8 };
+inline const juce::Colour kApricot{ 0xffffbe3b };
+inline const juce::Colour kLilac{ 0xff48f0c8 };
+inline const juce::Colour kIce{ 0xff5ce1ff };
 
 } // namespace opensmacker::theme

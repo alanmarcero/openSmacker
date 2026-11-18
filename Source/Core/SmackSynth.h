@@ -61,6 +61,8 @@ struct SmackSynthSettings {
     float tonePitchEnv = 12.0f;    // -24..+36 semitones initial pitch drop/sweep
     float tonePitchDecayMs = 22.0f;// 3..150 ms pitch envelope decay
     float fmAmount = 0.30f;        // 0..1 harmonic overtone / FM metallic index
+    float shellSpread = 0.0f;      // -0.5..+0.5 modal overtone ratio stretch/compression
+    float subThump = 0.0f;         // 0..1 sub-octave punch reinforcement
     float toneLevel = 0.85f;       // 0..1 level of tonal drum/bell core
     float bodyHPF = 20.0f;         // 20..4000 Hz tonal body high-pass
     float bodyLPF = 20000.0f;      // 100..20000 Hz tonal body low-pass

@@ -80,7 +80,9 @@ TEST_CASE("OpenSmackerProcessor instantiates with valid parameters", "[plugin]")
     for (const auto* id : { opensmacker::params::kBodyHPF, opensmacker::params::kBodyLPF,
                             opensmacker::params::kBodyPan, opensmacker::params::kWireTension,
                             opensmacker::params::kWirePan, opensmacker::params::kTransientHPF,
-                            opensmacker::params::kTransientLPF, opensmacker::params::kTransientPan }) {
+                            opensmacker::params::kTransientLPF, opensmacker::params::kTransientPan,
+                            opensmacker::params::kShellSpread, opensmacker::params::kSubThump,
+                            opensmacker::params::kEchoMix }) {
         auto* parameter = processor.parameters.getParameter(id);
         REQUIRE(parameter != nullptr);
         CHECK(parameter->isAutomatable());
@@ -599,4 +601,37 @@ TEST_CASE("Drumhead animation follows transport tempo and seeks and rests when s
     processor.setPlayHead(nullptr);
     processor.processBlock(audio, midi);
     CHECK(std::abs(processor.animationBeatPhase(2.75) - 0.75f) < 0.001f);
+}
+
+TEST_CASE("OpenSmacker shell spread, sub thump, and tempo echo alter output", "[plugin][dsp]") {
+    auto renderEnergy = [](float shellSpread, float subThump, float echoMix) {
+        OpenSmackerProcessor proc;
+        proc.prepareToPlay(48000.0, 512);
+        auto setP = [&](const char* id, float val) {
+            auto* p = proc.parameters.getParameter(id);
+            REQUIRE(p != nullptr);
+            p->setValueNotifyingHost(p->convertTo0to1(val));
+        };
+        setP(opensmacker::params::kShellSpread, shellSpread);
+        setP(opensmacker::params::kSubThump, subThump);
+        setP(opensmacker::params::kEchoMix, echoMix);
+        juce::AudioBuffer<float> buffer(8, 24000);
+        buffer.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, uint8_t(110)), 0);
+        proc.processBlock(buffer, midi);
+        double early = 0.0, late = 0.0;
+        for (int i = 0; i < 4000; ++i)
+            early += std::abs(buffer.getSample(0, i)) + std::abs(buffer.getSample(1, i));
+        for (int i = 14000; i < 22000; ++i)
+            late += std::abs(buffer.getSample(0, i)) + std::abs(buffer.getSample(1, i));
+        return std::pair{ early, late };
+    };
+    const auto base = renderEnergy(0.0f, 0.0f, 0.0f);
+    const auto spread = renderEnergy(0.35f, 0.0f, 0.0f);
+    const auto thump = renderEnergy(0.0f, 0.85f, 0.0f);
+    const auto echo = renderEnergy(0.0f, 0.0f, 0.65f);
+    CHECK(std::abs(spread.first - base.first) > 0.05);
+    CHECK(std::abs(thump.first - base.first) > 10.0);
+    CHECK(echo.second > base.second + 1.0);
 }
