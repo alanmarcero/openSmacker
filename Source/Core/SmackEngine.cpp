@@ -348,6 +348,7 @@ void SmackEngine::prepare(double sampleRate) {
     reverseSynth_.prepare(sampleRate_);
     distL_.reset();
     distR_.reset();
+    eq_.prepare(sampleRate_);
     compressor_.prepare(sampleRate_);
     limiter_.prepare(sampleRate_);
 
@@ -363,6 +364,7 @@ void SmackEngine::reset() noexcept {
     synth_.reset();
     distL_.reset();
     distR_.reset();
+    eq_.reset();
     compressor_.reset();
     limiter_.reset();
     std::fill(echoBufferL_.begin(), echoBufferL_.end(), 0.0f);
@@ -429,6 +431,7 @@ uint32_t SmackEngine::advanceLockCapture(uint32_t sampleBudget) noexcept {
             captureSynth_.trigger(voiceSettings, 1.0f, 0);
             captureDistL_[static_cast<size_t>(captureVoiceIndex_)].reset();
             captureDistR_[static_cast<size_t>(captureVoiceIndex_)].reset();
+            captureEq_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
             captureCompressors_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
             captureLimiters_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
             captureVoiceStarted_ = true;
@@ -457,6 +460,7 @@ uint32_t SmackEngine::advanceLockCapture(uint32_t sampleBudget) noexcept {
             mixL = mid + side;
             mixR = mid - side;
         }
+        captureEq_[voiceIndex].process(mixL, mixR, captureSettings_.effects.eq);
         captureCompressors_[voiceIndex].process(mixL, mixR, captureSettings_.effects.compressor);
         captureLimiters_[voiceIndex].process(mixL, mixR, captureSettings_.effects.limiter);
 
@@ -929,6 +933,7 @@ void SmackEngine::process(
                 sR = mid - side;
             }
 
+            eq_.process(sL, sR, settings.effects.eq);
             compressor_.process(sL, sR, settings.effects.compressor);
             limiter_.process(sL, sR, settings.effects.limiter);
         }

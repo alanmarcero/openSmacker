@@ -156,8 +156,8 @@ void OpenSmackerEditor::resized() {
     viewToggleBtn_.setBounds(16, 603, railWidth - 32, 40);
     auto area = getLocalBounds().withTrimmedTop(83).withTrimmedLeft(railWidth).reduced(14);
     if (currentPage_ == 0) {
-        stagePanel_.setBounds(area.removeFromTop(synthPanel_.isAdvancedMode() ? 122 : 150));
-        area.removeFromTop(10);
+        stagePanel_.setBounds(area.removeFromTop(88));
+        area.removeFromTop(6);
     }
     synthPanel_.setBounds(area);
     effectsPanel_.setBounds(area);

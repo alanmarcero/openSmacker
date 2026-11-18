@@ -94,6 +94,12 @@ inline constexpr const char* kLockPitch = "lock_pitch";
 inline constexpr const char* kLockIn = "lock_in";
 inline constexpr const char* kStereoWidth = "stereo_width";
 inline constexpr const char* kOutputGain = "output_gain";
+inline constexpr const char* kEqLowFreq = "eq_low_freq";
+inline constexpr const char* kEqLowDb = "eq_low_db";
+inline constexpr const char* kEqMidFreq = "eq_mid_freq";
+inline constexpr const char* kEqMidDb = "eq_mid_db";
+inline constexpr const char* kEqHighFreq = "eq_high_freq";
+inline constexpr const char* kEqHighDb = "eq_high_db";
 inline constexpr const char* kPreset = "preset";
 
 // MIDI key zones and layer performance

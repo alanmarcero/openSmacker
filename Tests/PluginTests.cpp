@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <ranges>
 #include <set>
 #include <utility>
 
@@ -331,6 +332,45 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
         }
         click("Advanced controls");
     }
+}
+
+TEST_CASE("OpenSmacker exposes 3-band EQ with glide and Output controls on the main Hit page", "[plugin][ui][eq]") {
+    opensmacker::core::ThreeBandEq eqBoost, eqCut;
+    eqBoost.prepare(48000.0);
+    eqCut.prepare(48000.0);
+    const opensmacker::core::ThreeBandEqSettings boost{ 80.0f, 0.0f, 1000.0f, 12.0f, 7500.0f, 0.0f };
+    const opensmacker::core::ThreeBandEqSettings cut{ 80.0f, 0.0f, 1000.0f, -12.0f, 7500.0f, 0.0f };
+    double rmsBoost = 0.0;
+    double rmsCut = 0.0;
+    std::ranges::for_each(std::views::iota(0, 4800), [&](int i) {
+        const float x = 0.25f * std::sin(2.0f * 3.14159265f * 1000.0f * static_cast<float>(i) / 48000.0f);
+        float bL = x;
+        float bR = x;
+        eqBoost.process(bL, bR, boost);
+        float cL = x;
+        float cR = x;
+        eqCut.process(cL, cR, cut);
+        if (i >= 2400) {
+            rmsBoost += static_cast<double>(bL) * bL;
+            rmsCut += static_cast<double>(cL) * cL;
+        }
+    });
+    REQUIRE(10.0 * std::log10(rmsBoost / rmsCut) > 20.0);
+
+    OpenSmackerProcessor processor;
+    std::ranges::for_each(std::array<const char*, 6>{
+        "eq_low_freq", "eq_low_db", "eq_mid_freq", "eq_mid_db", "eq_high_freq", "eq_high_db"},
+        [&](const char* id) { REQUIRE(processor.parameters.getParameter(id) != nullptr); });
+
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    REQUIRE(editor != nullptr);
+    std::ranges::for_each(std::array<const char*, 7>{
+        "Low EQ Gain", "Mid EQ Gain", "High EQ Gain", "Stereo width", "Output", "Ceiling", "Limit Release"},
+        [&](const char* name) {
+            auto* slider = findVisible<juce::Slider>(*editor, [&](const auto& s) { return s.getName() == name; });
+            REQUIRE(slider != nullptr);
+            CHECK(slider->isVisible());
+        });
 }
 
 TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset changes", "[plugin][pitch_lock]") {

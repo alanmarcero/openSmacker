@@ -201,6 +201,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kOutputGain, 1 }, "Output Gain", juce::NormalisableRange<float>(-36.0f, 12.0f, 0.5f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
+    const auto makeFreqRange = [](float minHz, float maxHz, float midHz) {
+        juce::NormalisableRange<float> range(minHz, maxHz, 0.1f);
+        range.setSkewForCentre(midHz);
+        return range;
+    };
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqLowFreq, 1 }, "EQ Low Freq", makeFreqRange(25.0f, 400.0f, 100.0f), 80.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqLowDb, 1 }, "EQ Low", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqMidFreq, 1 }, "EQ Mid Freq", makeFreqRange(200.0f, 6000.0f, 1100.0f), 1000.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqMidDb, 1 }, "EQ Mid", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqHighFreq, 1 }, "EQ High Freq", makeFreqRange(2000.0f, 18000.0f, 6000.0f), 7500.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kEqHighDb, 1 }, "EQ High", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 83, 0));
 
@@ -362,6 +385,12 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
         s.effects.echoMix = *pEchoMix;
     }
 
+    s.effects.eq.lowFreqHz = *apvts.getRawParameterValue(kEqLowFreq);
+    s.effects.eq.lowGainDb = *apvts.getRawParameterValue(kEqLowDb);
+    s.effects.eq.midFreqHz = *apvts.getRawParameterValue(kEqMidFreq);
+    s.effects.eq.midGainDb = *apvts.getRawParameterValue(kEqMidDb);
+    s.effects.eq.highFreqHz = *apvts.getRawParameterValue(kEqHighFreq);
+    s.effects.eq.highGainDb = *apvts.getRawParameterValue(kEqHighDb);
     s.effects.stereoWidth = *apvts.getRawParameterValue(kStereoWidth);
     s.effects.outputGainDb = *apvts.getRawParameterValue(kOutputGain);
 

@@ -161,7 +161,9 @@ FactoryPreset makePreset(const Patch& p, const Voicing& v) {
         { kCompMakeup, 0.5f }, { kCompMix, 0.45f }, { kLimiterEnabled, 1 }, { kLimiterCeiling, -1 },
         { kLimiterRelease, 20 }, { kReverbSize, 0.38f }, { kReverbDecay, 190 }, { kReverbDamp, 0.58f },
         { kReverbGate, 80 }, { kReverbMix, p.room }, { kEchoMix, 0 }, { kReverseMode, 0 }, { kReverseMix, 0.35f },
-        { kMidiMode, 0 }, { kLockPitch, 0 }, { kLockIn, 0 }, { kStereoWidth, 1 }, { kOutputGain, v.gain },
+        { kMidiMode, 0 }, { kLockPitch, 0 }, { kLockIn, 0 },
+        { kEqLowFreq, 80.0f }, { kEqLowDb, 0.0f }, { kEqMidFreq, 1000.0f }, { kEqMidDb, 0.0f },
+        { kEqHighFreq, 7500.0f }, { kEqHighDb, 0.0f }, { kStereoWidth, 1 }, { kOutputGain, v.gain },
     } };
 }
 } // namespace
@@ -205,7 +207,9 @@ Section sectionFor(const juce::String& id) {
         || id == kLimiterRelease || id == kLimiterEnabled)
         return Section::SaturationDynamics;
     if (id == kReverbSize || id == kReverbDecay || id == kReverbDamp || id == kReverbGate || id == kReverbMix || id == kEchoMix
-        || id == kReverseMode || id == kReverseMix || id == kMidiMode || id == kLockIn || id == kStereoWidth || id == kOutputGain)
+        || id == kReverseMode || id == kReverseMix || id == kMidiMode || id == kLockIn
+        || id == kEqLowFreq || id == kEqLowDb || id == kEqMidFreq || id == kEqMidDb || id == kEqHighFreq || id == kEqHighDb
+        || id == kStereoWidth || id == kOutputGain)
         return Section::SpaceOutput;
     return Section::VoiceTuning;
 }

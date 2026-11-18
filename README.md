@@ -24,7 +24,9 @@ Select **Note Tracking** under **MIDI pitch** on the MIDI page to play melodies.
 
 Enable **Advanced controls** for shell resonance and FM, pitch decay, the body and transient filters, pan, wire attack and hold, and flam humanization. Lock a section to keep its values while browsing. Locked controls stay editable.
 
-On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, limiting, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. Three additional stereo output buses carry the dry body, wires, and transient.
+The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 dB gain and smooth frequency glide, stereo width, output gain, and brickwall limiter) alongside body tuning, transient strike, and amplitude envelope.
+
+On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. Three additional stereo output buses carry the dry body, wires, and transient.
 
 The MIDI page also has editable voice zones. The default ranges are 36–47 for snare, 48–59 for tom, 60–71 for bell, and 72–84 for rim. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign CCs to each layer. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
 

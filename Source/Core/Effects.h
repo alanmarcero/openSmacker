@@ -61,6 +61,42 @@ struct LimiterSettings {
     bool operator==(const LimiterSettings&) const noexcept = default;
 };
 
+struct ThreeBandEqSettings {
+    float lowFreqHz = 80.0f;
+    float lowGainDb = 0.0f;
+    float midFreqHz = 1000.0f;
+    float midGainDb = 0.0f;
+    float highFreqHz = 7500.0f;
+    float highGainDb = 0.0f;
+
+    bool operator==(const ThreeBandEqSettings&) const noexcept = default;
+};
+
+/** Stereo 3-band EQ with smooth log-frequency glide and +/-12 dB cut/boost per band. */
+class ThreeBandEq {
+public:
+    void prepare(double sampleRate) noexcept;
+    void reset() noexcept;
+    void process(float& left, float& right, const ThreeBandEqSettings& settings) noexcept;
+
+private:
+    enum class BandType { lowShelf, peak, highShelf };
+    struct Band {
+        double b0 = 1.0, b1 = 0.0, b2 = 0.0, a1 = 0.0, a2 = 0.0;
+        double z1L = 0.0, z2L = 0.0, z1R = 0.0, z2R = 0.0;
+        float smoothedLogFreq = 0.0f;
+        float smoothedDb = 0.0f;
+        bool initialized = false;
+    };
+
+    void updateBand(Band& band, BandType type, float minHz, float maxHz, float targetHz, float targetDb) noexcept;
+    static void filterBand(Band& band, float& left, float& right) noexcept;
+
+    double sampleRate_ = 48000.0;
+    float glideCoeff_ = 0.001f;
+    std::array<Band, 3> bands_{};
+};
+
 class BrickwallLimiter {
 public:
     void prepare(double sampleRate);

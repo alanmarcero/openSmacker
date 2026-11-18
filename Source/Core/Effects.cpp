@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <ranges>
 
 namespace opensmacker::core {
 namespace {
@@ -123,6 +124,101 @@ void StereoCompressor::process(float& left, float& right, const CompressorSettin
         reset();
         left = right = 0.0f;
     }
+}
+
+void ThreeBandEq::prepare(double sampleRate) noexcept {
+    sampleRate_ = std::max(8000.0, sampleRate);
+    glideCoeff_ = 1.0f - std::exp(-1.0f / (0.020f * static_cast<float>(sampleRate_)));
+    reset();
+}
+
+void ThreeBandEq::reset() noexcept {
+    std::ranges::for_each(bands_, [](Band& band) {
+        band.z1L = band.z2L = band.z1R = band.z2R = 0.0;
+        band.b0 = 1.0;
+        band.b1 = band.b2 = band.a1 = band.a2 = 0.0;
+        band.initialized = false;
+    });
+}
+
+void ThreeBandEq::updateBand(Band& band, BandType type, float minHz, float maxHz,
+                             float targetHz, float targetDb) noexcept {
+    const float clampedHz = std::clamp(std::isfinite(targetHz) ? targetHz : minHz,
+                                       minHz, std::min(maxHz, static_cast<float>(sampleRate_ * 0.45)));
+    const float targetLogFreq = std::log(clampedHz);
+    const float clampedDb = std::clamp(std::isfinite(targetDb) ? targetDb : 0.0f, -12.0f, 12.0f);
+    if (!band.initialized) {
+        band.smoothedLogFreq = targetLogFreq;
+        band.smoothedDb = clampedDb;
+        band.initialized = true;
+    }
+    band.smoothedLogFreq += glideCoeff_ * (targetLogFreq - band.smoothedLogFreq);
+    band.smoothedDb += glideCoeff_ * (clampedDb - band.smoothedDb);
+
+    if (std::abs(band.smoothedDb) < 0.005f) {
+        band.b0 = 1.0;
+        band.b1 = band.b2 = band.a1 = band.a2 = 0.0;
+        return;
+    }
+
+    const double freq = static_cast<double>(std::exp(band.smoothedLogFreq));
+    const double omega = 2.0 * std::numbers::pi * std::clamp(freq / sampleRate_, 1.0e-5, 0.45);
+    const double sn = std::sin(omega);
+    const double cs = std::cos(omega);
+    const double amp = std::pow(10.0, static_cast<double>(band.smoothedDb) / 40.0);
+
+    if (type == BandType::peak) {
+        const double alpha = sn / (2.0 * 0.9);
+        const double a0 = 1.0 + alpha / amp;
+        band.b0 = (1.0 + alpha * amp) / a0;
+        band.b1 = (-2.0 * cs) / a0;
+        band.b2 = (1.0 - alpha * amp) / a0;
+        band.a1 = (-2.0 * cs) / a0;
+        band.a2 = (1.0 - alpha / amp) / a0;
+        return;
+    }
+
+    const double alpha = sn * 0.5 * std::sqrt(2.0);
+    const double twoRootAmpAlpha = 2.0 * std::sqrt(amp) * alpha;
+    if (type == BandType::lowShelf) {
+        const double a0 = (amp + 1.0) + (amp - 1.0) * cs + twoRootAmpAlpha;
+        band.b0 = (amp * ((amp + 1.0) - (amp - 1.0) * cs + twoRootAmpAlpha)) / a0;
+        band.b1 = (2.0 * amp * ((amp - 1.0) - (amp + 1.0) * cs)) / a0;
+        band.b2 = (amp * ((amp + 1.0) - (amp - 1.0) * cs - twoRootAmpAlpha)) / a0;
+        band.a1 = (-2.0 * ((amp - 1.0) + (amp + 1.0) * cs)) / a0;
+        band.a2 = ((amp + 1.0) + (amp - 1.0) * cs - twoRootAmpAlpha) / a0;
+        return;
+    }
+
+    const double a0 = (amp + 1.0) - (amp - 1.0) * cs + twoRootAmpAlpha;
+    band.b0 = (amp * ((amp + 1.0) + (amp - 1.0) * cs + twoRootAmpAlpha)) / a0;
+    band.b1 = (-2.0 * amp * ((amp - 1.0) + (amp + 1.0) * cs)) / a0;
+    band.b2 = (amp * ((amp + 1.0) + (amp - 1.0) * cs - twoRootAmpAlpha)) / a0;
+    band.a1 = (2.0 * ((amp - 1.0) - (amp + 1.0) * cs)) / a0;
+    band.a2 = ((amp + 1.0) - (amp - 1.0) * cs - twoRootAmpAlpha) / a0;
+}
+
+void ThreeBandEq::filterBand(Band& band, float& left, float& right) noexcept {
+    const double xL = static_cast<double>(left);
+    const double yL = band.b0 * xL + band.z1L;
+    band.z1L = band.b1 * xL - band.a1 * yL + band.z2L;
+    band.z2L = band.b2 * xL - band.a2 * yL;
+    left = std::isfinite(yL) ? static_cast<float>(yL) : 0.0f;
+
+    const double xR = static_cast<double>(right);
+    const double yR = band.b0 * xR + band.z1R;
+    band.z1R = band.b1 * xR - band.a1 * yR + band.z2R;
+    band.z2R = band.b2 * xR - band.a2 * yR;
+    right = std::isfinite(yR) ? static_cast<float>(yR) : 0.0f;
+}
+
+void ThreeBandEq::process(float& left, float& right, const ThreeBandEqSettings& settings) noexcept {
+    updateBand(bands_[0], BandType::lowShelf, 25.0f, 400.0f, settings.lowFreqHz, settings.lowGainDb);
+    updateBand(bands_[1], BandType::peak, 200.0f, 6000.0f, settings.midFreqHz, settings.midGainDb);
+    updateBand(bands_[2], BandType::highShelf, 2000.0f, 18000.0f, settings.highFreqHz, settings.highGainDb);
+    filterBand(bands_[0], left, right);
+    filterBand(bands_[1], left, right);
+    filterBand(bands_[2], left, right);
 }
 
 void BrickwallLimiter::prepare(double sampleRate) {
