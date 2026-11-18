@@ -56,6 +56,8 @@ private:
     std::atomic<bool> auditionPending_{ false };
     std::atomic<int> currentProgram_{ 0 };
     std::atomic<bool> restoredCustom_{ false };
+    // 0 legacy ratios, 1 articulated voices, 2 shaped one-shots. Missing on old saves.
+    std::atomic<int> synthModel_{ 2 };
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
     std::vector<opensmacker::core::MidiTrigger> midiTriggers_;
     std::vector<opensmacker::core::MidiNoteOff> midiNoteOffs_;
