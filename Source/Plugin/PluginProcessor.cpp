@@ -243,7 +243,7 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
 
 void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto state = parameters.copyState();
-    state.setProperty("factoryBank", 1, nullptr);
+    state.setProperty("factoryBank", 2, nullptr);
     state.setProperty("customSound", restoredCustom_.load(), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
@@ -271,7 +271,7 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
                 missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
             state.addChild(missing, -1, nullptr);
         }
-        restoredCustom_.store(int(state.getProperty("factoryBank", 0)) != 1 || bool(state.getProperty("customSound", false)));
+        restoredCustom_.store(int(state.getProperty("factoryBank", 0)) != 2 || bool(state.getProperty("customSound", false)));
         parameters.replaceState(state);
         for (size_t i = 0; i < sectionLocks_.size(); ++i) {
             const auto key = "section_lock_" + juce::String(static_cast<int>(i));

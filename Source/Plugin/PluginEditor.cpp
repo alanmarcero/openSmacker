@@ -21,21 +21,34 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     setLookAndFeel(&lookAndFeel_);
     membrane_ = juce::Drawable::createFromImageData(BinaryData::membrane_svg, BinaryData::membrane_svgSize);
     const auto& bank = presets::factoryPresets();
+    juce::String style;
+    juce::PopupMenu sounds;
+    int presetId = 1;
+    std::ranges::for_each(bank, [&](const auto& preset) {
+        const juce::String name(preset.name);
+        const auto nextStyle = name.upToFirstOccurrenceOf(" / ", false, false);
+        if (style != nextStyle && sounds.getNumItems() > 0) {
+            presetBox_.getRootMenu()->addSubMenu(style, sounds);
+            sounds.clear();
+        }
+        style = nextStyle;
+        sounds.addItem(presetId++, name);
+    });
+    if (sounds.getNumItems() > 0)
+        presetBox_.getRootMenu()->addSubMenu(style, sounds);
     for (size_t i = 0; i < families_.size(); ++i) {
-        const auto first = static_cast<int>(i) * presets::kFamilySize;
+        const auto first = presets::firstPresetForFamily(i);
         auto& family = families_[i];
         family.setButtonText(presets::kFamilyNames[i]);
-        family.setTooltip("Load the first preset in this family.");
+        family.setTooltip("Load the first preset in this voice.");
         family.onClick = [this, first] { chooseProgram(first); };
         addAndMakeVisible(family);
-        presetBox_.addSectionHeading(presets::kFamilyNames[i]);
-        for (int p = first; p < first + presets::kFamilySize; ++p)
-            presetBox_.addItem(bank[static_cast<size_t>(p)].name, p + 1);
         pages_[i].setButtonText(pageNames[i]);
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
         addAndMakeVisible(pages_[i]);
     }
     presetBox_.setName("Factory preset");
+    presetBox_.setTooltip("Choose a factory preset across six dance styles.");
     presetBox_.setTextWhenNothingSelected("Custom sound");
     presetBox_.onChange = [this] { chooseProgram(presetBox_.getSelectedId() - 1); };
     prevPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + processor_.getNumPrograms() - 1) % processor_.getNumPrograms()); };
@@ -90,7 +103,7 @@ void OpenSmackerEditor::syncPresetBox() {
     const auto custom = processor_.isRestoredCustomSound();
     presetBox_.setSelectedId(custom ? 0 : program + 1, juce::dontSendNotification);
     for (size_t i = 0; i < families_.size(); ++i)
-        markSelected(families_[i], !custom && static_cast<int>(i) == program / presets::kFamilySize);
+        markSelected(families_[i], !custom && i == presets::familyForProgram(program));
 }
 
 void OpenSmackerEditor::timerCallback() {
@@ -115,7 +128,7 @@ void OpenSmackerEditor::paint(juce::Graphics& g) {
     g.drawText("Trance percussion synth", 20, 47, 180, 19, juce::Justification::centredLeft);
     g.drawText("Factory preset", 220, 6, 200, 20, juce::Justification::centredLeft);
     g.drawText("Edit", 18, 102, 150, 19, juce::Justification::centredLeft);
-    g.drawText("Preset families", 18, 327, 150, 19, juce::Justification::centredLeft);
+    g.drawText("Voices", 18, 327, 150, 19, juce::Justification::centredLeft);
     g.drawText("v" JucePlugin_VersionString, 18, 656, 150, 20, juce::Justification::centredLeft);
     if (membrane_ && g.clipRegionIntersects(artBounds)) {
         const float phase = processor_.animationBeatPhase(juce::Time::getMillisecondCounterHiRes() * 0.001);

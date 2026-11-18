@@ -121,18 +121,23 @@ TEST_CASE("OpenSmacker layer controls map to engine settings and survive state r
         CHECK(std::abs(restored.parameters.getRawParameterValue(id)->load() - value) < 1.1f);
 }
 
-TEST_CASE("The factory bank has eighteen distinct programs for each of the four voices", "[plugin][presets]") {
+TEST_CASE("The factory bank has 84 distinct programs across six dance styles and four voices", "[plugin][presets]") {
     OpenSmackerProcessor processor;
     std::set<std::string> names;
-    REQUIRE(processor.getNumPrograms() == 72);
+    REQUIRE(processor.getNumPrograms() == 84);
+    std::array<int, 4> counts{};
     const std::array<int, 4> modes{ 0, 2, 1, 3 };
     for (int i = 0; i < processor.getNumPrograms(); ++i) {
         processor.setCurrentProgram(i);
         REQUIRE(processor.getCurrentProgram() == i);
         CHECK(names.insert(processor.getProgramName(i).toStdString()).second);
-        CHECK(static_cast<int>(processor.currentSettings().synth.voiceMode) == modes[static_cast<size_t>(i / 18)]);
+        const auto family = opensmacker::presets::familyForProgram(i);
+        ++counts[family];
+        CHECK(static_cast<int>(processor.currentSettings().synth.voiceMode) == modes[family]);
         CHECK_FALSE(processor.currentSettings().synth.fullAdsrEnabled);
     }
+    for (int count : counts)
+        CHECK(count == 21);
 }
 
 TEST_CASE("OpenSmackerProcessor renders audio upon MIDI note-on", "[plugin]") {
@@ -275,16 +280,19 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     (void) editor->createComponentSnapshot(editor->getLocalBounds());
     click("Locked");
     REQUIRE_FALSE(processor.isSectionLocked(opensmacker::presets::Section::VoiceTuning));
+    const int firstRim = opensmacker::presets::firstPresetForFamily(3);
     click("Rim smacks");
-    CHECK(processor.getCurrentProgram() == 54);
+    CHECK(processor.getCurrentProgram() == firstRim);
     CHECK_FALSE(processor.currentSettings().synth.fullAdsrEnabled);
     click("Next");
-    CHECK(processor.getCurrentProgram() == 55);
+    CHECK(processor.getCurrentProgram() == firstRim + 1);
     click("Previous");
-    CHECK(processor.getCurrentProgram() == 54);
+    CHECK(processor.getCurrentProgram() == firstRim);
     click("Snares");
+    CHECK(processor.getCurrentProgram() == opensmacker::presets::firstPresetForFamily(0));
     auto* browser = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Factory preset"; });
     REQUIRE(browser != nullptr);
+    CHECK(browser->getRootMenu()->getNumItems() == 6);
     browser->setSelectedId(2, juce::sendNotificationSync);
     CHECK(processor.getCurrentProgram() == 1);
     browser->setSelectedId(1, juce::sendNotificationSync);
@@ -348,14 +356,15 @@ TEST_CASE("Lock Pitch preserves note, octave, and fine pitch across preset chang
 
     lockParam->setValueNotifyingHost(1.0f);
 
-    processor.setCurrentProgram(36);
+    const int tomPreset = opensmacker::presets::firstPresetForFamily(2);
+    processor.setCurrentProgram(tomPreset);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 6.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFreq)->load() - 2400.0f) < 2.0f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneNote)->load() - 4.0f) < 0.05f);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneFine)->load() - 15.0f) < 0.5f);
 
     lockParam->setValueNotifyingHost(0.0f);
-    processor.setCurrentProgram(36);
+    processor.setCurrentProgram(tomPreset);
     REQUIRE(std::abs(processor.parameters.getRawParameterValue(opensmacker::params::kToneOctave)->load() - 2.0f) < 0.05f);
 }
 
@@ -365,8 +374,8 @@ TEST_CASE("All factory hits have attack, body, headroom and a compact tail", "[p
     for (int family = 0; family < 4; ++family) {
         float lowPeak = 1, highPeak = 0;
         int shortest = 500, longest = 0;
-        for (int patch = 0; patch < opensmacker::presets::kFamilySize; ++patch) {
-            const int index = family * opensmacker::presets::kFamilySize + patch;
+        for (int index = 0; index < processor.getNumPrograms(); ++index) {
+            if (static_cast<int>(opensmacker::presets::familyForProgram(index)) != family) continue;
             processor.setCurrentProgram(index);
             CAPTURE(processor.getProgramName(index).toStdString());
             processor.prepareToPlay(rate, samples);
