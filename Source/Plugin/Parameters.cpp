@@ -202,7 +202,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kOutputGain, 1 }, "Output Gain", juce::NormalisableRange<float>(-36.0f, 12.0f, 0.5f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 71, 0));
+        juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 83, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kKeyZonesEnabled, 1 }, "MIDI Voice Zones", false));
