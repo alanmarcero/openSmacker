@@ -39,6 +39,9 @@ enum class ClickType {
 
 struct SmackSynthSettings {
     bool articulatedModes = true;
+    // Shaped one-shots: short drum partials, a smooth decay, and band-limited FM.
+    // Saved sessions from before this engine leave it false.
+    bool shapedEngine = false;
 
     // Pitch & Tuning
     int note = 9;                  // 0..11 (A), default A
@@ -270,6 +273,8 @@ private:
 
     // Multi-operator / modal phase accumulators
     float phaseFund_ = 0.0f;
+    float phaseSub_ = 0.0f;
+    float phaseOctave_ = 0.0f;
     float phaseMode2_ = 0.0f;
     float phaseMode3_ = 0.0f;
     float phaseMode4_ = 0.0f;

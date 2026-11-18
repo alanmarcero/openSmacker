@@ -1,4 +1,4 @@
-# openSmacker v2.5.1
+# openSmacker v2.6.0
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
@@ -10,7 +10,7 @@ openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a
 
 Choose **Snares**, **Bells & chimes**, **Toms**, or **Rim smacks** to jump to that voice. The **Factory preset** menu organizes all 84 presets into six dance styles: 24 Uplifting and 12 each of Rolling, Progressive, Psy, Tech, and Classic. **Previous**, **Next**, and **Audition hit** work on every page.
 
-Try *Backbeat* for a snare with a pitched shell and tight wires, *Glass Pin* for a struck FM chime, *Floor Pocket* for a low tom, or *Rim Tick* for a short side accent. Each voice has its own overtone spacing. Harder strikes produce a brighter attack. The **Hit** page shows a preview of the dry one-shot at its root pitch. The illustrated drumhead in the sidebar pulses on the host beat, rests when playback stops, and runs on an internal clock in Standalone.
+Try *Backbeat* for a snare with a short pitched shell and tight wires, *Glass Pin* for a struck FM chime, *Floor Pocket* for a low tom, or *Rim Tick* for a short side accent. Snares and rim shots fall off into noise. Bells and toms keep a pitch. Harder strikes produce a brighter attack. Factory hits sit under the output limiter. The **Hit** page shows a preview of the dry one-shot at its root pitch. The illustrated drumhead in the sidebar pulses on the host beat, rests when playback stops, and runs on an internal clock in Standalone.
 
 ## Play one-shots or held notes
 

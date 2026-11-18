@@ -17,7 +17,10 @@ OpenSmackerProcessor::OpenSmackerProcessor()
 
 opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const {
     auto settings = opensmacker::params::readSettings(parameters);
-    settings.synth.articulatedModes = !restoredCustom_.load();
+    const bool legacySession = restoredCustom_.load();
+    const int model = synthModel_.load(std::memory_order_relaxed);
+    settings.synth.articulatedModes = !legacySession && model >= 1;
+    settings.synth.shapedEngine = !legacySession && model >= 2;
     return settings;
 }
 
@@ -229,6 +232,7 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
     if (index >= 0 && index < static_cast<int>(presets.size())) {
         currentProgram_ = index;
         restoredCustom_.store(false);
+        synthModel_.store(2);
         const bool preservePitch = parameters.getRawParameterValue(opensmacker::params::kLockPitch) != nullptr
             && *parameters.getRawParameterValue(opensmacker::params::kLockPitch) > 0.5f;
         opensmacker::presets::SectionLocks locks{};
@@ -243,8 +247,9 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
 
 void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
     auto state = parameters.copyState();
-    state.setProperty("factoryBank", 2, nullptr);
-    state.setProperty("customSound", restoredCustom_.load(), nullptr);
+        state.setProperty("factoryBank", 2, nullptr);
+        state.setProperty("customSound", restoredCustom_.load(), nullptr);
+        state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     if (engine_.isSmackLocked()) {
@@ -271,7 +276,15 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
                 missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
             state.addChild(missing, -1, nullptr);
         }
-        restoredCustom_.store(int(state.getProperty("factoryBank", 0)) != 2 || bool(state.getProperty("customSound", false)));
+        const int bank = int(state.getProperty("factoryBank", 0));
+        const bool customFlag = bool(state.getProperty("customSound", false));
+        restoredCustom_.store(bank != 2 || customFlag);
+        if (state.hasProperty("synthModel"))
+            synthModel_.store(int(state.getProperty("synthModel", 0)), std::memory_order_relaxed);
+        else if (bank >= 2 && !customFlag)
+            synthModel_.store(1, std::memory_order_relaxed);
+        else
+            synthModel_.store(0, std::memory_order_relaxed);
         parameters.replaceState(state);
         for (size_t i = 0; i < sectionLocks_.size(); ++i) {
             const auto key = "section_lock_" + juce::String(static_cast<int>(i));

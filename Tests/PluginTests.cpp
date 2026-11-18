@@ -5,10 +5,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <iostream>
 #include <ranges>
 #include <set>
 #include <utility>
+#include <vector>
 
 namespace {
 template<class T, class Predicate>
@@ -460,6 +462,7 @@ TEST_CASE("Earlier sessions keep their exact voice settings and original resonan
     REQUIRE(restored.isRestoredCustomSound());
     auto expected = source.currentSettings().synth;
     expected.articulatedModes = false;
+    expected.shapedEngine = false;
     REQUIRE(restored.currentSettings().synth == expected);
     restored.getStateInformation(state);
     OpenSmackerProcessor reopened;
@@ -467,6 +470,7 @@ TEST_CASE("Earlier sessions keep their exact voice settings and original resonan
     CHECK(reopened.currentSettings().synth == expected);
     reopened.setCurrentProgram(0);
     CHECK(reopened.currentSettings().synth.articulatedModes);
+    CHECK(reopened.currentSettings().synth.shapedEngine);
     CHECK_FALSE(reopened.currentSettings().synth.fullAdsrEnabled);
 }
 
@@ -683,4 +687,177 @@ TEST_CASE("OpenSmacker shell spread, sub thump, and tempo echo alter output", "[
     CHECK(std::abs(spread.first - base.first) > 0.05);
     CHECK(std::abs(thump.first - base.first) > 10.0);
     CHECK(echo.second > base.second + 1.0);
+}
+
+namespace {
+
+void analysisFft(std::vector<std::complex<float>>& data) {
+    const size_t n = data.size();
+    for (size_t i = 1, j = 0; i < n; ++i) {
+        size_t bit = n >> 1;
+        for (; j & bit; bit >>= 1) j ^= bit;
+        j ^= bit;
+        if (i < j) std::swap(data[i], data[j]);
+    }
+    for (size_t len = 2; len <= n; len <<= 1) {
+        const float angle = -6.28318530718f / static_cast<float>(len);
+        const std::complex<float> step(std::cos(angle), std::sin(angle));
+        for (size_t i = 0; i < n; i += len) {
+            std::complex<float> w(1.0f, 0.0f);
+            for (size_t j = 0; j < len / 2; ++j) {
+                const auto u = data[i + j];
+                const auto v = data[i + j + len / 2] * w;
+                data[i + j] = u + v;
+                data[i + j + len / 2] = u - v;
+                w *= step;
+            }
+        }
+    }
+}
+
+float tailFlatness(const juce::AudioBuffer<float>& buffer) {
+    constexpr int nfft = 2048;
+    constexpr int start = 2400;
+    std::vector<std::complex<float>> data(nfft);
+    for (int i = 0; i < nfft; ++i) {
+        const int index = start + i;
+        const float sample = index < buffer.getNumSamples()
+            ? 0.5f * (buffer.getSample(0, index) + buffer.getSample(1, index)) : 0.0f;
+        const float window = 0.5f - 0.5f * std::cos(6.28318530718f * static_cast<float>(i) / static_cast<float>(nfft - 1));
+        data[static_cast<size_t>(i)] = sample * window;
+    }
+    analysisFft(data);
+    double logSum = 0.0;
+    double sum = 0.0;
+    int count = 0;
+    const int from = std::max(2, static_cast<int>(150.0 * nfft / 48000.0));
+    const int to = static_cast<int>(8000.0 * nfft / 48000.0);
+    for (int bin = from; bin < to; ++bin) {
+        const double magnitude = std::max(1.0e-12, static_cast<double>(std::abs(data[static_cast<size_t>(bin)])));
+        logSum += std::log(magnitude);
+        sum += magnitude;
+        ++count;
+    }
+    return count > 0 && sum > 0.0 ? static_cast<float>(std::exp(logSum / count) / (sum / count)) : 1.0f;
+}
+
+std::vector<float> hitSpectrum(const juce::AudioBuffer<float>& buffer) {
+    constexpr int nfft = 2048;
+    std::vector<std::complex<float>> data(nfft);
+    for (int i = 0; i < nfft; ++i) {
+        const float sample = 0.5f * (buffer.getSample(0, i) + buffer.getSample(1, i));
+        const float window = 0.5f - 0.5f * std::cos(6.28318530718f * static_cast<float>(i) / static_cast<float>(nfft - 1));
+        data[static_cast<size_t>(i)] = sample * window;
+    }
+    analysisFft(data);
+    std::vector<float> magnitude(nfft / 2);
+    for (int i = 0; i < nfft / 2; ++i)
+        magnitude[static_cast<size_t>(i)] = std::abs(data[static_cast<size_t>(i)]);
+    return magnitude;
+}
+
+float spectrumCosine(const std::vector<float>& a, const std::vector<float>& b) {
+    double dot = 0.0, na = 0.0, nb = 0.0;
+    for (size_t i = 1; i < a.size(); ++i) {
+        dot += static_cast<double>(a[i]) * b[i];
+        na += static_cast<double>(a[i]) * a[i];
+        nb += static_cast<double>(b[i]) * b[i];
+    }
+    return na > 0.0 && nb > 0.0 ? static_cast<float>(dot / std::sqrt(na * nb)) : 0.0f;
+}
+
+juce::AudioBuffer<float> renderFactoryHit(OpenSmackerProcessor& processor) {
+    constexpr int rate = 48000;
+    constexpr int samples = rate / 2;
+    processor.prepareToPlay(rate, samples);
+    juce::AudioBuffer<float> buffer(2, samples);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 69, static_cast<juce::uint8>(110)), 0);
+    processor.processBlock(buffer, midi);
+    return buffer;
+}
+
+} // namespace
+
+TEST_CASE("Factory hits keep headroom, no DC, and a limiter that is only a ceiling", "[plugin][audio][level]") {
+    OpenSmackerProcessor processor;
+    auto* limiter = processor.parameters.getParameter(opensmacker::params::kLimiterEnabled);
+    REQUIRE(limiter != nullptr);
+    for (int index = 0; index < processor.getNumPrograms(); ++index) {
+        processor.setCurrentProgram(index);
+        CAPTURE(processor.getProgramName(index).toStdString());
+        const auto limited = renderFactoryHit(processor);
+        const float peak = limited.getMagnitude(0, limited.getNumSamples());
+        CHECK(peak > 0.42f);
+        CHECK(peak < 0.68f);
+        double mean = 0.0;
+        for (int i = 0; i < limited.getNumSamples(); ++i) {
+            const float left = limited.getSample(0, i);
+            const float right = limited.getSample(1, i);
+            REQUIRE((std::isfinite(left) && std::isfinite(right)));
+            CHECK(std::abs(left) < 0.98f);
+            CHECK(std::abs(right) < 0.98f);
+            mean += 0.5 * (left + right);
+        }
+        CHECK(std::abs(mean / limited.getNumSamples()) < 0.0015);
+        CHECK(limited.getRMSLevel(0, 960, 960) > 0.025f);
+
+        limiter->setValueNotifyingHost(0.0f);
+        const auto open = renderFactoryHit(processor);
+        const float openPeak = open.getMagnitude(0, open.getNumSamples());
+        const float limitedDb = 20.0f * std::log10(std::max(peak, 1.0e-7f));
+        const float openDb = 20.0f * std::log10(std::max(openPeak, 1.0e-7f));
+        CHECK(std::abs(openDb - limitedDb) < 0.35f);
+    }
+}
+
+TEST_CASE("Factory snares and rims are not sustaining bells, and presets stay distinct", "[plugin][audio][tone]") {
+    OpenSmackerProcessor processor;
+    std::vector<std::vector<float>> spectra;
+    spectra.reserve(static_cast<size_t>(processor.getNumPrograms()));
+    float closest = 0.0f;
+    for (int index = 0; index < processor.getNumPrograms(); ++index) {
+        processor.setCurrentProgram(index);
+        const auto buffer = renderFactoryHit(processor);
+        const auto family = opensmacker::presets::familyForProgram(index);
+        const float flatness = tailFlatness(buffer);
+        CAPTURE(processor.getProgramName(index).toStdString(), flatness, family);
+        if (family == 0 || family == 3)
+            CHECK(flatness > 0.18f);
+        if (family == 1)
+            CHECK(flatness < 0.28f);
+        if (family == 2)
+            CHECK(flatness > 0.06f);
+        spectra.push_back(hitSpectrum(buffer));
+    }
+    for (size_t i = 0; i < spectra.size(); ++i) {
+        for (size_t j = i + 1; j < spectra.size(); ++j)
+            closest = std::max(closest, spectrumCosine(spectra[i], spectra[j]));
+    }
+    CHECK(closest < 0.992f);
+}
+
+TEST_CASE("A saved factoryBank 2 session keeps the pre-shaped voice until a new preset is chosen", "[plugin][state]") {
+    OpenSmackerProcessor source;
+    source.setCurrentProgram(4);
+    auto tree = source.parameters.copyState();
+    tree.setProperty("factoryBank", 2, nullptr);
+    tree.setProperty("customSound", false, nullptr);
+    juce::MemoryBlock state;
+    if (auto xml = tree.createXml())
+        juce::AudioProcessor::copyXmlToBinary(*xml, state);
+    OpenSmackerProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    CHECK(restored.currentSettings().synth.articulatedModes);
+    CHECK_FALSE(restored.currentSettings().synth.shapedEngine);
+    CHECK_FALSE(restored.isRestoredCustomSound());
+
+    OpenSmackerProcessor modern;
+    modern.setCurrentProgram(2);
+    juce::MemoryBlock roundTrip;
+    modern.getStateInformation(roundTrip);
+    OpenSmackerProcessor reopened;
+    reopened.setStateInformation(roundTrip.getData(), static_cast<int>(roundTrip.getSize()));
+    CHECK(reopened.currentSettings().synth.shapedEngine);
+    CHECK(reopened.currentSettings().synth.articulatedModes);
 }

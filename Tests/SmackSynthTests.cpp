@@ -441,8 +441,10 @@ TEST_CASE("SmackSynth tracks an octave shift in its tuned metallic noise", "[cor
 TEST_CASE("Velocity shapes the struck overtones and a held body settles to its root", "[core][synth][modes]") {
     for (const auto rate : { 44100, 96000 }) {
         for (const auto octave : { 3, 5 }) {
+            for (const bool shaped : { false, true }) {
             for (auto mode : { VoiceMode::DanceSnare, VoiceMode::ClubTom, VoiceMode::FmBell, VoiceMode::PrydaRimSmack }) {
                 SmackSynthSettings settings;
+                settings.shapedEngine = shaped;
                 settings.voiceMode = mode;
                 settings.octave = octave;
                 settings.fullAdsrEnabled = true;
@@ -466,7 +468,7 @@ TEST_CASE("Velocity shapes the struck overtones and a held body settles to its r
                         heldEnergy += std::abs(loud);
                     }
                 }
-                CAPTURE(rate, octave, static_cast<int>(mode));
+                CAPTURE(rate, octave, static_cast<int>(mode), shaped);
                 CHECK(attackDiff / (rate / 40) > 0.01);
                 CHECK(heldEnergy / (rate / 12) > 0.03);
                 CHECK(heldDiff < heldEnergy * 0.01);
@@ -474,6 +476,59 @@ TEST_CASE("Velocity shapes the struck overtones and a held body settles to its r
                 for (int i = 0; i < rate / 4; ++i) (void) hard.processSample(settings);
                 CHECK_FALSE(hard.isPlaying());
             }
+            }
         }
     }
+}
+
+TEST_CASE("Sub thump is an octave sine without a DC offset", "[core][synth][sub]") {
+    SmackSynth synth;
+    synth.prepare(48000.0);
+    SmackSynthSettings settings;
+    settings.voiceMode = VoiceMode::ClubTom;
+    settings.subThump = 1.0f;
+    settings.noiseLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.reverbMix = 0.0f;
+    settings.bodyHPF = 20.0f;
+    settings.toneDecayMs = 180.0f;
+    settings.preStrikeCount = 1;
+    settings.shapedEngine = true;
+    std::vector<float> left, right;
+    synth.renderBlock(left, right, settings, 1.0f, 0);
+    double mean = 0.0;
+    int negative = 0;
+    for (float sample : left) {
+        mean += sample;
+        if (sample < -0.02f) ++negative;
+    }
+    mean /= static_cast<double>(left.size());
+    REQUIRE(std::abs(mean) < 0.02);
+    REQUIRE(negative > 20);
+}
+
+TEST_CASE("Shaped snares do not sustain a loud body sine under the wires", "[core][synth][shaped]") {
+    const auto lateBody = [](bool shaped) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.shapedEngine = shaped;
+        settings.voiceMode = VoiceMode::DanceSnare;
+        settings.noiseLevel = 0.0f;
+        settings.clickLevel = 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.toneLevel = 1.0f;
+        settings.toneDecayMs = 180.0f;
+        settings.fmAmount = 0.2f;
+        settings.preStrikeCount = 1;
+        synth.trigger(settings, 1.0f, 0);
+        double energy = 0.0;
+        for (int i = 0; i < 9600; ++i) {
+            const auto frame = synth.processSample(settings);
+            if (i > 2880)
+                energy += std::abs(frame.bodyLeft);
+        }
+        return energy;
+    };
+    REQUIRE(lateBody(true) < lateBody(false) * 0.35f);
 }

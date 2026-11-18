@@ -95,6 +95,59 @@ float amplitudeEnvelope(int sample, int duration, const SmackSynthSettings& sett
     return sustain * 0.5f * (1.0f + std::cos(kPi * phase));
 }
 
+// One-shot contour with no sustain hold. The level falls for the whole hit and lands at silence.
+float shapedOneShot(int sample, int duration, const SmackSynthSettings& settings, float sampleRate) noexcept {
+    if (sample < 0 || duration <= 1 || sample >= duration)
+        return 0.0f;
+    const float dur = static_cast<float>(duration);
+    const float attack = std::clamp(settings.ampAttackMs, 0.05f, 20.0f) * 0.001f * sampleRate;
+    const float t = static_cast<float>(sample);
+    if (attack > 1.0f && t < attack)
+        return std::sin(0.5f * kPi * t / attack);
+
+    const float sustain = std::clamp(settings.ampSustain, 0.0f, 1.0f);
+    const float tau = std::max(0.012f * sampleRate,
+        std::clamp(settings.ampDecayMs, 8.0f, 600.0f) * 0.001f * sampleRate * std::lerp(0.62f, 1.25f, sustain));
+    float env = std::exp(-(t - std::min(t, attack)) / tau);
+    const float release = std::clamp(settings.ampReleaseMs, 8.0f, 500.0f) * 0.001f * sampleRate;
+    const float land = std::clamp(release, 0.008f * sampleRate, dur * 0.5f);
+    if (t > dur - land) {
+        const float phase = std::clamp((t - (dur - land)) / land, 0.0f, 1.0f);
+        env *= 0.5f * (1.0f + std::cos(kPi * phase));
+    }
+    return env;
+}
+
+struct ShapedProfile {
+    float fundScale;
+    float modeScale0, modeScale1, modeScale2;
+    float modeGain0, modeGain1, modeGain2;
+    float fundGain;
+    float fmScale;
+    bool bell;
+    bool octave;
+};
+
+ShapedProfile shapedProfile(VoiceMode mode) noexcept {
+    switch (mode) {
+        case VoiceMode::DanceSnare:
+            return { 0.40f, 0.07f, 0.045f, 0.03f, 0.18f, 0.08f, 0.035f, 0.9f, 0.5f, false, false };
+        case VoiceMode::ClubTom:
+            return { 0.46f, 0.11f, 0.06f, 0.04f, 0.20f, 0.08f, 0.04f, 0.88f, 0.40f, false, true };
+        case VoiceMode::FmBell:
+            return { 0.95f, 0.72f, 0.48f, 0.30f, 0.42f, 0.26f, 0.12f, 0.74f, 1.0f, true, false };
+        case VoiceMode::PrydaRimSmack:
+            return { 0.55f, 0.08f, 0.05f, 0.03f, 0.22f, 0.1f, 0.05f, 0.62f, 0.35f, false, false };
+    }
+    return { 0.3f, 0.08f, 0.05f, 0.03f, 0.12f, 0.06f, 0.03f, 0.7f, 0.5f, false, false };
+}
+
+float aliasLimitedIndex(float index, float carrierHz, float modulatorHz, float nyquist) noexcept {
+    const float headroom = std::max(0.0f, nyquist * 0.88f - carrierHz);
+    const float limit = std::max(0.25f, headroom / std::max(50.0f, modulatorHz) - 1.2f);
+    return std::min(std::max(0.0f, index), limit);
+}
+
 float gatedEnvelope(int sample, const SmackSynthSettings& settings, float sampleRate) noexcept {
     const float time = static_cast<float>(std::max(0, sample));
     const float attack = std::clamp(settings.ampAttackMs, 0.0f, 10000.0f) * 0.001f * sampleRate;
@@ -253,7 +306,7 @@ void SmackSynth::reset() noexcept {
     releaseDurationSamples_ = 0;
     reverbTailSamples_ = 0;
     releaseStartLevel_ = 0.0f;
-    phaseFund_ = phaseMode2_ = phaseMode3_ = phaseMode4_ = 0.0f;
+    phaseFund_ = phaseSub_ = phaseOctave_ = phaseMode2_ = phaseMode3_ = phaseMode4_ = 0.0f;
     phaseMod1_ = phaseMod2_ = phaseFundR_ = phaseMode2R_ = 0.0f;
     std::fill(metalPhasesL_.begin(), metalPhasesL_.end(), 0.0f);
     std::fill(metalPhasesR_.begin(), metalPhasesR_.end(), 0.0f);
@@ -413,7 +466,9 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     const float maxHz = sr * 0.44f;
     const float rootHz = noteToHz(settings.note, settings.octave, settings.fineCents);
     float amp = fullAdsrEnabled_ ? gatedEnvelope(sample, settings, sr)
-        : amplitudeEnvelope(sample, dryDurationSamples_, settings, sr);
+        : (settings.shapedEngine
+            ? shapedOneShot(sample, dryDurationSamples_, settings, sr)
+            : amplitudeEnvelope(sample, dryDurationSamples_, settings, sr));
     if (fullAdsrEnabled_ && noteOffReceived_) {
         if (gateReleaseSamples <= 0 || sample >= releaseStartSample_ + gateReleaseSamples) {
             amp = 0.0f;
@@ -453,7 +508,7 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
             const float straight = std::max(0.0f, 1.0f - phase);
             const float shape = std::clamp(settings.noiseCurve, -1.0f, 1.0f);
             wireEnv = shape < 0.0f ? curved : curved * (1.0f - shape) + straight * shape;
-            if (phase > 5.0f)
+            if (!settings.shapedEngine && phase > 5.0f)
                 wireEnv = 0.0f;
         }
     }
@@ -498,10 +553,21 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
                 break;
             }
             case ClickType::Rimshot: {
-                clickPhase_ = wrapPhase(clickPhase_ + kTwoPi * frequency * dt);
-                clickPhase2_ = wrapPhase(clickPhase2_ + kTwoPi * std::min(maxHz, frequency * 2.37f) * dt);
-                click = std::tanh((std::sin(clickPhase_) + 0.55f * std::sin(clickPhase2_)) * 1.5f)
-                    * std::exp(-t / (0.0022f * sr));
+                if (settings.shapedEngine) {
+                    float acc = 0.0f;
+                    const float second = std::min(sr * 1.7f, frequency * 2.37f);
+                    for (int step = 0; step < 4; ++step) {
+                        clickPhase_ = wrapPhase(clickPhase_ + kTwoPi * frequency * dt * 0.25f);
+                        clickPhase2_ = wrapPhase(clickPhase2_ + kTwoPi * second * dt * 0.25f);
+                        acc += std::tanh((std::sin(clickPhase_) + 0.40f * std::sin(clickPhase2_)) * 1.05f);
+                    }
+                    click = (acc * 0.25f) * std::exp(-t / (0.0018f * sr));
+                } else {
+                    clickPhase_ = wrapPhase(clickPhase_ + kTwoPi * frequency * dt);
+                    clickPhase2_ = wrapPhase(clickPhase2_ + kTwoPi * std::min(maxHz, frequency * 2.37f) * dt);
+                    click = std::tanh((std::sin(clickPhase_) + 0.55f * std::sin(clickPhase2_)) * 1.5f)
+                        * std::exp(-t / (0.0022f * sr));
+                }
                 break;
             }
             case ClickType::Laser: {
@@ -548,49 +614,105 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
         phaseMod1_ = wrapPhase(phaseMod1_ + kTwoPi * std::min(maxHz, tunedHz * (1.37f + settings.fmAmount * 1.8f)) * dt);
         phaseMod2_ = wrapPhase(phaseMod2_ + kTwoPi * std::min(maxHz, tunedHz * 3.17f) * dt);
 
-        const float fmIndex = std::clamp(settings.fmAmount, 0.0f, 1.0f) * 2.6f * fmEnvelope;
-        const float fundamentalL = std::sin(phaseFund_ + fmIndex * std::sin(phaseMod1_));
-        const float fundamentalR = std::sin(phaseFundR_ + fmIndex * std::sin(phaseMod1_ + 0.07f));
-        const float highModesL = 0.48f * std::sin(phaseMode2_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.48f))
-            + 0.28f * std::sin(phaseMode3_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.25f))
-            + 0.16f * std::sin(phaseMode4_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.15f));
-        const float highModesR = 0.48f * std::sin(phaseMode2R_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.48f))
-            + 0.28f * std::cos(phaseMode3_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.25f))
-            + 0.16f * std::sin(phaseMode4_ + 0.04f) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.15f));
-
-        float rawL = fundamentalL * bodyEnv + highModesL * settings.fmAmount;
-        float rawR = fundamentalR * bodyEnv + highModesR * settings.fmAmount;
-        switch (settings.voiceMode) {
-            case VoiceMode::DanceSnare:
-                rawL = rawL * 0.58f + highModesL * 0.62f + noiseL * overtoneEnv * 0.22f;
-                rawR = rawR * 0.58f + highModesR * 0.62f + noiseR * overtoneEnv * 0.22f;
-                break;
-            case VoiceMode::ClubTom:
-                rawL = fundamentalL * bodyEnv * 1.08f + highModesL * 0.52f;
-                rawR = fundamentalR * bodyEnv * 1.08f + highModesR * 0.52f;
-                break;
-            case VoiceMode::FmBell: {
-                const float bellL = std::sin(phaseFund_ + std::sin(phaseMod1_) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
-                const float bellR = std::sin(phaseFundR_ + std::sin(phaseMod1_ + 0.11f) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
-                const float chime = 0.45f * std::sin(phaseMode3_) + 0.24f * std::sin(phaseMod2_);
-                rawL = bellL * bodyEnv * 0.72f + chime * overtoneEnv;
-                rawR = bellR * bodyEnv * 0.72f + chime * overtoneEnv;
-                break;
+        const float modHz = std::min(maxHz, tunedHz * (1.37f + settings.fmAmount * 1.8f));
+        float rawL = 0.0f;
+        float rawR = 0.0f;
+        float drive = 1.35f;
+        float shellMix = 4.0f;
+        float bodyFollow = bodyEnv;
+        if (settings.shapedEngine) {
+            const auto profile = shapedProfile(settings.voiceMode);
+            const float age = static_cast<float>(mainAge);
+            const auto modeEnv = [&](float scale) {
+                return std::exp(-age / std::max(1.0f, bodyDecay * scale));
+            };
+            float fundTau = bodyDecay * profile.fundScale;
+            if (!profile.bell)
+                fundTau = std::min(fundTau, (profile.octave ? 0.11f : 0.040f) * sr);
+            const float fundEnv = fullAdsrEnabled_ ? 1.0f : std::exp(-age / std::max(1.0f, fundTau));
+            const float fmIndex = aliasLimitedIndex(
+                std::clamp(settings.fmAmount, 0.0f, 1.0f) * 2.2f * fmEnvelope * profile.fmScale,
+                tunedHz, modHz, maxHz);
+            const float partialL = profile.modeGain0 * std::sin(phaseMode2_) * modeEnv(profile.modeScale0)
+                + profile.modeGain1 * std::sin(phaseMode3_) * modeEnv(profile.modeScale1)
+                + profile.modeGain2 * std::sin(phaseMode4_) * modeEnv(profile.modeScale2);
+            const float partialR = profile.modeGain0 * std::sin(phaseMode2R_) * modeEnv(profile.modeScale0)
+                + profile.modeGain1 * std::cos(phaseMode3_) * modeEnv(profile.modeScale1)
+                + profile.modeGain2 * std::sin(phaseMode4_ + 0.04f) * modeEnv(profile.modeScale2);
+            if (profile.bell) {
+                const float bellIndex = aliasLimitedIndex(
+                    (0.55f + 2.4f * std::clamp(settings.fmAmount, 0.0f, 1.0f)) * fmEnvelope, tunedHz, modHz, maxHz);
+                rawL = std::sin(phaseFund_ + std::sin(phaseMod1_) * bellIndex) * fundEnv * profile.fundGain + partialL;
+                rawR = std::sin(phaseFundR_ + std::sin(phaseMod1_ + 0.11f) * bellIndex) * fundEnv * profile.fundGain + partialR;
+            } else {
+                rawL = std::sin(phaseFund_ + fmIndex * std::sin(phaseMod1_)) * fundEnv * profile.fundGain + partialL;
+                rawR = std::sin(phaseFundR_ + fmIndex * std::sin(phaseMod1_ + 0.07f)) * fundEnv * profile.fundGain + partialR;
             }
-            case VoiceMode::PrydaRimSmack:
-                rawL = fundamentalL * bodyEnv * 0.46f + highModesL * 0.75f + noiseL * overtoneEnv * 0.30f;
-                rawR = fundamentalR * bodyEnv * 0.46f + highModesR * 0.75f + noiseR * overtoneEnv * 0.30f;
-                break;
+            if (profile.octave) {
+                const float octaveHz = std::min(maxHz, tunedHz * 2.0f);
+                phaseOctave_ = wrapPhase(phaseOctave_ + kTwoPi * octaveHz * dt);
+                const float octaveEnv = fullAdsrEnabled_ ? 0.35f : modeEnv(profile.fundScale * 0.55f);
+                const float octave = 0.24f * std::sin(phaseOctave_) * octaveEnv;
+                rawL += octave;
+                rawR += octave;
+                uint32_t hash = 0x85ebca6bu * static_cast<uint32_t>(sample + 17);
+                hash ^= hash >> 13;
+                const float air = (static_cast<float>(hash) * (2.0f / 4294967296.0f) - 1.0f) * fundEnv * 0.34f;
+                rawL += air;
+                rawR += air * 0.9f;
+            }
+            drive = 1.02f;
+            shellMix = 2.4f;
+            bodyFollow = 1.0f;
+        } else {
+            const float fmIndex = std::clamp(settings.fmAmount, 0.0f, 1.0f) * 2.6f * fmEnvelope;
+            const float fundamentalL = std::sin(phaseFund_ + fmIndex * std::sin(phaseMod1_));
+            const float fundamentalR = std::sin(phaseFundR_ + fmIndex * std::sin(phaseMod1_ + 0.07f));
+            const float highModesL = 0.48f * std::sin(phaseMode2_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.48f))
+                + 0.28f * std::sin(phaseMode3_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.25f))
+                + 0.16f * std::sin(phaseMode4_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.15f));
+            const float highModesR = 0.48f * std::sin(phaseMode2R_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.48f))
+                + 0.28f * std::cos(phaseMode3_) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.25f))
+                + 0.16f * std::sin(phaseMode4_ + 0.04f) * std::exp(-static_cast<float>(mainAge) / (bodyDecay * 0.15f));
+
+            rawL = fundamentalL * bodyEnv + highModesL * settings.fmAmount;
+            rawR = fundamentalR * bodyEnv + highModesR * settings.fmAmount;
+            switch (settings.voiceMode) {
+                case VoiceMode::DanceSnare:
+                    rawL = rawL * 0.58f + highModesL * 0.62f + noiseL * overtoneEnv * 0.22f;
+                    rawR = rawR * 0.58f + highModesR * 0.62f + noiseR * overtoneEnv * 0.22f;
+                    break;
+                case VoiceMode::ClubTom:
+                    rawL = fundamentalL * bodyEnv * 1.08f + highModesL * 0.52f;
+                    rawR = fundamentalR * bodyEnv * 1.08f + highModesR * 0.52f;
+                    break;
+                case VoiceMode::FmBell: {
+                    const float bellL = std::sin(phaseFund_ + std::sin(phaseMod1_) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
+                    const float bellR = std::sin(phaseFundR_ + std::sin(phaseMod1_ + 0.11f) * (0.7f + 3.8f * settings.fmAmount) * fmEnvelope);
+                    const float chime = 0.45f * std::sin(phaseMode3_) + 0.24f * std::sin(phaseMod2_);
+                    rawL = bellL * bodyEnv * 0.72f + chime * overtoneEnv;
+                    rawR = bellR * bodyEnv * 0.72f + chime * overtoneEnv;
+                    break;
+                }
+                case VoiceMode::PrydaRimSmack:
+                    rawL = fundamentalL * bodyEnv * 0.46f + highModesL * 0.75f + noiseL * overtoneEnv * 0.30f;
+                    rawR = fundamentalR * bodyEnv * 0.46f + highModesR * 0.75f + noiseR * overtoneEnv * 0.30f;
+                    break;
+            }
         }
         const float shellL = processBiquad(rawL, shellFilterL_, b0_s_, b1_s_, b2_s_, a1_s_, a2_s_);
         const float shellR = processBiquad(rawR, shellFilterR_, b0_s_, b1_s_, b2_s_, a1_s_, a2_s_);
-        const float shellBlend = std::clamp(settings.toneQ / 15.0f, 0.08f, 0.68f);
-        bodyL = std::tanh((rawL * (1.0f - shellBlend) + shellL * shellBlend * 4.0f) * 1.35f) * bodyEnv;
-        bodyR = std::tanh((rawR * (1.0f - shellBlend) + shellR * shellBlend * 4.0f) * 1.35f) * bodyEnv;
+        const float shellBlend = settings.shapedEngine
+            ? std::clamp(settings.toneQ / 18.0f, 0.05f, 0.42f)
+            : std::clamp(settings.toneQ / 15.0f, 0.08f, 0.68f);
+        bodyL = std::tanh((rawL * (1.0f - shellBlend) + shellL * shellBlend * shellMix) * drive) * bodyFollow;
+        bodyR = std::tanh((rawR * (1.0f - shellBlend) + shellR * shellBlend * shellMix) * drive) * bodyFollow;
         const float subThumpAmount = std::clamp(settings.subThump, 0.0f, 1.0f);
         if (subThumpAmount > 0.001f) {
-            const float subThumpEnv = std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.55f));
-            const float subSine = std::sin(phaseFund_ * 0.5f) * subThumpEnv * subThumpAmount * 0.55f;
+            const float subHz = std::min(maxHz, tunedHz * 0.5f);
+            phaseSub_ = wrapPhase(phaseSub_ + kTwoPi * subHz * dt);
+            const float subThumpEnv = std::exp(-static_cast<float>(mainAge) / std::max(1.0f, bodyDecay * 0.45f));
+            const float subSine = std::sin(phaseSub_) * subThumpEnv * subThumpAmount * 0.42f;
             bodyL += subSine;
             bodyR += subSine;
         }
