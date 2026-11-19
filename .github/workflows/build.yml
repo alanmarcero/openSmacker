@@ -160,3 +160,81 @@ jobs:
         with:
           files: openSmacker-*.zip
           body_path: release-notes.md
+
+  # The macOS and Linux package jobs stay disabled. This job is what refreshes
+  # docs/screenshots/preview.png. Nothing else on a main push renders the editor.
+  update-preview:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Skip when the editor sources did not change
+        id: scope
+        run: |
+          set -euo pipefail
+          before="${{ github.event.before }}"
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$before" "${{ github.sha }}" > /tmp/changed-files
+          if grep -qE '^(Source/|Tests/|assets/|CMakeLists\.txt$)' /tmp/changed-files; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No editor sources in this push."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
+          echo 'Acquire::ForceIPv4 "true";' | sudo tee /etc/apt/apt.conf.d/99force-ipv4
+          sudo grep -rl "azure.archive.ubuntu.com" /etc/apt/ 2>/dev/null | xargs -r sudo sed -i 's|azure\.archive\.ubuntu\.com|archive.ubuntu.com|g'
+          sudo apt-get update -o Acquire::Retries=3
+          sudo apt-get install -y --no-install-recommends -o Acquire::Retries=3 \
+            libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev \
+            libxrender-dev libglu1-mesa-dev mesa-common-dev \
+            xvfb xauth fonts-dejavu-core
+
+      - name: Configure
+        if: steps.scope.outputs.run == 'true'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build editor tests
+        if: steps.scope.outputs.run == 'true'
+        run: cmake --build build --config Release --parallel --target opensmacker_plugin_tests
+
+      - name: Capture the factory editor
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          xvfb-run -a -s "-screen 0 1400x900x24" ./build/opensmacker_plugin_tests '[plugin][gui]'
+          cp assets/openSmacker-hit.png docs/screenshots/preview.png
+          git checkout -- assets
+
+      - name: Commit refreshed preview
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/screenshots/preview.png; then
+            echo "Preview unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/preview.png
+          git commit -m "docs: refresh preview screenshot [skip ci]"
+          git push origin HEAD:main || {
+            git fetch origin main
+            git rebase origin/main
+            git push origin HEAD:main
+          }
