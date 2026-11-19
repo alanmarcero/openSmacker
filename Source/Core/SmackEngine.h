@@ -162,6 +162,8 @@ public:
         std::span<const MidiNoteOff> noteOffs = {}) noexcept;
 
     void lockCurrentSmack(const EngineSettings& settings);
+    // Renders the same Lock In hit the audio thread would capture, on this engine.
+    void renderLockedHitOffline(const EngineSettings& settings);
     void unlockSmack() noexcept;
     bool restoreLockedWav(const std::vector<uint8_t>& wavBytes,
         VoiceMode primaryVoice = VoiceMode::DanceSnare);

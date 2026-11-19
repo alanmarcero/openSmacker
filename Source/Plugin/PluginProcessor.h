@@ -2,8 +2,14 @@
 
 #include "SmackEngine.h"
 #include "Presets.h"
+#include "AbCompare.h"
+#include "EditorSizing.h"
+#include "ParameterUndo.h"
+#include "PresetStore.h"
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <memory>
+#include <vector>
 
 class OpenSmackerProcessor : public juce::AudioProcessor {
 public:
@@ -39,6 +45,32 @@ public:
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
     void setSectionLocked(opensmacker::presets::Section section, bool locked);
 
+    bool undo();
+    bool redo();
+    [[nodiscard]] bool canUndo();
+    [[nodiscard]] bool canRedo() const;
+
+    void selectAbSlot(int slot);
+    void copyAbSlot(int from, int to);
+    [[nodiscard]] int abSlot() const noexcept { return ab_.active(); }
+
+    void setEditorSize(int width, int height) noexcept;
+    [[nodiscard]] int editorWidth() const noexcept { return editorWidth_.load(); }
+    [[nodiscard]] int editorHeight() const noexcept { return editorHeight_.load(); }
+
+    void setPresetDocumentsRoot(juce::File documentsRoot);
+    [[nodiscard]] bool saveUserPreset(const juce::String& name);
+    [[nodiscard]] bool renameUserPreset(const juce::String& oldName, const juce::String& newName);
+    [[nodiscard]] bool deleteUserPreset(const juce::String& name);
+    [[nodiscard]] bool loadUserPreset(const juce::String& name);
+    [[nodiscard]] bool loadUserPresetXml(const juce::String& xml);
+    [[nodiscard]] juce::String currentPresetXml();
+    [[nodiscard]] suite::PresetStore presetStore() const;
+
+    // Stereo float WAV of the locked hit, or a fresh offline render when nothing is locked.
+    [[nodiscard]] std::vector<uint8_t> exportHitWav() const;
+    [[nodiscard]] juce::File createHitWavFile() const;
+
     juce::AudioProcessorValueTreeState parameters;
 
     std::atomic<float> displayPeak{ 0.0f };
@@ -52,7 +84,15 @@ public:
     std::atomic<bool> displayLockedIn{ false };
 
 private:
+    [[nodiscard]] juce::ValueTree copySoundState(bool includeWav);
+    void applySoundState(const juce::ValueTree& state, bool restoreWav);
+
     opensmacker::core::SmackEngine engine_;
+    std::unique_ptr<suite::ParameterUndo> undo_;
+    suite::AbCompare ab_;
+    std::atomic<int> editorWidth_ { suite::kDefaultEditorWidth };
+    std::atomic<int> editorHeight_ { suite::kDefaultEditorHeight };
+    juce::File presetDocumentsRoot_;
     std::atomic<bool> auditionPending_{ false };
     std::atomic<int> currentProgram_{ 0 };
     std::atomic<bool> restoredCustom_{ false };
