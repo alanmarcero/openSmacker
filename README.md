@@ -2,6 +2,10 @@
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
+## Beta
+
+All of these plugins are in beta. The macOS and Linux builds are not up to date, so the Windows build is the one to use for now. A plugin can change dramatically from one release to the next, but the goal is for each one to keep getting better.
+
 openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a tom fill to your bass line, or hold a metallic note from a MIDI keyboard.
 
 ![The Hit editor with the Backbeat snare, its waveform, body tuning, strike and amplitude envelope](docs/screenshots/preview.png)
