@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(OpenSmacker VERSION 2.6.0 LANGUAGES C CXX)
+project(OpenSmacker VERSION 2.7.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -56,11 +56,17 @@ if(OS_BUILD_PLUGIN)
         Source/Plugin/Controls.cpp
         Source/Plugin/Panels.cpp
         Source/Plugin/PluginProcessor.cpp
-        Source/Plugin/PluginEditor.cpp)
+        Source/Plugin/PluginEditor.cpp
+        Source/suite/ParameterUndo.cpp
+        Source/suite/AbCompare.cpp
+        Source/suite/PresetStore.cpp
+        Source/suite/PresetBrowser.cpp
+        Source/suite/WavDragButton.cpp)
 
     target_include_directories(OpenSmacker PRIVATE
         Source/Core
-        Source/Plugin)
+        Source/Plugin
+        Source/suite)
 
     target_compile_definitions(OpenSmacker PUBLIC
         JUCE_WEB_BROWSER=0
@@ -100,8 +106,8 @@ if(OS_BUILD_TESTS)
     catch_discover_tests(opensmacker_tests)
 
     if(OS_BUILD_PLUGIN)
-        add_executable(opensmacker_plugin_tests Tests/PluginTests.cpp)
-        target_include_directories(opensmacker_plugin_tests PRIVATE Source/Plugin Source/Core)
+        add_executable(opensmacker_plugin_tests Tests/PluginTests.cpp Tests/SuiteTests.cpp)
+        target_include_directories(opensmacker_plugin_tests PRIVATE Source/Plugin Source/Core Source/suite)
         target_compile_definitions(opensmacker_plugin_tests PRIVATE
             OPENSMACKER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
             $<TARGET_PROPERTY:OpenSmacker,COMPILE_DEFINITIONS>)

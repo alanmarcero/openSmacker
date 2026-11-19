@@ -1,6 +1,7 @@
 #include "PluginProcessor.h"
 #include "Parameters.h"
 #include "PluginEditor.h"
+#include "PresetStore.h"
 #include "Presets.h"
 
 OpenSmackerProcessor::OpenSmackerProcessor()
@@ -13,6 +14,11 @@ OpenSmackerProcessor::OpenSmackerProcessor()
     for (auto& locked : sectionLocks_)
         locked.store(false, std::memory_order_relaxed);
     setCurrentProgram(0);
+    ab_.arm(copySoundState(true));
+    undo_ = std::make_unique<suite::ParameterUndo>(
+        *this,
+        [this] { return copySoundState(false); },
+        [this](const juce::ValueTree& tree) { applySoundState(tree, false); });
 }
 
 opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const {
@@ -245,67 +251,227 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
     }
 }
 
-void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
+juce::ValueTree OpenSmackerProcessor::copySoundState(bool includeWav) {
     auto state = parameters.copyState();
-        state.setProperty("factoryBank", 2, nullptr);
-        state.setProperty("customSound", restoredCustom_.load(), nullptr);
-        state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
+    state.setProperty("factoryBank", 2, nullptr);
+    state.setProperty("customSound", restoredCustom_.load(), nullptr);
+    state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
-    if (engine_.isSmackLocked()) {
+    state.removeProperty("abSlot0", nullptr);
+    state.removeProperty("abSlot1", nullptr);
+    state.removeProperty("abActive", nullptr);
+    state.removeProperty("editorWidth", nullptr);
+    state.removeProperty("editorHeight", nullptr);
+    if (includeWav && engine_.isSmackLocked()) {
         const auto wavBank = engine_.wavCache().toBankWavBytes();
-        if (!wavBank.empty()) {
+        if (!wavBank.empty())
             state.setProperty("locked_wav_bank", juce::MemoryBlock(wavBank.data(), wavBank.size()).toBase64Encoding(), nullptr);
-        }
     }
-    std::unique_ptr<juce::XmlElement> xml(state.createXml());
-    copyXmlToBinary(*xml, destData);
+    return state;
+}
+
+void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool restoreWav) {
+    if (!incoming.isValid() || !incoming.hasType(parameters.state.getType()))
+        return;
+    auto state = incoming.createCopy();
+    const auto currentSchema = parameters.copyState();
+    for (int i = 0; i < currentSchema.getNumChildren(); ++i) {
+        const auto child = currentSchema.getChild(i);
+        const auto id = child.getProperty("id").toString();
+        if (id.isEmpty() || state.getChildWithProperty("id", id).isValid())
+            continue;
+        auto missing = child.createCopy();
+        if (auto* param = parameters.getParameter(id))
+            missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
+        state.addChild(missing, -1, nullptr);
+    }
+    const int bank = int(state.getProperty("factoryBank", 0));
+    const bool customFlag = bool(state.getProperty("customSound", false));
+    restoredCustom_.store(bank != 2 || customFlag);
+    if (state.hasProperty("synthModel"))
+        synthModel_.store(int(state.getProperty("synthModel", 0)), std::memory_order_relaxed);
+    else if (bank >= 2 && !customFlag)
+        synthModel_.store(1, std::memory_order_relaxed);
+    else
+        synthModel_.store(0, std::memory_order_relaxed);
+
+    const bool hadWav = state.hasProperty("locked_wav_bank") || state.hasProperty("locked_wav");
+    const auto wavProperty = state.hasProperty("locked_wav_bank") ? state.getProperty("locked_wav_bank").toString()
+                                                                  : state.getProperty("locked_wav").toString();
+    state.removeProperty("locked_wav", nullptr);
+    state.removeProperty("locked_wav_bank", nullptr);
+    state.removeProperty("abSlot0", nullptr);
+    state.removeProperty("abSlot1", nullptr);
+    state.removeProperty("abActive", nullptr);
+    state.removeProperty("editorWidth", nullptr);
+    state.removeProperty("editorHeight", nullptr);
+
+    parameters.replaceState(state);
+    for (size_t i = 0; i < sectionLocks_.size(); ++i) {
+        const auto key = "section_lock_" + juce::String(static_cast<int>(i));
+        sectionLocks_[i].store(state.getProperty(key, false), std::memory_order_relaxed);
+    }
+    if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
+        currentProgram_ = juce::jlimit(0, std::max(0, getNumPrograms() - 1), static_cast<int>(*preset));
+
+    if (!restoreWav)
+        return;
+    if (hadWav) {
+        juce::MemoryBlock block;
+        block.fromBase64Encoding(wavProperty);
+        const auto* bytePtr = static_cast<const uint8_t*>(block.getData());
+        std::vector<uint8_t> wavBytes(bytePtr, bytePtr + block.getSize());
+        const bool restored = engine_.restoreLockedWav(wavBytes, currentSettings().synth.voiceMode);
+        displayLockedIn.store(restored);
+    } else {
+        engine_.unlockSmack();
+        displayLockedIn.store(false);
+    }
+}
+
+void OpenSmackerProcessor::getStateInformation(juce::MemoryBlock& destData) {
+    auto state = copySoundState(true);
+    ab_.writeProperties(state);
+    state.setProperty("editorWidth", editorWidth_.load(), nullptr);
+    state.setProperty("editorHeight", editorHeight_.load(), nullptr);
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
 }
 
 void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes) {
     std::unique_ptr<juce::XmlElement> xmlState(getXmlFromBinary(data, sizeInBytes));
-    if (xmlState != nullptr && xmlState->hasTagName(parameters.state.getType())) {
-        auto state = juce::ValueTree::fromXml(*xmlState);
-        const auto currentSchema = parameters.copyState();
-        for (int i = 0; i < currentSchema.getNumChildren(); ++i) {
-            const auto child = currentSchema.getChild(i);
-            const auto id = child.getProperty("id").toString();
-            if (id.isEmpty() || state.getChildWithProperty("id", id).isValid()) continue;
-            auto missing = child.createCopy();
-            if (auto* param = parameters.getParameter(id))
-                missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
-            state.addChild(missing, -1, nullptr);
-        }
-        const int bank = int(state.getProperty("factoryBank", 0));
-        const bool customFlag = bool(state.getProperty("customSound", false));
-        restoredCustom_.store(bank != 2 || customFlag);
-        if (state.hasProperty("synthModel"))
-            synthModel_.store(int(state.getProperty("synthModel", 0)), std::memory_order_relaxed);
-        else if (bank >= 2 && !customFlag)
-            synthModel_.store(1, std::memory_order_relaxed);
-        else
-            synthModel_.store(0, std::memory_order_relaxed);
-        parameters.replaceState(state);
-        for (size_t i = 0; i < sectionLocks_.size(); ++i) {
-            const auto key = "section_lock_" + juce::String(static_cast<int>(i));
-            sectionLocks_[i].store(state.getProperty(key, false), std::memory_order_relaxed);
-        }
-        if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
-            currentProgram_ = juce::jlimit(0, getNumPrograms() - 1, static_cast<int>(*preset));
-        if (state.hasProperty("locked_wav_bank") || state.hasProperty("locked_wav")) {
-            juce::MemoryBlock block;
-            const auto wavProperty = state.hasProperty("locked_wav_bank") ? "locked_wav_bank" : "locked_wav";
-            block.fromBase64Encoding(state.getProperty(wavProperty).toString());
-            const auto* bytePtr = static_cast<const uint8_t*>(block.getData());
-            std::vector<uint8_t> wavBytes(bytePtr, bytePtr + block.getSize());
-            const auto restoredSettings = currentSettings();
-            const bool restored = engine_.restoreLockedWav(wavBytes, restoredSettings.synth.voiceMode);
-            displayLockedIn.store(restored);
-        } else {
-            engine_.unlockSmack();
-            displayLockedIn.store(false);
-        }
+    if (xmlState == nullptr || !xmlState->hasTagName(parameters.state.getType()))
+        return;
+    auto state = juce::ValueTree::fromXml(*xmlState);
+    if (state.hasProperty("editorWidth"))
+        editorWidth_.store(juce::jlimit(suite::kMinEditorWidth, suite::kMaxEditorWidth, int(state.getProperty("editorWidth"))));
+    if (state.hasProperty("editorHeight"))
+        editorHeight_.store(juce::jlimit(suite::kMinEditorHeight, suite::kMaxEditorHeight, int(state.getProperty("editorHeight"))));
+    const bool hadAb = ab_.readProperties(state);
+    applySoundState(state, true);
+    if (!hadAb)
+        ab_.arm(copySoundState(true));
+    if (undo_ != nullptr)
+        undo_->resetHistory();
+    if (auto* editor = getActiveEditor())
+        editor->setSize(editorWidth_.load(), editorHeight_.load());
+}
+
+bool OpenSmackerProcessor::undo() {
+    return undo_ != nullptr && undo_->undo();
+}
+
+bool OpenSmackerProcessor::redo() {
+    return undo_ != nullptr && undo_->redo();
+}
+
+bool OpenSmackerProcessor::canUndo() { return undo_ != nullptr && undo_->canUndo(); }
+
+bool OpenSmackerProcessor::canRedo() const { return undo_ != nullptr && undo_->canRedo(); }
+
+void OpenSmackerProcessor::selectAbSlot(int slot) {
+    ab_.select(slot,
+               [this] { return copySoundState(true); },
+               [this](const juce::ValueTree& tree) {
+                   if (undo_ != nullptr)
+                       undo_->suppressDuring([this, &tree] { applySoundState(tree, true); });
+                   else
+                       applySoundState(tree, true);
+               });
+}
+
+void OpenSmackerProcessor::copyAbSlot(int from, int to) {
+    ab_.copy(from, to,
+             [this] { return copySoundState(true); },
+             [this](const juce::ValueTree& tree) {
+                 if (undo_ != nullptr)
+                     undo_->suppressDuring([this, &tree] { applySoundState(tree, true); });
+                 else
+                     applySoundState(tree, true);
+             });
+}
+
+void OpenSmackerProcessor::setEditorSize(int width, int height) noexcept {
+    editorWidth_.store(juce::jlimit(suite::kMinEditorWidth, suite::kMaxEditorWidth, width));
+    editorHeight_.store(juce::jlimit(suite::kMinEditorHeight, suite::kMaxEditorHeight, height));
+}
+
+void OpenSmackerProcessor::setPresetDocumentsRoot(juce::File documentsRoot) {
+    presetDocumentsRoot_ = std::move(documentsRoot);
+}
+
+suite::PresetStore OpenSmackerProcessor::presetStore() const {
+    return suite::PresetStore("openSmacker", presetDocumentsRoot_);
+}
+
+bool OpenSmackerProcessor::saveUserPreset(const juce::String& name) {
+    const auto clean = suite::PresetStore::cleanName(name);
+    if (clean.isEmpty())
+        return false;
+    return presetStore().saveUserPreset(clean, currentPresetXml());
+}
+
+bool OpenSmackerProcessor::renameUserPreset(const juce::String& oldName, const juce::String& newName) {
+    return presetStore().renameUserPreset(oldName, newName);
+}
+
+bool OpenSmackerProcessor::deleteUserPreset(const juce::String& name) {
+    return presetStore().deleteUserPreset(name);
+}
+
+juce::String OpenSmackerProcessor::currentPresetXml() {
+    if (auto xml = copySoundState(true).createXml())
+        return xml->toString();
+    return {};
+}
+
+bool OpenSmackerProcessor::loadUserPresetXml(const juce::String& xml) {
+    if (auto parsed = juce::parseXML(xml)) {
+        auto tree = juce::ValueTree::fromXml(*parsed);
+        if (!tree.isValid())
+            return false;
+        applySoundState(tree, true);
+        restoredCustom_.store(true);
+        parameters.state.setProperty("customSound", true, nullptr);
+        return true;
     }
+    return false;
+}
+
+bool OpenSmackerProcessor::loadUserPreset(const juce::String& name) {
+    const auto xml = presetStore().loadUserPreset(name);
+    return xml.isNotEmpty() && loadUserPresetXml(xml);
+}
+
+std::vector<uint8_t> OpenSmackerProcessor::exportHitWav() const {
+    if (engine_.isSmackLocked()) {
+        auto locked = engine_.wavCache().toWavBytes();
+        if (!locked.empty())
+            return locked;
+    }
+    opensmacker::core::SmackEngine offline;
+    const double rate = getSampleRate() > 8000.0 ? getSampleRate() : 48000.0;
+    offline.prepare(rate);
+    auto settings = currentSettings();
+    settings.lockIn = true;
+    settings.synth.fullAdsrEnabled = false;
+    offline.renderLockedHitOffline(settings);
+    return offline.wavCache().toWavBytes();
+}
+
+juce::File OpenSmackerProcessor::createHitWavFile() const {
+    const auto bytes = exportHitWav();
+    if (bytes.empty())
+        return {};
+    auto directory = juce::File::getSpecialLocation(juce::File::tempDirectory)
+                         .getChildFile("Alan Marcero")
+                         .getChildFile("openSmacker");
+    directory.createDirectory();
+    auto file = directory.getNonexistentChildFile("openSmacker-hit", ".wav", false);
+    if (!file.replaceWithData(bytes.data(), bytes.size()))
+        return {};
+    return file;
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() {

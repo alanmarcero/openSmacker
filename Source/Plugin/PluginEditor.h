@@ -3,6 +3,8 @@
 #include "EdmLookAndFeel.h"
 #include "Panels.h"
 #include "PluginProcessor.h"
+#include "WavDragButton.h"
+#include <juce_gui_basics/juce_gui_basics.h>
 
 class OpenSmackerEditor : public juce::AudioProcessorEditor, private juce::Timer {
 public:
@@ -10,13 +12,19 @@ public:
     ~OpenSmackerEditor() override;
     void paint(juce::Graphics& g) override;
     void resized() override;
+    bool keyPressed(const juce::KeyPress& key) override;
     void setAdvancedView(bool advanced);
     void setPage(int page);
+    [[nodiscard]] juce::Rectangle<int> drumheadBounds() const noexcept { return artBounds_; }
 
 private:
+    class ShortcutKeys;
     void timerCallback() override;
+    bool handleShortcut(const juce::KeyPress& key);
     void syncPresetBox();
+    void syncSuiteButtons();
     void chooseProgram(int program);
+    void openPresets();
 
     OpenSmackerProcessor& processor_;
     opensmacker::ui::EdmLookAndFeel lookAndFeel_;
@@ -25,11 +33,22 @@ private:
     juce::ComboBox presetBox_;
     juce::TextButton prevPresetBtn_{ "Previous" }, nextPresetBtn_{ "Next" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
+    juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };
+    juce::TextButton abABtn_{ "A" }, abBBtn_{ "B" };
+    juce::TextButton copyAtoBBtn_{ "A>B" }, copyBtoABtn_{ "B>A" };
+    juce::TextButton presetsBtn_{ "Presets" };
+    suite::WavDragButton dragBtn_;
     int currentPage_ = 0;
+    juce::Rectangle<int> artBounds_;
+    juce::Rectangle<int> versionBounds_;
+    juce::Rectangle<int> editLabelBounds_;
+    juce::Rectangle<int> voicesLabelBounds_;
+    bool persistEditorSize_ = false;
     opensmacker::ui::SmackerStagePanel stagePanel_;
     opensmacker::ui::SmackSynthPanel synthPanel_;
     opensmacker::ui::EffectsPanel effectsPanel_;
     opensmacker::ui::PerformancePanel performancePanel_;
     juce::TooltipWindow tooltipWindow_;
+    std::unique_ptr<ShortcutKeys> shortcuts_;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(OpenSmackerEditor)
 };

@@ -404,6 +404,17 @@ void SmackEngine::lockCurrentSmack(const EngineSettings& settings) {
     previousLockState_ = settings.lockIn;
 }
 
+void SmackEngine::renderLockedHitOffline(const EngineSettings& settings) {
+    auto captureSettings = settings;
+    captureSettings.lockIn = true;
+    captureSettings.synth.fullAdsrEnabled = false;
+    beginLockCapture(captureSettings);
+    previousLockState_ = true;
+    int guard = 0;
+    while (lockCaptureActive_ && guard++ < 100000)
+        (void) advanceLockCapture(4096);
+}
+
 void SmackEngine::beginLockCapture(const EngineSettings& settings) {
     captureSettings_ = settings;
     captureVoiceIndex_ = 0;

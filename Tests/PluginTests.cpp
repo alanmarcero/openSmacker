@@ -246,7 +246,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
     REQUIRE(editor->getWidth() == 1120);
-    REQUIRE(editor->getHeight() == 704);
+    REQUIRE(editor->getHeight() == 752);
 
     auto click = [&editor](juce::String name) {
         auto* button = findVisible<juce::TextButton>(*editor, [name](const auto& b) { return b.getButtonText() == name; });
@@ -322,7 +322,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
             const auto snapshot = editor->createComponentSnapshot(editor->getLocalBounds());
             REQUIRE(snapshot.isValid());
             REQUIRE(snapshot.getWidth() == 1120);
-            REQUIRE(snapshot.getHeight() == 704);
+            REQUIRE(snapshot.getHeight() == 752);
             const juce::String suffix = mode == 0 ? "" : "-advanced";
             const juce::File screenshot = assetsDir.getChildFile(
                 "openSmacker-" + juce::String(pageNames[static_cast<size_t>(page)]) + suffix + ".png");
@@ -639,8 +639,8 @@ TEST_CASE("Drumhead animation follows transport tempo and seeks and rests when s
     processor.processBlock(audio, midi);
     CHECK(processor.animationBeatPhase(0) == 1.0f);
     CHECK(processor.animationBeatPhase(20) == 1.0f);
-    std::unique_ptr<juce::AudioProcessorEditor> editor(processor.createEditor());
-    const juce::Rectangle<int> drumhead(22, 525, 150, 71);
+    auto editor = std::unique_ptr<OpenSmackerEditor>(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    const auto drumhead = editor->drumheadBounds();
     auto resting = editor->createComponentSnapshot(drumhead);
     host.position.setIsPlaying(true);
     host.position.setPpqPosition(0.0);

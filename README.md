@@ -1,4 +1,4 @@
-# openSmacker v2.6.0
+# openSmacker v2.7.0
 
 [Install with OpenVST Manager](https://github.com/alanmarcero/alan-m-OpenVSTManager/releases/latest)
 
@@ -26,7 +26,9 @@ Enable **Advanced controls** for shell resonance and FM, pitch decay, the body a
 
 The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 dB gain and smooth frequency glide, stereo width, output gain, and brickwall limiter) alongside body tuning, transient strike, and amplitude envelope.
 
-On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. Three additional stereo output buses carry the dry body, wires, and transient.
+On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. **Drag WAV** pulls that locked hit out of the plugin as a WAV file. If nothing is locked, it renders a fresh hit instead. Three additional stereo output buses carry the dry body, wires, and transient.
+
+The window resizes freely and remembers its size in the project. **Undo** and **Redo** step through parameter edits, including Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. **A** and **B** keep two copies of the sound; **A>B** and **B>A** copy between them. **Presets** lists the factory bank and your own sounds, with search and favorites. Save, rename, and delete write user presets to Documents/Alan Marcero/openSmacker/Presets. Factory presets stay read-only.
 
 The MIDI page also has editable voice zones. The default ranges are 36–47 for snare, 48–59 for tom, 60–71 for bell, and 72–84 for rim. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign CCs to each layer. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
 
