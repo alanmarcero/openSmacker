@@ -141,12 +141,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
 
+      - name: Write release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: python3 scripts/release_body.py --tag "$RELEASE_TAG" --repo "$RELEASE_REPO" --output release-notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           files: openSmacker-*.zip
-          body: '![openSmacker native editor](https://raw.githubusercontent.com/alanmarcero/openSmacker/${{ github.ref_name }}/docs/screenshots/preview.png)'
-          generate_release_notes: true
+          body_path: release-notes.md
