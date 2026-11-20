@@ -1,8 +1,48 @@
 #include "SmackSynth.h"
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <numbers>
+#include <numeric>
+#include <ranges>
 
 using namespace opensmacker::core;
+
+namespace {
+
+double bandPowerGoertzel(const std::vector<float>& signal, double sampleRate, double lowHz, double highHz, int stepBins = 1) {
+    if (signal.empty())
+        return 0.0;
+    const int count = static_cast<int>(signal.size());
+    const int minBin = std::max(1, static_cast<int>(std::ceil(lowHz * count / sampleRate)));
+    const int maxBin = std::min(count / 2 - 1, static_cast<int>(std::floor(highHz * count / sampleRate)));
+    if (maxBin < minBin)
+        return 0.0;
+    double totalPower = 0.0;
+    int bins = 0;
+    const int stride = std::max(1, stepBins);
+    const int numSteps = (maxBin - minBin) / stride + 1;
+    std::ranges::for_each(std::views::iota(0, numSteps), [&](int idx) {
+        const int bin = minBin + idx * stride;
+        const double omega = 2.0 * std::numbers::pi * static_cast<double>(bin) / static_cast<double>(count);
+        const double coeff = 2.0 * std::cos(omega);
+        double s1 = 0.0;
+        double s2 = 0.0;
+        std::ranges::for_each(std::views::iota(0, count), [&](int n) {
+            const double window = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / static_cast<double>(count - 1));
+            const double s0 = static_cast<double>(signal[static_cast<size_t>(n)]) * window + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        });
+        const double power = s1 * s1 + s2 * s2 - coeff * s1 * s2;
+        totalPower += std::max(0.0, power);
+        ++bins;
+    });
+    if (bins == 0)
+        return 0.0;
+    return totalPower / (static_cast<double>(bins) * static_cast<double>(count) * static_cast<double>(count));
+}
+
+} // namespace
 
 TEST_CASE("noteToHz calculation is musically accurate", "[core][synth]") {
     const float a4 = noteToHz(9, 4, 0.0f);
@@ -531,4 +571,297 @@ TEST_CASE("Shaped snares do not sustain a loud body sine under the wires", "[cor
         return energy;
     };
     REQUIRE(lateBody(true) < lateBody(false) * 0.35f);
+}
+
+TEST_CASE("Oversampled FM bell preserves high-octave FM depth without sub-fundamental aliasing", "[core][synth][oversampling]") {
+    const auto renderBell = [](float fmAmount, bool shaped) {
+        SmackSynth synth;
+        synth.prepare(44100.0);
+        SmackSynthSettings settings;
+        settings.shapedEngine = shaped;
+        settings.fullAdsrEnabled = !shaped;
+        settings.voiceMode = VoiceMode::FmBell;
+        settings.note = 9;
+        settings.octave = 7;
+        settings.tonePitchEnv = 0.0f;
+        settings.fmAmount = fmAmount;
+        settings.toneDecayMs = 240.0f;
+        settings.noiseLevel = 0.0f;
+        settings.clickLevel = 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.preStrikeCount = 1;
+        std::vector<float> out(2048, 0.0f);
+        synth.trigger(settings, 1.0f, 0, 105, 1);
+        std::ranges::for_each(out, [&](float& sample) { sample = synth.processSample(settings).bodyLeft; });
+        return out;
+    };
+
+    const auto shapedHighFm = renderBell(1.0f, true);
+    const double carrierPower = bandPowerGoertzel(shapedHighFm, 44100.0, 3300.0, 3750.0);
+    const double upperSidebandPower = bandPowerGoertzel(shapedHighFm, 44100.0, 13800.0, 15500.0, 2);
+    REQUIRE(upperSidebandPower > carrierPower * 0.05);
+
+    const auto sustainedHighFm = renderBell(1.0f, false);
+    const double sustainedCarrier = bandPowerGoertzel(sustainedHighFm, 44100.0, 3300.0, 3750.0);
+    const double foldbackLowBand = bandPowerGoertzel(sustainedHighFm, 44100.0, 120.0, 1600.0, 2);
+    REQUIRE(foldbackLowBand < sustainedCarrier * 1.0e-3);
+}
+
+TEST_CASE("Physical snare-wire comb network couples nonlinearly to bottom-head modal amplitude", "[core][synth][wires][waveguide]") {
+    const auto renderWires = [](float toneLevel) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.shapedEngine = true;
+        settings.voiceMode = VoiceMode::DanceSnare;
+        settings.toneLevel = toneLevel;
+        settings.noiseType = NoiseType::SnareWires;
+        settings.noiseLevel = 0.9f;
+        settings.wireTension = 0.7f;
+        settings.clickLevel = 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.preStrikeCount = 1;
+        synth.trigger(settings, 1.0f, 0);
+        std::vector<float> wires(2048, 0.0f);
+        std::ranges::for_each(wires, [&](float& sample) { sample = synth.processSample(settings).wireLeft; });
+        return wires;
+    };
+
+    const auto uncoupled = renderWires(0.0f);
+    const auto coupled = renderWires(1.0f);
+    double diff = 0.0;
+    std::ranges::for_each(std::views::iota(size_t{ 0 }, coupled.size()), [&](size_t idx) {
+        diff += std::abs(static_cast<double>(coupled[idx]) - static_cast<double>(uncoupled[idx]));
+    });
+    REQUIRE(diff > 1.0);
+}
+
+TEST_CASE("Struck 2-pole shell modal bank follows circular-membrane stiffness dispersion", "[core][synth][modes][dispersion]") {
+    const auto renderModal = [](float spread) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.shapedEngine = true;
+        settings.voiceMode = VoiceMode::ClubTom;
+        settings.note = 9;
+        settings.octave = 2;
+        settings.tonePitchEnv = 0.0f;
+        settings.fmAmount = 0.0f;
+        settings.shellSpread = spread;
+        settings.toneDecayMs = 350.0f;
+        settings.toneQ = 0.6f;
+        settings.noiseLevel = 0.0f;
+        settings.clickLevel = 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.preStrikeCount = 1;
+        synth.trigger(settings, 1.0f, 0);
+        std::vector<float> body(4096, 0.0f);
+        std::ranges::for_each(body, [&](float& sample) { sample = synth.processSample(settings).bodyLeft; });
+        return body;
+    };
+
+    const auto neutral = renderModal(0.0f);
+    const auto stiff = renderModal(0.5f);
+    const double neutralUpper = bandPowerGoertzel(neutral, 48000.0, 355.0, 440.0);
+    const double stiffUpper = bandPowerGoertzel(stiff, 48000.0, 355.0, 440.0);
+    REQUIRE(stiffUpper > neutralUpper * 4.0);
+}
+
+TEST_CASE("ZDF TPT SVF shell bandpass and ADAA shell saturation suppress high-drive aliasing", "[core][synth][svf][adaa]") {
+    SmackSynth synth;
+    synth.prepare(44100.0);
+    SmackSynthSettings settings;
+    settings.shapedEngine = false;
+    settings.fullAdsrEnabled = true;
+    settings.voiceMode = VoiceMode::ClubTom;
+    settings.note = 5;
+    settings.octave = 8;
+    settings.toneFreqHz = 5588.0f;
+    settings.toneQ = 15.0f;
+    settings.tonePitchEnv = 0.0f;
+    settings.fmAmount = 0.0f;
+    settings.noiseLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.reverbMix = 0.0f;
+    settings.preStrikeCount = 1;
+    synth.trigger(settings, 1.0f, 0, 113, 1);
+
+    std::ranges::for_each(std::views::iota(0, 4096), [&](int) { (void) synth.processSample(settings); });
+    std::vector<float> sustained(2048, 0.0f);
+    std::ranges::for_each(sustained, [&](float& sample) { sample = synth.processSample(settings).bodyLeft; });
+
+    const double fundBand = bandPowerGoertzel(sustained, 44100.0, 5480.0, 5700.0);
+    const double seventhHarmonicAlias = bandPowerGoertzel(sustained, 44100.0, 4900.0, 5080.0);
+    REQUIRE(fundBand > 1.0e-4);
+    REQUIRE(seventhHarmonicAlias < fundBand * 2.0e-5);
+}
+
+TEST_CASE("12 dB ZDF SVF layer filters reject out-of-band snare sub-bleed steeply", "[core][synth][filters][svf]") {
+    SmackSynth synth;
+    synth.prepare(48000.0);
+    SmackSynthSettings settings;
+    settings.toneLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.reverbMix = 0.0f;
+    settings.preStrikeCount = 1;
+    settings.noiseType = NoiseType::WhiteSizzle;
+    settings.noiseLevel = 1.0f;
+    settings.noiseDecayMs = 400.0f;
+    settings.noiseHPF = 1400.0f;
+    settings.noiseLPF = 18000.0f;
+    synth.trigger(settings, 1.0f, 0);
+
+    std::vector<float> wires(4096, 0.0f);
+    std::ranges::for_each(wires, [&](float& sample) { sample = synth.processSample(settings).wireLeft; });
+
+    const double passband = bandPowerGoertzel(wires, 48000.0, 2800.0, 7000.0, 4);
+    const double subBand = bandPowerGoertzel(wires, 48000.0, 50.0, 200.0, 1);
+    REQUIRE(passband > 1.0e-6);
+    REQUIRE(subBand < passband * 4.0e-4);
+}
+
+TEST_CASE("Two-stage pitch trajectory combines fast stick-head snap with slower body settle", "[core][synth][pitch_env]") {
+    constexpr double sampleRate = 48000.0;
+    SmackSynth synth;
+    synth.prepare(sampleRate);
+    SmackSynthSettings settings;
+    settings.shapedEngine = false;
+    settings.fullAdsrEnabled = true;
+    settings.ampAttackMs = 0.05f;
+    settings.ampSustain = 1.0f;
+    settings.voiceMode = VoiceMode::ClubTom;
+    settings.note = 9;
+    settings.octave = 3;
+    settings.tonePitchEnv = 24.0f;
+    settings.tonePitchDecayMs = 45.0f;
+    settings.fmAmount = 0.0f;
+    settings.toneQ = 0.5f;
+    settings.noiseLevel = 0.0f;
+    settings.clickLevel = 0.0f;
+    settings.reverbMix = 0.0f;
+    settings.preStrikeCount = 1;
+    synth.trigger(settings, 1.0f, 0, 57, 1);
+
+    std::vector<float> signal(24000, 0.0f);
+    std::ranges::for_each(signal, [&](float& sample) { sample = synth.processSample(settings).bodyLeft; });
+
+    const auto windowFreqSemitones = [&](int startSample, int lengthSamples) {
+        std::vector<double> crossings;
+        std::ranges::for_each(std::views::iota(startSample + 1, startSample + lengthSamples), [&](int idx) {
+            const float prev = signal[static_cast<size_t>(idx - 1)];
+            const float curr = signal[static_cast<size_t>(idx)];
+            if (prev < 0.0f && curr >= 0.0f) {
+                const double frac = static_cast<double>(-prev) / std::max(1.0e-9, static_cast<double>(curr - prev));
+                crossings.push_back(static_cast<double>(idx - 1) + frac);
+            }
+        });
+        REQUIRE(crossings.size() >= 2);
+        const double avgPeriod = (crossings.back() - crossings.front()) / static_cast<double>(crossings.size() - 1);
+        const double hz = sampleRate / avgPeriod;
+        return 12.0 * std::log2(hz / 220.0);
+    };
+
+    const double initialSt = windowFreqSemitones(0, 180);
+    const double afterSnapSt = windowFreqSemitones(336, 336);
+    const double midBodySt = windowFreqSemitones(2400, 960);
+    const double settledSt = windowFreqSemitones(19200, 2400);
+
+    REQUIRE(initialSt - afterSnapSt > 6.0);
+    REQUIRE(midBodySt - settledSt > 2.5);
+    REQUIRE(std::abs(settledSt) < 0.5);
+}
+
+TEST_CASE("ClubTom velvet membrane coupling avoids high-frequency hash buzz while scaling with velocity", "[core][synth][tom][velvet]") {
+    const auto renderTom = [](float velocity) {
+        SmackSynth synth;
+        synth.prepare(48000.0);
+        SmackSynthSettings settings;
+        settings.shapedEngine = true;
+        settings.voiceMode = VoiceMode::ClubTom;
+        settings.note = 9;
+        settings.octave = 2;
+        settings.tonePitchEnv = 0.0f;
+        settings.fmAmount = 0.0f;
+        settings.toneDecayMs = 200.0f;
+        settings.bodyLPF = 20000.0f;
+        settings.noiseLevel = 0.0f;
+        settings.clickLevel = 0.0f;
+        settings.reverbMix = 0.0f;
+        settings.preStrikeCount = 1;
+        synth.trigger(settings, velocity, 0);
+        std::vector<float> body(2048, 0.0f);
+        std::ranges::for_each(body, [&](float& sample) { sample = synth.processSample(settings).bodyLeft; });
+        return body;
+    };
+
+    const auto hard = renderTom(1.0f);
+    const auto soft = renderTom(0.25f);
+    const double fundamental = bandPowerGoertzel(hard, 48000.0, 90.0, 250.0);
+    const double staticUltrasonicBuzz = bandPowerGoertzel(hard, 48000.0, 9500.0, 19000.0, 6);
+    REQUIRE(staticUltrasonicBuzz < fundamental * 1.0e-5);
+
+    const double hardAirRatio = bandPowerGoertzel(hard, 48000.0, 1400.0, 4200.0, 3) / std::max(1.0e-12, fundamental);
+    const double softFund = bandPowerGoertzel(soft, 48000.0, 90.0, 250.0);
+    const double softAirRatio = bandPowerGoertzel(soft, 48000.0, 1400.0, 4200.0, 3) / std::max(1.0e-12, softFund);
+    REQUIRE(hardAirRatio > softAirRatio * 1.4);
+}
+
+TEST_CASE("8-line Householder FDN reverb shapes LF and HF RT60 independently with dense tail", "[core][synth][reverb][fdn]") {
+    const auto renderTail = [](float damp) {
+        GatedStereoReverb reverb;
+        reverb.prepare(48000.0);
+        std::vector<float> tail(36000, 0.0f);
+        std::ranges::for_each(std::views::iota(0, static_cast<int>(tail.size())), [&](int idx) {
+        float exc = 0.0f;
+        if (idx < 64)
+            exc = std::sin(0.35f * static_cast<float>(idx)) + std::sin(0.02f * static_cast<float>(idx));
+        const auto wet = reverb.process(exc, exc * 0.8f, 0.45f, 2200.0f, damp, 0.0f, 48000.0);
+            tail[static_cast<size_t>(idx)] = 0.5f * (wet.left + wet.right);
+        });
+        return tail;
+    };
+
+    const auto bright = renderTail(0.05f);
+    const auto damped = renderTail(0.92f);
+    const std::vector<float> earlyBright(bright.begin() + 2400, bright.begin() + 6496);
+    const std::vector<float> lateBright(bright.begin() + 26000, bright.begin() + 30096);
+    const std::vector<float> lateDamped(damped.begin() + 26000, damped.begin() + 30096);
+
+    const double brightHfRatio = bandPowerGoertzel(lateBright, 48000.0, 4200.0, 9000.0, 4)
+        / std::max(1.0e-14, bandPowerGoertzel(lateBright, 48000.0, 500.0, 1600.0, 2));
+    const double dampedHfRatio = bandPowerGoertzel(lateDamped, 48000.0, 4200.0, 9000.0, 4)
+        / std::max(1.0e-14, bandPowerGoertzel(lateDamped, 48000.0, 500.0, 1600.0, 2));
+    REQUIRE(brightHfRatio > dampedHfRatio * 8.0);
+
+    const double earlyLfMid = bandPowerGoertzel(earlyBright, 48000.0, 90.0, 190.0, 1)
+        / std::max(1.0e-14, bandPowerGoertzel(earlyBright, 48000.0, 600.0, 1400.0, 2));
+    const double lateLfMid = bandPowerGoertzel(lateBright, 48000.0, 90.0, 190.0, 1)
+        / std::max(1.0e-14, bandPowerGoertzel(lateBright, 48000.0, 600.0, 1400.0, 2));
+    REQUIRE(lateLfMid < earlyLfMid * 0.45);
+}
+
+TEST_CASE("Oversampled rimshot transient excites three wood and hoop modes around 1.8, 4.2, and 8.7 kHz", "[core][synth][transient][rimshot]") {
+    SmackSynth synth;
+    synth.prepare(48000.0);
+    SmackSynthSettings settings;
+    settings.shapedEngine = true;
+    settings.toneLevel = 0.0f;
+    settings.noiseLevel = 0.0f;
+    settings.reverbMix = 0.0f;
+    settings.preStrikeCount = 1;
+    settings.clickType = ClickType::Rimshot;
+    settings.clickLevel = 1.0f;
+    settings.clickFreqHz = 3800.0f;
+    synth.trigger(settings, 1.0f, 0);
+
+    std::vector<float> clickBuf(1024, 0.0f);
+    std::ranges::for_each(clickBuf, [&](float& sample) { sample = synth.processSample(settings).transientLeft; });
+
+    const double woodMode = bandPowerGoertzel(clickBuf, 48000.0, 1450.0, 2200.0);
+    const double valley1 = bandPowerGoertzel(clickBuf, 48000.0, 2600.0, 3100.0);
+    const double hoopMode = bandPowerGoertzel(clickBuf, 48000.0, 3700.0, 4700.0);
+    const double crackMode = bandPowerGoertzel(clickBuf, 48000.0, 7800.0, 9600.0);
+    REQUIRE(woodMode > valley1 * 2.0);
+    REQUIRE(hoopMode > valley1 * 1.8);
+    REQUIRE(crackMode > 1.0e-7);
 }
