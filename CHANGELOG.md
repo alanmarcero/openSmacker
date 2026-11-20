@@ -1,0 +1,16 @@
+# Changelog
+
+## v2.8.0
+
+Upgrades the core synth, reverb, and distortion DSP:
+
+- **4x oversampled ADAA wavefolder distortion:** `DistortionShaper` suppresses foldback aliasing across distortion curves.
+- **Pre-sum distortion routing:** `SmackEngine` shapes layers before summing to avoid body-to-wire intermodulation crushing.
+- **Oversampled FM bell:** Preserves high-octave FM depth without sub-fundamental aliasing.
+- **Physical snare-wire comb network:** Couples nonlinearly to bottom-head modal amplitude.
+- **Struck 2-pole shell modal bank:** Models circular-membrane stiffness dispersion.
+- **ZDF TPT SVF shell bandpass & ADAA saturation:** Suppresses high-drive aliasing in the shell path.
+- **12 dB ZDF SVF layer filters:** Steeply reject out-of-band snare sub-bleed.
+- **Two-stage pitch trajectory:** Combines fast stick-head snap with slower body settle.
+- **ClubTom velvet membrane coupling:** Velocity-scaled excitation without high-frequency hash buzz, plus an oversampled rimshot transient exciting three wood and hoop modes (1.8, 4.2, and 8.7 kHz).
+- **8-line Householder FDN reverb:** Shapes LF and HF RT60 independently with a dense tail.
