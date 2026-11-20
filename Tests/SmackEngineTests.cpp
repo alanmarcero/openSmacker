@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <numeric>
 #include <new>
+#include <ranges>
 #include <tuple>
 
 namespace {
@@ -644,4 +645,50 @@ TEST_CASE("SmackEngine routes reverse synthesis into its source layer stems", "[
     REQUIRE(energyDifference(forward.body, reversed.body) > 0.01f);
     REQUIRE(energyDifference(forward.wire, reversed.wire) > 0.01f);
     REQUIRE(energyDifference(forward.transient, reversed.transient) > 0.01f);
+}
+
+TEST_CASE("SmackEngine pre-sum distortion avoids body-to-wire intermodulation crushing", "[core][engine][distortion]") {
+    const auto renderWithLayers = [](float toneLevel, float noiseLevel) {
+        SmackEngine engine;
+        engine.prepare(48000.0);
+        EngineSettings settings;
+        settings.synth.shapedEngine = true;
+        settings.synth.voiceMode = VoiceMode::ClubTom;
+        settings.synth.note = 0;
+        settings.synth.octave = 2;
+        settings.synth.toneLevel = toneLevel;
+        settings.synth.noiseType = NoiseType::WhiteSizzle;
+        settings.synth.noiseLevel = noiseLevel;
+        settings.synth.noiseHPF = 2200.0f;
+        settings.synth.noiseLPF = 16000.0f;
+        settings.synth.clickLevel = 0.0f;
+        settings.synth.preStrikeCount = 1;
+        settings.synth.reverbMix = 0.0f;
+        settings.effects.distType = DistortionType::HardClip;
+        settings.effects.distDrive = 0.85f;
+        settings.effects.distMix = 1.0f;
+        settings.effects.compressor.mix = 0.0f;
+        settings.effects.limiter.enabled = false;
+        const std::array<MidiTrigger, 1> trigger{{
+            { .sampleOffset = 0, .noteNumber = 60, .velocity = 1.0f, .audition = false }
+        }};
+        std::vector<float> left(2048, 0.0f), right(2048, 0.0f);
+        float* channels[2] = { left.data(), right.data() };
+        engine.process(settings, Transport{}, trigger, channels, 2, static_cast<int>(left.size()));
+        return left;
+    };
+
+    const auto bodyOnly = renderWithLayers(1.0f, 0.0f);
+    const auto wireOnly = renderWithLayers(0.0f, 0.8f);
+    const auto combined = renderWithLayers(1.0f, 0.8f);
+    double intermodError = 0.0;
+    double signalEnergy = 0.0;
+    std::ranges::for_each(std::views::iota(size_t{ 0 }, combined.size()), [&](size_t idx) {
+        const double independentSum = static_cast<double>(bodyOnly[idx]) + static_cast<double>(wireOnly[idx]);
+        const double diff = static_cast<double>(combined[idx]) - independentSum;
+        intermodError += diff * diff;
+        signalEnergy += independentSum * independentSum;
+    });
+    REQUIRE(signalEnergy > 1.0);
+    REQUIRE(intermodError < signalEnergy * 0.01);
 }

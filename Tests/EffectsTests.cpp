@@ -1,6 +1,9 @@
 #include "Effects.h"
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
+#include <numbers>
+#include <ranges>
+#include <vector>
 
 using namespace opensmacker::core;
 
@@ -48,4 +51,50 @@ TEST_CASE("Synced reverse helper computes positive sample duration", "[core][eff
     REQUIRE(samples > 1000);
     REQUIRE(shouldTriggerReverse(ReverseSyncMode::Beat4Auto, false, 3.2, 4.0));
     REQUIRE_FALSE(shouldTriggerReverse(ReverseSyncMode::Beat4Auto, false, 1.2, 4.0));
+}
+
+TEST_CASE("DistortionShaper 4x oversampled ADAA wavefolder suppresses foldback aliasing", "[core][effects][oversampling]") {
+    constexpr double sampleRate = 48000.0;
+    constexpr int warmup = 256;
+    constexpr int count = 2048;
+    DistortionShaper shaper;
+    shaper.reset();
+    std::vector<float> output(count, 0.0f);
+    std::ranges::for_each(std::views::iota(0, warmup + count), [&](int idx) {
+        const float input = 0.85f * std::sin(2.0f * std::numbers::pi_v<float> * 5500.0f * static_cast<float>(idx) / static_cast<float>(sampleRate));
+        const float shaped = shaper.processSample(input, DistortionType::Wavefold, 0.78f, 0.0f, sampleRate);
+        if (idx >= warmup)
+            output[static_cast<size_t>(idx - warmup)] = shaped;
+    });
+
+    double fundPower = 0.0;
+    double aliasPower = 0.0;
+    const int aliasBins = static_cast<int>(std::floor(4200.0 * count / sampleRate));
+    std::ranges::for_each(std::views::iota(8, aliasBins), [&](int bin) {
+        const double omega = 2.0 * std::numbers::pi * static_cast<double>(bin) / static_cast<double>(count);
+        const double coeff = 2.0 * std::cos(omega);
+        double s1 = 0.0;
+        double s2 = 0.0;
+        std::ranges::for_each(std::views::iota(0, count), [&](int n) {
+            const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / static_cast<double>(count - 1));
+            const double s0 = static_cast<double>(output[static_cast<size_t>(n)]) * w + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        });
+        aliasPower += std::max(0.0, s1 * s1 + s2 * s2 - coeff * s1 * s2);
+    });
+    const int fundBin = static_cast<int>(std::round(5500.0 * count / sampleRate));
+    const double fundOmega = 2.0 * std::numbers::pi * static_cast<double>(fundBin) / static_cast<double>(count);
+    const double fundCoeff = 2.0 * std::cos(fundOmega);
+    double f1 = 0.0;
+    double f2 = 0.0;
+    std::ranges::for_each(std::views::iota(0, count), [&](int n) {
+        const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / static_cast<double>(count - 1));
+        const double f0 = static_cast<double>(output[static_cast<size_t>(n)]) * w + fundCoeff * f1 - f2;
+        f2 = f1;
+        f1 = f0;
+    });
+    fundPower = std::max(1.0e-12, f1 * f1 + f2 * f2 - fundCoeff * f1 * f2);
+    const double meanAliasPower = aliasPower / static_cast<double>(aliasBins - 8);
+    REQUIRE(meanAliasPower < fundPower * 1.0e-4);
 }

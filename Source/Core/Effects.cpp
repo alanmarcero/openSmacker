@@ -26,10 +26,79 @@ float coefficient(float timeMs, double sampleRate) noexcept {
     const double seconds = std::max(0.05, static_cast<double>(finiteOr(timeMs, 10.0f))) * 0.001;
     return static_cast<float>(std::exp(-1.0 / (seconds * sr)));
 }
+
+std::pair<double, double> evaluateCurveAndAntideriv(double val, DistortionType type) noexcept {
+    switch (type) {
+        case DistortionType::Tape: {
+            constexpr double bias = 0.12;
+            const double norm = std::tanh(1.35 + bias);
+            const double u = val * 1.35 + bias;
+            const double absU = std::abs(u);
+            const double logCoshU = absU + std::log1p(std::exp(-2.0 * absU)) - std::numbers::ln2;
+            const double fx = (std::tanh(u) - std::tanh(bias)) / norm;
+            const double antideriv = (logCoshU / 1.35 - val * std::tanh(bias)) / norm;
+            return { fx, antideriv };
+        }
+        case DistortionType::Tube: {
+            if (val >= 0.0) {
+                const double posU = val * 1.8;
+                const double logCoshPos = posU + std::log1p(std::exp(-2.0 * posU)) - std::numbers::ln2;
+                return { std::tanh(posU), logCoshPos / 1.8 };
+            }
+            const double negMag = std::abs(val * 1.25);
+            const double logCoshNeg = negMag + std::log1p(std::exp(-2.0 * negMag)) - std::numbers::ln2;
+            return { std::tanh(val * 1.25) * 0.88, 0.88 * logCoshNeg / 1.25 };
+        }
+        case DistortionType::HardClip: {
+            const double u = val * 1.35;
+            const double fx = std::clamp(u, -1.0, 1.0);
+            const double absU = std::abs(u);
+            const double clipInt = absU <= 1.0 ? 0.5 * u * u : (absU - 0.5);
+            return { fx, clipInt / 1.35 };
+        }
+        case DistortionType::Wavefold: {
+            // Periodic Filippov antiderivative integrates triangle fold knees to prevent foldback aliasing.
+            const double u = val * 0.82;
+            double period = std::fmod(u + 1.0, 4.0);
+            if (period < 0.0)
+                period += 4.0;
+            const double fx = 1.0 - std::abs(period - 2.0);
+            const double foldInt = period <= 2.0
+                ? 0.5 * (period - 1.0) * (period - 1.0)
+                : 1.0 - 0.5 * (period - 3.0) * (period - 3.0);
+            return { fx, foldInt / 0.82 };
+        }
+    }
+    return { val, 0.5 * val * val };
+}
+
 } // namespace
 
 void DistortionShaper::reset() noexcept {
+    upsampler_.reset();
+    downsampler_.reset();
+    prevInput_ = 0.0;
+    prevAntideriv_ = 0.0;
+    primed_ = false;
     toneFilterState_ = 0.0f;
+}
+
+float DistortionShaper::shapeSubSample(float scaledInput, DistortionType type) noexcept {
+    const double curr = std::clamp(static_cast<double>(scaledInput), -24.0, 24.0);
+    const auto [pointwise, currAntideriv] = evaluateCurveAndAntideriv(curr, type);
+    const double delta = curr - prevInput_;
+    double out = pointwise;
+    if (std::abs(delta) > 1.0e-5)
+        out = (currAntideriv - prevAntideriv_) / delta;
+    if (std::abs(delta) <= 1.0e-5) {
+        const auto [midPointwise, unusedAntideriv] = evaluateCurveAndAntideriv(0.5 * (curr + prevInput_), type);
+        (void) unusedAntideriv;
+        out = midPointwise;
+    }
+    prevInput_ = curr;
+    prevAntideriv_ = currAntideriv;
+    const bool isFinite = std::isfinite(out);
+    return isFinite ? static_cast<float>(out) : 0.0f;
 }
 
 float DistortionShaper::processSample(float input, DistortionType type, float drive, float tone, double sampleRate) noexcept {
@@ -40,31 +109,30 @@ float DistortionShaper::processSample(float input, DistortionType type, float dr
         return input;
 
     const float gain = dbToLin(drive * 30.0f);
-    const float x = std::clamp(input * gain, -24.0f, 24.0f);
-    float shaped = x;
-    switch (type) {
-        case DistortionType::Tape: {
-            constexpr float bias = 0.12f;
-            shaped = (std::tanh(x * 1.35f + bias) - std::tanh(bias)) / std::tanh(1.35f + bias);
-            break;
-        }
-        case DistortionType::Tube: {
-            const float positive = std::tanh(x * 1.8f);
-            const float negative = std::tanh(x * 1.25f);
-            shaped = x >= 0.0f ? positive : negative * 0.88f;
-            break;
-        }
-        case DistortionType::HardClip:
-            shaped = std::clamp(x * 1.35f, -1.0f, 1.0f);
-            break;
-        case DistortionType::Wavefold: {
-            float period = std::fmod(x * 0.82f + 1.0f, 4.0f);
-            if (period < 0.0f)
-                period += 4.0f;
-            shaped = 1.0f - std::abs(period - 2.0f);
-            break;
-        }
+    if (!primed_) {
+        upsampler_.primeDc(input);
+        const double initVal = std::clamp(static_cast<double>(input * gain), -24.0, 24.0);
+        const auto [initShaped, initAntideriv] = evaluateCurveAndAntideriv(initVal, type);
+        prevInput_ = initVal;
+        prevAntideriv_ = initAntideriv;
+        const float initFloat = static_cast<float>(initShaped);
+        std::ranges::for_each(std::views::iota(size_t{ 0 }, size_t{ 4 }), [&](size_t idx) {
+            const float z0 = (1.0f - HalfbandDown4x::kBranch0[idx]) * initFloat;
+            const float z1 = (1.0f - HalfbandDown4x::kBranch1[idx]) * initFloat;
+            downsampler_.stage1State0[idx] = z0;
+            downsampler_.stage1State1[idx] = z1;
+            downsampler_.stage2State0[idx] = z0;
+            downsampler_.stage2State1[idx] = z1;
+        });
+        primed_ = true;
     }
+
+    const auto upsampled = upsampler_.process(input);
+    std::array<float, 4> shapedSub{};
+    std::ranges::for_each(std::views::iota(size_t{ 0 }, size_t{ 4 }), [&](size_t idx) {
+        shapedSub[idx] = shapeSubSample(upsampled[idx] * gain, type);
+    });
+    float shaped = downsampler_.process(shapedSub);
 
     shaped *= 1.0f / (1.0f + drive * 0.55f);
     const float cutoff = tone < 0.0f ? 1800.0f + (1.0f + tone) * 6200.0f : 7000.0f;
@@ -73,7 +141,7 @@ float DistortionShaper::processSample(float input, DistortionType type, float dr
     toneFilterState_ += alpha * (shaped - toneFilterState_);
     if (tone < 0.0f)
         shaped = toneFilterState_;
-    else if (tone > 0.0f)
+    if (tone > 0.0f)
         shaped += (shaped - toneFilterState_) * tone * 1.35f;
 
     if (!std::isfinite(shaped)) {
@@ -109,9 +177,9 @@ void StereoCompressor::process(float& left, float& right, const CompressorSettin
     const float over = envelopeDb_ - threshold;
     constexpr float kneeDb = 4.0f;
     float reductionDb = 0.0f;
-    if (over > kneeDb * 0.5f) {
+    if (over > kneeDb * 0.5f)
         reductionDb = -over * (1.0f - 1.0f / ratio);
-    } else if (over > -kneeDb * 0.5f) {
+    if (over <= kneeDb * 0.5f && over > -kneeDb * 0.5f) {
         const float knee = over + kneeDb * 0.5f;
         reductionDb = -(knee * knee / (2.0f * kneeDb)) * (1.0f - 1.0f / ratio);
     }
@@ -241,7 +309,7 @@ void BrickwallLimiter::process(float& left, float& right, const LimiterSettings&
     const float target = peak > ceiling && peak > 1.0e-8f ? ceiling / peak : 1.0f;
     if (target < gain_)
         gain_ = target;
-    else
+    if (target >= gain_)
         gain_ = target + coefficient(std::clamp(finiteOr(settings.releaseMs, 20.0f), 5.0f, 100.0f), sampleRate_) * (gain_ - target);
 
     left *= gain_;

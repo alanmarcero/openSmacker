@@ -348,6 +348,8 @@ void SmackEngine::prepare(double sampleRate) {
     reverseSynth_.prepare(sampleRate_);
     distL_.reset();
     distR_.reset();
+    wireDistL_.reset();
+    wireDistR_.reset();
     eq_.prepare(sampleRate_);
     compressor_.prepare(sampleRate_);
     limiter_.prepare(sampleRate_);
@@ -364,6 +366,8 @@ void SmackEngine::reset() noexcept {
     synth_.reset();
     distL_.reset();
     distR_.reset();
+    wireDistL_.reset();
+    wireDistR_.reset();
     eq_.reset();
     compressor_.reset();
     limiter_.reset();
@@ -442,6 +446,8 @@ uint32_t SmackEngine::advanceLockCapture(uint32_t sampleBudget) noexcept {
             captureSynth_.trigger(voiceSettings, 1.0f, 0);
             captureDistL_[static_cast<size_t>(captureVoiceIndex_)].reset();
             captureDistR_[static_cast<size_t>(captureVoiceIndex_)].reset();
+            captureWireDistL_[static_cast<size_t>(captureVoiceIndex_)].reset();
+            captureWireDistR_[static_cast<size_t>(captureVoiceIndex_)].reset();
             captureEq_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
             captureCompressors_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
             captureLimiters_[static_cast<size_t>(captureVoiceIndex_)].prepare(sampleRate_);
@@ -455,15 +461,40 @@ uint32_t SmackEngine::advanceLockCapture(uint32_t sampleBudget) noexcept {
         float mixL = frame.left;
         float mixR = frame.right;
         const size_t voiceIndex = static_cast<size_t>(captureVoiceIndex_);
-        if (captureSettings_.effects.distMix > 0.001f) {
+        if (captureSettings_.effects.distMix > 0.001f && captureSettings_.effects.distPreSum) {
+            const float distMix = std::clamp(captureSettings_.effects.distMix, 0.0f, 1.0f);
+            const float dryScale = 1.0f - 0.4f * std::clamp(voiceSettings.reverbMix, 0.0f, 1.0f);
+            const float tonalL = (frame.bodyLeft + frame.transientLeft) * dryScale;
+            const float tonalR = (frame.bodyRight + frame.transientRight) * dryScale;
+            const float wireBusL = frame.wireLeft * dryScale;
+            const float wireBusR = frame.wireRight * dryScale;
+            const float spaceL = mixL - tonalL - wireBusL;
+            const float spaceR = mixR - tonalR - wireBusR;
+            const float wetTonalL = captureDistL_[voiceIndex].processSample(tonalL,
+                captureSettings_.effects.distType, captureSettings_.effects.distDrive,
+                captureSettings_.effects.distTone, sampleRate_);
+            const float wetTonalR = captureDistR_[voiceIndex].processSample(tonalR,
+                captureSettings_.effects.distType, captureSettings_.effects.distDrive,
+                captureSettings_.effects.distTone, sampleRate_);
+            const float wetWireL = captureWireDistL_[voiceIndex].processSample(wireBusL,
+                captureSettings_.effects.distType, captureSettings_.effects.distDrive,
+                captureSettings_.effects.distTone, sampleRate_);
+            const float wetWireR = captureWireDistR_[voiceIndex].processSample(wireBusR,
+                captureSettings_.effects.distType, captureSettings_.effects.distDrive,
+                captureSettings_.effects.distTone, sampleRate_);
+            mixL = tonalL * (1.0f - distMix) + wetTonalL * distMix + wireBusL * (1.0f - distMix) + wetWireL * distMix + spaceL;
+            mixR = tonalR * (1.0f - distMix) + wetTonalR * distMix + wireBusR * (1.0f - distMix) + wetWireR * distMix + spaceR;
+        }
+        if (captureSettings_.effects.distMix > 0.001f && !captureSettings_.effects.distPreSum) {
+            const float distMix = std::clamp(captureSettings_.effects.distMix, 0.0f, 1.0f);
             const float wetDistL = captureDistL_[voiceIndex].processSample(mixL,
                 captureSettings_.effects.distType, captureSettings_.effects.distDrive,
                 captureSettings_.effects.distTone, sampleRate_);
             const float wetDistR = captureDistR_[voiceIndex].processSample(mixR,
                 captureSettings_.effects.distType, captureSettings_.effects.distDrive,
                 captureSettings_.effects.distTone, sampleRate_);
-            mixL = mixL * (1.0f - captureSettings_.effects.distMix) + wetDistL * captureSettings_.effects.distMix;
-            mixR = mixR * (1.0f - captureSettings_.effects.distMix) + wetDistR * captureSettings_.effects.distMix;
+            mixL = mixL * (1.0f - distMix) + wetDistL * distMix;
+            mixR = mixR * (1.0f - distMix) + wetDistR * distMix;
         }
         if (captureSettings_.effects.stereoWidth != 1.0f) {
             const float mid = (mixL + mixR) * 0.5f;
@@ -915,11 +946,29 @@ void SmackEngine::process(
         }
 
         if (!useWavCache) {
-            if (settings.effects.distMix > 0.001f) {
+            if (settings.effects.distMix > 0.001f && settings.effects.distPreSum) {
+                // Separate body and snare-wire saturators prevent wideband wire intermodulation on tonal fundamentals.
+                const float distMix = std::clamp(settings.effects.distMix, 0.0f, 1.0f);
+                const float dryScale = 1.0f - 0.4f * std::clamp(settings.synth.reverbMix, 0.0f, 1.0f);
+                const float tonalL = (bodyL + transientL) * dryScale;
+                const float tonalR = (bodyR + transientR) * dryScale;
+                const float wireBusL = wireL * dryScale;
+                const float wireBusR = wireR * dryScale;
+                const float spaceL = sL - tonalL - wireBusL;
+                const float spaceR = sR - tonalR - wireBusR;
+                const float wetTonalL = distL_.processSample(tonalL, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                const float wetTonalR = distR_.processSample(tonalR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                const float wetWireL = wireDistL_.processSample(wireBusL, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                const float wetWireR = wireDistR_.processSample(wireBusR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
+                sL = tonalL * (1.0f - distMix) + wetTonalL * distMix + wireBusL * (1.0f - distMix) + wetWireL * distMix + spaceL;
+                sR = tonalR * (1.0f - distMix) + wetTonalR * distMix + wireBusR * (1.0f - distMix) + wetWireR * distMix + spaceR;
+            }
+            if (settings.effects.distMix > 0.001f && !settings.effects.distPreSum) {
+                const float distMix = std::clamp(settings.effects.distMix, 0.0f, 1.0f);
                 const float wetDistL = distL_.processSample(sL, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
                 const float wetDistR = distR_.processSample(sR, settings.effects.distType, settings.effects.distDrive, settings.effects.distTone, sampleRate_);
-                sL = sL * (1.0f - settings.effects.distMix) + wetDistL * settings.effects.distMix;
-                sR = sR * (1.0f - settings.effects.distMix) + wetDistR * settings.effects.distMix;
+                sL = sL * (1.0f - distMix) + wetDistL * distMix;
+                sR = sR * (1.0f - distMix) + wetDistR * distMix;
             }
 
             const float echoMix = std::clamp(settings.effects.echoMix, 0.0f, 1.0f);
@@ -955,6 +1004,8 @@ void SmackEngine::process(
             sL = sR = 0.0f;
             distL_.reset();
             distR_.reset();
+            wireDistL_.reset();
+            wireDistR_.reset();
         }
 
         channels[0][sample] = sL;

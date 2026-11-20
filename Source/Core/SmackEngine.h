@@ -75,6 +75,7 @@ struct SmackEffectSettings {
     float distDrive = 0.14f;       // 0..1
     float distTone = 0.0f;         // -1..+1
     float distMix = 0.22f;         // 0..1
+    bool distPreSum = true;
 
     CompressorSettings compressor{};
     LimiterSettings limiter{};
@@ -210,6 +211,8 @@ private:
     SmackSynth reverseSynth_;
     DistortionShaper distL_;
     DistortionShaper distR_;
+    DistortionShaper wireDistL_;
+    DistortionShaper wireDistR_;
     ThreeBandEq eq_;
     StereoCompressor compressor_;
     BrickwallLimiter limiter_;
@@ -235,6 +238,8 @@ private:
     bool lockCaptureActive_ = false;
     std::array<DistortionShaper, 4> captureDistL_{};
     std::array<DistortionShaper, 4> captureDistR_{};
+    std::array<DistortionShaper, 4> captureWireDistL_{};
+    std::array<DistortionShaper, 4> captureWireDistR_{};
     std::array<ThreeBandEq, 4> captureEq_{};
     std::array<StereoCompressor, 4> captureCompressors_{};
     std::array<BrickwallLimiter, 4> captureLimiters_{};
