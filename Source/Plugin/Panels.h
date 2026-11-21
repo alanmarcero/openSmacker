@@ -28,6 +28,9 @@ private:
 
 };
 
+// Why a control has no effect in the current state, or an empty string when it acts.
+[[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id);
+
 // Lamp that flashes with each hit's velocity, beside the last note and the voice it played.
 class HitMonitor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
@@ -60,7 +63,7 @@ private:
     bool clipped_ = false;
 };
 
-class ParameterCard : public juce::Component {
+class ParameterCard : public juce::Component, private juce::Timer {
 public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                   presets::Section section, juce::Colour accent, bool lockable = true);
@@ -73,7 +76,16 @@ public:
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
     void resized() override;
+    // Dims each control that has no effect now and adds the reason to its tooltip.
+    void refreshActivity();
 private:
+    struct Activity {
+        juce::String id;
+        juce::String tip;
+        juce::String reason;
+    };
+    void timerCallback() override;
+    void visibilityChanged() override;
     OpenSmackerProcessor& processor_;
     juce::String title_;
     presets::Section section_;
@@ -81,6 +93,7 @@ private:
     bool lockable_ = true;
     juce::TextButton lockButton_{ "LOCK" };
     std::vector<std::unique_ptr<juce::Component>> controls_;
+    std::vector<Activity> activity_;
     std::vector<int> basicRows_, advancedRows_;
     std::vector<float> weights_;
     bool advancedMode_ = false;

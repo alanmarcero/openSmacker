@@ -97,6 +97,9 @@ TEST_CASE("Editor shortcuts and buttons undo parameter edits", "[plugin][suite][
     juce::ScopedJuceInitialiser_GUI gui;
     OpenSmackerProcessor processor;
     auto editor = std::unique_ptr<OpenSmackerEditor>(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    auto* undoButton = findButton(*editor, "Undo");
+    REQUIRE(undoButton != nullptr);
+    CHECK_FALSE(undoButton->isEnabled());
     const float original = normalised(processor, opensmacker::params::kStereoWidth);
     gestureTo(processor, opensmacker::params::kStereoWidth, 0.15f);
     const auto undoKey = juce::KeyPress('z', juce::ModifierKeys::commandModifier, 0);
@@ -106,8 +109,6 @@ TEST_CASE("Editor shortcuts and buttons undo parameter edits", "[plugin][suite][
     REQUIRE(editor->keyPressed(redoKey));
     CHECK(normalised(processor, opensmacker::params::kStereoWidth) == Catch::Approx(0.15f));
 
-    auto* undoButton = findButton(*editor, "Undo");
-    REQUIRE(undoButton != nullptr);
     undoButton->onClick();
     CHECK(normalised(processor, opensmacker::params::kStereoWidth) == Catch::Approx(original));
 }

@@ -499,6 +499,75 @@ TEST_CASE("The peak meter shows the highest peak since its last read and latches
     CHECK_FALSE(meter.isClipped());
 }
 
+TEST_CASE("Controls with no effect dim, stay editable, and say what turns them on", "[plugin][gui][inactive]") {
+    using namespace opensmacker::params;
+    using opensmacker::ui::inactiveReason;
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    processor.setCurrentProgram(0);
+    const auto set = [&processor](const char* id, float value) {
+        auto* parameter = processor.parameters.getParameter(id);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    };
+    CHECK(inactiveReason(processor.parameters, kPreSpread).contains("Hits"));
+    CHECK(inactiveReason(processor.parameters, kSnareZoneLow).contains("Key zones"));
+    CHECK(inactiveReason(processor.parameters, kRollProbability).contains("Roll"));
+    CHECK(inactiveReason(processor.parameters, kReverseMix).contains("Reverse sync"));
+    CHECK(inactiveReason(processor.parameters, kLimiterCeiling).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kVoiceMode).isEmpty());
+
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getButtonText() == "Layers"; })->onClick();
+    auto* spacing = findVisible<juce::Slider>(*editor, [](const auto& s) { return s.getTitle() == "Flam spacing"; });
+    REQUIRE(spacing != nullptr);
+    auto* flamCard = spacing->findParentComponentOfClass<opensmacker::ui::ParameterCard>();
+    REQUIRE(flamCard != nullptr);
+    flamCard->refreshActivity();
+    CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(0.4f).margin(0.01f));
+    CHECK(spacing->getTooltip().contains("Set Hits to 2 or more"));
+    CHECK(spacing->isEnabled());
+
+    set(kPreBursts, 3.0f);
+    set(kKeyZonesEnabled, 1.0f);
+    set(kRollEnabled, 1.0f);
+    set(kLimiterEnabled, 0.0f);
+    set(kReverseMode, 1.0f);
+    flamCard->refreshActivity();
+    CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(1.0f));
+    CHECK_FALSE(spacing->getTooltip().contains("Hits to 2"));
+    CHECK(inactiveReason(processor.parameters, kSnareZoneLow).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kRollProbability).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kReverseMix).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kLimiterCeiling).contains("Limiter"));
+    CHECK(inactiveReason(processor.parameters, kVoiceMode).contains("Key zones"));
+}
+
+TEST_CASE("The look and feel draws disabled buttons, dials and menus dimmed", "[plugin][gui][lookandfeel]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    opensmacker::ui::EdmLookAndFeel lookAndFeel;
+    juce::TextButton button("Undo");
+    juce::Slider dial(juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox);
+    juce::ComboBox menu;
+    menu.addItem("Snare", 1);
+    menu.setSelectedId(1);
+    const auto changedPixels = [&lookAndFeel](juce::Component& component) {
+        component.setLookAndFeel(&lookAndFeel);
+        component.setSize(120, 60);
+        const auto enabled = component.createComponentSnapshot(component.getLocalBounds());
+        component.setEnabled(false);
+        const auto disabled = component.createComponentSnapshot(component.getLocalBounds());
+        component.setLookAndFeel(nullptr);
+        int changed = 0;
+        for (int y = 0; y < enabled.getHeight(); ++y)
+            for (int x = 0; x < enabled.getWidth(); ++x)
+                changed += enabled.getPixelAt(x, y) != disabled.getPixelAt(x, y) ? 1 : 0;
+        return changed;
+    };
+    CHECK(changedPixels(button) > 200);
+    CHECK(changedPixels(dial) > 200);
+    CHECK(changedPixels(menu) > 200);
+}
+
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
     juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;

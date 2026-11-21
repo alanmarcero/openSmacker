@@ -79,7 +79,6 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
         auto& voiceButton = voices_[i];
         voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
         voiceButton.setTitle(voiceButton.getButtonText() + " voice");
-        voiceButton.setTooltip("Set the voice to " + voiceButton.getButtonText() + ".");
         voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
         content_.addAndMakeVisible(voiceButton);
         pages_[i].setButtonText(pageNames[i]);
@@ -240,6 +239,11 @@ void OpenSmackerEditor::timerCallback() {
     if (!artBounds_.isEmpty())
         content_.repaint(artBounds_);
     syncPresetBox();
+    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode);
+    std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
+        voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : 0.4f);
+        voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());
+    });
     if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
         || abABtn_.getToggleState() != (processor_.abSlot() == 0))
         syncSuiteButtons();

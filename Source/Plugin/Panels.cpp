@@ -148,6 +148,29 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
+juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id) {
+    using namespace params;
+    const auto isOn = [&state](const char* flag) { return state.getRawParameterValue(flag)->load() > 0.5f; };
+    const auto isOneOf = [&id](std::initializer_list<const char*> ids) {
+        return std::ranges::any_of(ids, [&id](const char* candidate) { return id == candidate; });
+    };
+    if (isOneOf({ kPreSpread, kPreDecay, kPreJitter, kFlamSpread, kPreLevel }) && state.getRawParameterValue(kPreBursts)->load() < 1.5f)
+        return "Set Hits to 2 or more to use it.";
+    if (isOneOf({ kSnareZoneLow, kSnareZoneHigh, kTomZoneLow, kTomZoneHigh, kBellZoneLow, kBellZoneHigh, kRimZoneLow, kRimZoneHigh })
+        && !isOn(kKeyZonesEnabled))
+        return "Turn on Key zones to use it.";
+    if (id == kVoiceMode && isOn(kKeyZonesEnabled))
+        return "Key zones pick the voice for MIDI notes, so only Audition hit uses it. Turn off Key zones to use it.";
+    if (isOneOf({ kRollSubdivision, kRollProbability, kRollVelocity, kRollAccentVelocity, kRollAccentEvery, kRollNote })
+        && !isOn(kRollEnabled))
+        return "Turn on Roll to use it.";
+    if (isOneOf({ kLimiterCeiling, kLimiterRelease }) && !isOn(kLimiterEnabled))
+        return "Turn on Limiter to use it.";
+    if (id == kReverseMix && state.getRawParameterValue(kReverseMode)->load() < 0.5f)
+        return "Choose a Reverse sync mode to use it.";
+    return {};
+}
+
 HitMonitor::HitMonitor(OpenSmackerProcessor& processor) : processor_(processor) {
     setTooltip("Flashes on each hit, brighter for harder hits. Shows the last note and the voice it played.");
     startTimerHz(30);
@@ -248,6 +271,31 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
     };
     addAndMakeVisible(lockButton_);
     lockButton_.setVisible(lockable_);
+    startTimerHz(10);
+}
+
+void ParameterCard::timerCallback() {
+    if (isShowing())
+        refreshActivity();
+}
+
+void ParameterCard::visibilityChanged() {
+    if (isVisible())
+        refreshActivity();
+}
+
+void ParameterCard::refreshActivity() {
+    std::ranges::for_each(std::views::iota(size_t{ 0 }, controls_.size()), [this](size_t i) {
+        auto& activity = activity_[i];
+        if (activity.id.isEmpty())
+            return;
+        const auto reason = inactiveReason(processor_.parameters, activity.id);
+        if (reason == activity.reason)
+            return;
+        activity.reason = reason;
+        controls_[i]->setAlpha(reason.isEmpty() ? 1.0f : 0.4f);
+        setTooltipDeep(*controls_[i], (activity.tip + " " + reason).trim());
+    });
 }
 
 void ParameterCard::addParameter(const juce::String& id, const juce::String& title, const juce::String& tip) {
@@ -264,6 +312,7 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     setTooltipDeep(*component, tip);
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
+    activity_.push_back({ id, tip, {} });
 }
 
 void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& dbId,
@@ -272,11 +321,13 @@ void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& db
     setTooltipDeep(*knob, tip);
     addAndMakeVisible(*knob);
     controls_.push_back(std::move(knob));
+    activity_.push_back({ dbId, tip, {} });
 }
 
 void ParameterCard::addControl(std::unique_ptr<juce::Component> control) {
     addAndMakeVisible(*control);
     controls_.push_back(std::move(control));
+    activity_.push_back({});
 }
 
 void ParameterCard::setRows(std::vector<int> basic, std::vector<int> advanced) {
