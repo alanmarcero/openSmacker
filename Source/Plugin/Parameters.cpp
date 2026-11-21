@@ -5,7 +5,7 @@
 namespace opensmacker::params {
 
 namespace {
-// Rounds before formatting, so a tiny negative value reads "0.0", not "-0.0".
+// Rounding first stops a tiny negative value from reading "-0.0".
 juce::String signedTenths(float value) {
     const float tenths = std::round(value * 10.0f);
     if (tenths == 0.0f)

@@ -137,7 +137,7 @@ void EdmLookAndFeel::drawButtonBackground(
     g.fillRoundedRectangle(bounds, kCornerRadius);
     g.setColour((isOn ? onColour.brighter(0.6f) : theme::kPanelEdge.brighter(0.1f)).withMultipliedAlpha(opacity));
     g.drawRoundedRectangle(bounds, kCornerRadius, 1.2f);
-    // A light marks on/off buttons, so an off toggle does not look like a push button.
+    // The light tells an off toggle from a push button.
     if (button.getClickingTogglesState()) {
         const auto light = juce::Rectangle<float>(kToggleLightSize, kToggleLightSize)
             .withCentre({ bounds.getX() + kToggleLightInset, bounds.getCentreY() });

@@ -2,7 +2,7 @@
 
 namespace suite {
 
-// The editor lays out at the default size and scales that layout to the window.
+// The editor lays out at the default size, then scales.
 inline constexpr int kDefaultEditorWidth = 1120;
 inline constexpr int kDefaultEditorHeight = 752;
 inline constexpr int kMinEditorWidth = kDefaultEditorWidth * 7 / 10;

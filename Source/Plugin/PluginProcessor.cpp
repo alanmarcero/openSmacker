@@ -19,13 +19,11 @@ OpenSmackerProcessor::OpenSmackerProcessor()
         *this,
         [this] { return copySoundState(false); },
         [this](const juce::ValueTree& tree) { applySoundState(tree, false); });
-    for (auto* parameter : getParameters())
-        parameter->addListener(this);
+    std::ranges::for_each(getParameters(), [this](juce::AudioProcessorParameter* parameter) { parameter->addListener(this); });
 }
 
 OpenSmackerProcessor::~OpenSmackerProcessor() {
-    for (auto* parameter : getParameters())
-        parameter->removeListener(this);
+    std::ranges::for_each(getParameters(), [this](juce::AudioProcessorParameter* parameter) { parameter->removeListener(this); });
 }
 
 void OpenSmackerProcessor::parameterValueChanged(int, float) {
@@ -39,6 +37,10 @@ opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const 
     settings.synth.articulatedModes = model >= 1;
     settings.synth.shapedEngine = model >= 2;
     return settings;
+}
+
+bool OpenSmackerProcessor::frozenHitPlays() const noexcept {
+    return displayLockedIn.load() && parameters.getRawParameterValue(opensmacker::params::kAmpEnabled)->load() < 0.5f;
 }
 
 bool OpenSmackerProcessor::isSectionLocked(opensmacker::presets::Section section) const noexcept {
@@ -147,7 +149,7 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                 .value = msg.getControllerValue(),
                 .channel = msg.getChannel()
             });
-            // Hosts send channel mode messages (120 and up) on stop, so Learn ignores them.
+            // Hosts send CC 120 and up on stop, so Learn skips them.
             if (msg.getControllerNumber() < 120) {
                 displayLastController.store(msg.getControllerNumber());
                 displayControllerCount.fetch_add(1);
@@ -208,7 +210,7 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     engine_.process(settings, transport, midiTriggers_, channelPointers, 2, numSamples,
         midiCcEvents_, midiPressureEvents_, layerOutputs, midiNoteOffs_);
 
-    // Keeps the highest peak until the editor reads it with exchange.
+    // Keeps the highest peak until the editor exchanges it.
     const float peak = engine_.currentPeak();
     float shownPeak = displayPeak.load(std::memory_order_relaxed);
     while (peak > shownPeak && !displayPeak.compare_exchange_weak(shownPeak, peak, std::memory_order_relaxed)) {
@@ -286,8 +288,9 @@ juce::ValueTree OpenSmackerProcessor::copySoundState(bool includeWav) {
     state.setProperty("factoryBank", 2, nullptr);
     state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
     state.setProperty("presetEdited", presetEdited_.load(), nullptr);
-    for (size_t i = 0; i < sectionLocks_.size(); ++i)
+    std::ranges::for_each(std::views::iota(size_t{ 0 }, sectionLocks_.size()), [this, &state](size_t i) {
         state.setProperty("section_lock_" + juce::String(static_cast<int>(i)), sectionLocks_[i].load(std::memory_order_relaxed), nullptr);
+    });
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     state.removeProperty("abSlot0", nullptr);
@@ -321,7 +324,8 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
     // Earlier builds played every custom sound on the legacy model.
     const int bank = int(state.getProperty("factoryBank", 0));
     const bool legacySound = bank != 2 || bool(state.getProperty("customSound", false));
-    synthModel_.store(legacySound ? 0 : int(state.getProperty("synthModel", 1)), std::memory_order_relaxed);
+    const int savedModel = int(state.getProperty("synthModel", 1));
+    synthModel_.store(legacySound ? 0 : savedModel, std::memory_order_relaxed);
     const bool edited = bool(state.getProperty("presetEdited", false));
 
     const bool hadWav = state.hasProperty("locked_wav_bank") || state.hasProperty("locked_wav");
@@ -341,7 +345,7 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
     parameters.replaceState(state);
     loadingSound_.store(false);
     presetEdited_.store(edited);
-    // Earlier saves had no Envelope, Output or Body detail lock. Those cards follow the lock that covered them.
+    // In earlier saves, locks 0 and 5 also covered the cards added later.
     constexpr std::array<int, 9> coveringLock{ 0, 1, 2, 3, 4, 5, 0, 5, 0 };
     static_assert(coveringLock.size() == static_cast<size_t>(opensmacker::presets::Section::Count));
     for (size_t i = 0; i < sectionLocks_.size(); ++i) {

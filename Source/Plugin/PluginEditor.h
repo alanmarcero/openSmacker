@@ -19,7 +19,6 @@ public:
 
 private:
     class ShortcutKeys;
-    // Holds the layout at the design size. The editor scales it to the window.
     class Content : public juce::Component {
     public:
         explicit Content(OpenSmackerEditor& editor) : editor_(editor) {}

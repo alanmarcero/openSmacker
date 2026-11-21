@@ -171,6 +171,8 @@ public:
 
     [[nodiscard]] bool isSmackLocked() const noexcept { return wavCache_.isLocked(); }
     [[nodiscard]] const SmackWavCache& wavCache() const noexcept { return wavCache_; }
+    // For the editor thread. Returns false when no hit is stored or the audio thread holds the cache.
+    bool copyStoredVoice(VoiceMode mode, std::vector<float>& left, std::vector<float>& right, double& sampleRate) const;
 
     [[nodiscard]] float currentPeak() const noexcept { return currentPeak_; }
     [[nodiscard]] float currentBeatPhase() const noexcept { return currentBeatPhase_; }
@@ -221,6 +223,8 @@ private:
     size_t echoWriteIndex_ = 0;
 
     SmackWavCache wavCache_;
+    // copyStoredVoice holds it while it copies. The audio thread holds it to finish a capture or clear a stored hit.
+    mutable std::atomic<bool> cacheBusy_{ false };
     double wavPlayPosition_ = -1.0;
     float wavVelocity_ = 1.0f;
 

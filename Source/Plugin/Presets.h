@@ -12,7 +12,7 @@ struct FactoryPreset {
     std::vector<std::pair<juce::String, float>> values;
 };
 
-// One section per lockable card. Sessions save locks by index, so add new sections at the end.
+// Sessions save locks by index. Add new sections at the end.
 enum class Section : size_t {
     VoiceTuning = 0,
     PreStrike,

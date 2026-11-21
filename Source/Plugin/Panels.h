@@ -24,6 +24,7 @@ private:
     void updateWaveform(const core::SmackSynthSettings& settings);
     OpenSmackerProcessor& processor_;
     juce::TextButton unfreeze_{ "Unfreeze" };
+    juce::ParameterAttachment freeze_;
     std::optional<core::SmackSynthSettings> lastSettings_;
     bool showsFrozenHit_ = false;
     std::array<float, 400> waveform_{};
@@ -31,11 +32,10 @@ private:
 
 };
 
-// Why a control has no effect in the current state, or an empty string when it acts.
-// hitFrozen is true while a frozen hit is stored.
-[[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool hitFrozen);
+// Returns an empty string when the control acts.
+[[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool frozenHitPlays);
 
-// Lamp that flashes with each hit's velocity, beside the last note and the voice it played.
+// Hit lamp, plus the last note and its voice.
 class HitMonitor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
     explicit HitMonitor(OpenSmackerProcessor& processor);
@@ -49,7 +49,6 @@ private:
     juce::String readout_;
 };
 
-// Output peak in dBFS with a 1 s hold, a ceiling mark, and a clip light that a click clears.
 class PeakMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
     PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb);
@@ -63,6 +62,7 @@ private:
     const std::atomic<float>& ceilingDb_;
     float levelDb_ = -60.0f;
     float holdDb_ = -60.0f;
+    float shownCeilingDb_ = 0.0f;
     double holdStartMs_ = 0.0;
     bool clipped_ = false;
 };
@@ -80,8 +80,8 @@ public:
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
     void resized() override;
-    // Dims each control that has no effect now and adds the reason to its tooltip.
-    void refreshActivity();
+    // Also adds the reason to the tooltip.
+    void dimInactiveControls();
 private:
     struct Activity {
         juce::String id;

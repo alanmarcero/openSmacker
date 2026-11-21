@@ -432,7 +432,11 @@ uint32_t SmackEngine::advanceLockCapture(uint32_t sampleBudget) noexcept {
     uint32_t rendered = 0;
     while (lockCaptureActive_ && rendered < sampleBudget) {
         if (captureVoiceIndex_ >= 4) {
+            bool idle = false;
+            if (!cacheBusy_.compare_exchange_strong(idle, true, std::memory_order_acquire))
+                break;
             (void) wavCache_.finishCapture(sampleRate_, captureSettings_.synth.voiceMode);
+            cacheBusy_.store(false, std::memory_order_release);
             lockCaptureActive_ = false;
             captureVoiceStarted_ = false;
             break;
@@ -583,10 +587,31 @@ uint32_t SmackEngine::advanceReversePreparation(uint32_t sampleBudget) noexcept 
 }
 
 void SmackEngine::unlockSmack() noexcept {
+    // The editor is copying the hit. The next block retries the unlock.
+    bool idle = false;
+    if (!cacheBusy_.compare_exchange_strong(idle, true, std::memory_order_acquire)) {
+        previousLockState_ = true;
+        return;
+    }
     wavCache_.clear();
+    cacheBusy_.store(false, std::memory_order_release);
     lockCaptureActive_ = false;
     captureVoiceStarted_ = false;
     previousLockState_ = false;
+}
+
+bool SmackEngine::copyStoredVoice(VoiceMode mode, std::vector<float>& left, std::vector<float>& right, double& sampleRate) const {
+    bool idle = false;
+    if (!cacheBusy_.compare_exchange_strong(idle, true, std::memory_order_acquire))
+        return false;
+    const bool stored = wavCache_.isLocked();
+    if (stored) {
+        left = wavCache_.voice(mode).left;
+        right = wavCache_.voice(mode).right;
+        sampleRate = wavCache_.sampleRate();
+    }
+    cacheBusy_.store(false, std::memory_order_release);
+    return stored;
 }
 
 bool SmackEngine::restoreLockedWav(const std::vector<uint8_t>& wavBytes, VoiceMode primaryVoice) {

@@ -239,7 +239,7 @@ void OpenSmackerEditor::timerCallback() {
     if (!artBounds_.isEmpty())
         content_.repaint(artBounds_);
     syncPresetBox();
-    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode, processor_.isSmackLockedIn());
+    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode, processor_.frozenHitPlays());
     std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
         voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : 0.4f);
         voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());
@@ -290,7 +290,6 @@ void OpenSmackerEditor::resized() {
         setSize(width, height);
         return;
     }
-    // One scale keeps the layout in proportion. The spare width or height stays centred.
     const float scale = std::min(static_cast<float>(width) / suite::kDefaultEditorWidth,
                                  static_cast<float>(height) / suite::kDefaultEditorHeight);
     content_.setTransform(juce::AffineTransform::scale(scale).translated(

@@ -16,14 +16,13 @@ struct ControlSpec {
     const char* tip;
 };
 
-// Also reaches slider text boxes and stepper buttons, which keep their own tooltips.
+// Slider text boxes and stepper buttons keep their own tooltips.
 void setTooltipDeep(juce::Component& component, const juce::String& text) {
     if (auto* client = dynamic_cast<juce::SettableTooltipClient*>(&component))
         client->setTooltip(text);
     std::ranges::for_each(component.getChildren(), [&text](juce::Component* child) { setTooltipDeep(*child, text); });
 }
 
-// Sets a CC slot from the next controller message the plugin receives.
 class LearnControl : public juce::Component, public juce::Timer {
 public:
     LearnControl(OpenSmackerProcessor& processor, juce::RangedAudioParameter& slot, const juce::String& title)
@@ -71,21 +70,17 @@ private:
 };
 } // namespace
 
-SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor) : processor_(processor) {
+SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor)
+    : processor_(processor), freeze_(*processor.parameters.getParameter(params::kLockIn), nullptr) {
     unfreeze_.setTitle("Unfreeze hit");
     unfreeze_.setTooltip("Turn off Freeze hit so the synth plays live again.");
-    unfreeze_.onClick = [this] {
-        auto* freeze = processor_.parameters.getParameter(params::kLockIn);
-        freeze->beginChangeGesture();
-        freeze->setValueNotifyingHost(0.0f);
-        freeze->endChangeGesture();
-    };
+    unfreeze_.onClick = [this] { freeze_.setValueAsCompleteGesture(0.0f); };
     addChildComponent(unfreeze_);
     startTimerHz(12);
 }
 
 void SmackerStagePanel::timerCallback() {
-    unfreeze_.setVisible(processor_.isSmackLockedIn());
+    unfreeze_.setVisible(processor_.frozenHitPlays());
     if (isShowing()) repaint();
 }
 
@@ -94,17 +89,14 @@ void SmackerStagePanel::resized() {
 }
 
 void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings) {
-    const bool frozen = processor_.isSmackLockedIn();
-    if (frozen == showsFrozenHit_ && (frozen || (lastSettings_ && *lastSettings_ == settings))) return;
-    showsFrozenHit_ = frozen;
-    lastSettings_ = settings;
+    // A frozen hit changes only with the voice. The live hit changes with any setting.
+    const bool frozen = processor_.frozenHitPlays();
+    const bool sameVoice = lastSettings_ && lastSettings_->voiceMode == settings.voiceMode;
+    const bool sameSettings = lastSettings_ == settings;
+    if (frozen == showsFrozenHit_ && (frozen ? sameVoice : sameSettings)) return;
     std::vector<float> left, right;
     double rate = 24000.0;
-    if (frozen) {
-        left = processor_.frozenHit().left();
-        right = processor_.frozenHit().right();
-        rate = processor_.frozenHit().sampleRate();
-    }
+    if (frozen && !processor_.copyFrozenHit(settings.voiceMode, left, right, rate)) return;
     if (!frozen) {
         auto dry = settings;
         dry.fullAdsrEnabled = false;
@@ -113,6 +105,8 @@ void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings)
         synth.prepare(rate);
         synth.renderPrefix(left, right, dry, static_cast<int>(rate) / 2);
     }
+    showsFrozenHit_ = frozen;
+    lastSettings_ = settings;
     previewMs_ = juce::roundToInt(1000.0 * static_cast<double>(left.size()) / rate);
     waveform_.fill(0);
     for (size_t i = 0; i < left.size(); ++i) {
@@ -143,7 +137,6 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawText(juce::String(core::noteToHz(settings.note, settings.octave, settings.fineCents), 1) + " Hz",
                name, juce::Justification::topLeft);
     auto plot = area.reduced(16, ultraCompact ? 6 : 11);
-    g.setColour(theme::kText);
     if (showsFrozenHit_) {
         auto badge = plot.removeFromRight(120);
         g.setColour(theme::kApricot);
@@ -179,14 +172,14 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
-juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool hitFrozen) {
+juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool frozenHitPlays) {
     using namespace params;
     const auto isOn = [&state](const char* flag) { return state.getRawParameterValue(flag)->load() > 0.5f; };
     const auto isOneOf = [&id](std::initializer_list<const char*> ids) {
         return std::ranges::any_of(ids, [&id](const char* candidate) { return id == candidate; });
     };
-    if (hitFrozen && !isOn(kAmpEnabled)) {
-        // The frozen hit replaces every sound setting a preset makes, except the ones the engine applies on playback.
+    if (frozenHitPlays) {
+        // The frozen hit replaces each setting a preset makes, except the ones playback applies.
         const auto& presetValues = presets::factoryPresets().front().values;
         const bool presetSets = std::ranges::any_of(presetValues, [&id](const auto& value) { return value.first == id; });
         const bool appliedOnPlayback = isOneOf({ kVoiceMode, kAmpEnabled, kLockPitch, kLockIn, kReverseMode, kReverseMix, kOutputGain });
@@ -220,7 +213,8 @@ HitMonitor::HitMonitor(OpenSmackerProcessor& processor) : processor_(processor) 
 void HitMonitor::timerCallback() {
     const auto count = processor_.displayTriggerCount.load();
     const float velocity = processor_.displayVelocity.load();
-    glow_ = count != lastTriggerCount_ ? velocity : glow_ * 0.82f;
+    const float faded = glow_ < 0.02f ? 0.0f : glow_ * 0.82f;
+    const float glow = count != lastTriggerCount_ ? velocity : faded;
     lastTriggerCount_ = count;
 
     const int note = processor_.displayLastNote.load();
@@ -232,7 +226,11 @@ void HitMonitor::timerCallback() {
     auto target = juce::String("no zone");
     if (voice >= 0)
         target = voiceParameter->getText(voiceParameter->convertTo0to1(static_cast<float>(voice)), 0);
-    readout_ = note < 0 ? juce::String() : source + " -> " + target;
+    const auto readout = note < 0 ? juce::String() : source + " -> " + target;
+    if (glow == glow_ && readout == readout_)
+        return;
+    glow_ = glow;
+    readout_ = readout;
     repaint();
 }
 
@@ -261,13 +259,20 @@ void PeakMeter::timerCallback() {
     constexpr float floorDb = -60.0f;
     const float peak = peak_.exchange(0.0f);
     const float peakDb = juce::Decibels::gainToDecibels(peak, floorDb);
-    levelDb_ = std::max(peakDb, levelDb_ - 1.0f);
+    const float levelDb = std::max({ peakDb, levelDb_ - 1.0f, floorDb });
     const double now = juce::Time::getMillisecondCounterHiRes();
-    if (peakDb >= holdDb_ || now - holdStartMs_ > 1000.0) {
-        holdDb_ = peakDb;
+    const bool newHold = peakDb >= holdDb_ || now - holdStartMs_ > 1000.0;
+    if (newHold)
         holdStartMs_ = now;
-    }
-    clipped_ = clipped_ || peak > 1.0f;
+    const float holdDb = newHold ? peakDb : holdDb_;
+    const bool clipped = clipped_ || peak > 1.0f;
+    const float ceilingDb = ceilingDb_.load();
+    if (levelDb == levelDb_ && holdDb == holdDb_ && clipped == clipped_ && ceilingDb == shownCeilingDb_)
+        return;
+    levelDb_ = levelDb;
+    holdDb_ = holdDb;
+    clipped_ = clipped;
+    shownCeilingDb_ = ceilingDb;
     repaint();
 }
 
@@ -295,7 +300,7 @@ void PeakMeter::paint(juce::Graphics& g) {
     g.setColour(theme::kText);
     g.fillRect(bar.getX(), yFor(holdDb_) - 1.0f, bar.getWidth(), 2.0f);
     g.setColour(theme::kApricot);
-    g.fillRect(bar.getX() - 3.0f, yFor(ceilingDb_.load()) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
+    g.fillRect(bar.getX() - 3.0f, yFor(shownCeilingDb_) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
 }
 
 ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
@@ -317,20 +322,20 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
 
 void ParameterCard::timerCallback() {
     if (isShowing())
-        refreshActivity();
+        dimInactiveControls();
 }
 
 void ParameterCard::visibilityChanged() {
     if (isVisible())
-        refreshActivity();
+        dimInactiveControls();
 }
 
-void ParameterCard::refreshActivity() {
+void ParameterCard::dimInactiveControls() {
     std::ranges::for_each(std::views::iota(size_t{ 0 }, controls_.size()), [this](size_t i) {
         auto& activity = activity_[i];
         if (activity.id.isEmpty())
             return;
-        const auto reason = inactiveReason(processor_.parameters, activity.id, processor_.isSmackLockedIn());
+        const auto reason = inactiveReason(processor_.parameters, activity.id, processor_.frozenHitPlays());
         if (reason == activity.reason)
             return;
         activity.reason = reason;

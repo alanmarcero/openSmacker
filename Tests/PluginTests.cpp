@@ -15,6 +15,14 @@
 #include <vector>
 
 namespace {
+int countDifferentPixels(const juce::Image& first, const juce::Image& second) {
+    int changed = 0;
+    for (int y = 0; y < first.getHeight(); ++y)
+        for (int x = 0; x < first.getWidth(); ++x)
+            changed += first.getPixelAt(x, y) != second.getPixelAt(x, y) ? 1 : 0;
+    return changed;
+}
+
 template<class T, class Predicate>
 T* findVisible(juce::Component& parent, const Predicate& matches) {
     for (auto* child : parent.getChildren()) {
@@ -522,7 +530,7 @@ TEST_CASE("Controls with no effect dim, stay editable, and say what turns them o
     REQUIRE(spacing != nullptr);
     auto* flamCard = spacing->findParentComponentOfClass<opensmacker::ui::ParameterCard>();
     REQUIRE(flamCard != nullptr);
-    flamCard->refreshActivity();
+    flamCard->dimInactiveControls();
     CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(0.4f).margin(0.01f));
     CHECK(spacing->getTooltip().contains("Set Hits to 2 or more"));
     CHECK(spacing->isEnabled());
@@ -532,7 +540,7 @@ TEST_CASE("Controls with no effect dim, stay editable, and say what turns them o
     set(kRollEnabled, 1.0f);
     set(kLimiterEnabled, 0.0f);
     set(kReverseMode, 1.0f);
-    flamCard->refreshActivity();
+    flamCard->dimInactiveControls();
     CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(1.0f));
     CHECK_FALSE(spacing->getTooltip().contains("Hits to 2"));
     CHECK(inactiveReason(processor.parameters, kSnareZoneLow, false).isEmpty());
@@ -566,15 +574,15 @@ TEST_CASE("A frozen hit shows on the stage with Unfreeze, and the controls it by
     stage->timerCallback();
     REQUIRE(unfreezeButton() != nullptr);
 
-    const auto frozenStage = stage->createComponentSnapshot(stage->getLocalBounds());
+    const auto plot = stage->getLocalBounds().withTrimmedLeft(200);
+    const auto frozenStage = stage->createComponentSnapshot(plot);
     auto* decay = processor.parameters.getParameter(kToneDecay);
     decay->setValueNotifyingHost(decay->convertTo0to1(900.0f));
-    const auto afterEdit = stage->createComponentSnapshot(stage->getLocalBounds());
-    int changedPixels = 0;
-    for (int y = 0; y < frozenStage.getHeight(); ++y)
-        for (int x = 0; x < frozenStage.getWidth(); ++x)
-            changedPixels += frozenStage.getPixelAt(x, y) != afterEdit.getPixelAt(x, y) ? 1 : 0;
-    CHECK(changedPixels == 0);
+    CHECK(countDifferentPixels(frozenStage, stage->createComponentSnapshot(plot)) == 0);
+    auto* voice = processor.parameters.getParameter(kVoiceMode);
+    voice->setValueNotifyingHost(voice->convertTo0to1(2.0f));
+    CHECK(countDifferentPixels(frozenStage, stage->createComponentSnapshot(plot)) > 100);
+    voice->setValueNotifyingHost(voice->convertTo0to1(0.0f));
 
     CHECK(inactiveReason(processor.parameters, kToneDecay, true).contains("Freeze hit"));
     CHECK(inactiveReason(processor.parameters, kEqLowDb, true).contains("Freeze hit"));
@@ -585,9 +593,13 @@ TEST_CASE("A frozen hit shows on the stage with Unfreeze, and the controls it by
     CHECK(inactiveReason(processor.parameters, kRollEnabled, true).isEmpty());
     CHECK(inactiveReason(processor.parameters, kToneDecay, false).isEmpty());
     processor.parameters.getParameter(kAmpEnabled)->setValueNotifyingHost(1.0f);
-    CHECK(inactiveReason(processor.parameters, kToneDecay, true).isEmpty());
-    CHECK(inactiveReason(processor.parameters, kLockIn, true).contains("One-shot"));
+    CHECK_FALSE(processor.frozenHitPlays());
+    CHECK(inactiveReason(processor.parameters, kToneDecay, processor.frozenHitPlays()).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kLockIn, processor.frozenHitPlays()).contains("One-shot"));
+    stage->timerCallback();
+    CHECK(unfreezeButton() == nullptr);
     processor.parameters.getParameter(kAmpEnabled)->setValueNotifyingHost(0.0f);
+    stage->timerCallback();
 
     unfreezeButton()->onClick();
     CHECK(processor.parameters.getRawParameterValue(kLockIn)->load() < 0.5f);
@@ -612,11 +624,7 @@ TEST_CASE("The look and feel draws disabled buttons, dials and menus dimmed", "[
         component.setEnabled(false);
         const auto disabled = component.createComponentSnapshot(component.getLocalBounds());
         component.setLookAndFeel(nullptr);
-        int changed = 0;
-        for (int y = 0; y < enabled.getHeight(); ++y)
-            for (int x = 0; x < enabled.getWidth(); ++x)
-                changed += enabled.getPixelAt(x, y) != disabled.getPixelAt(x, y) ? 1 : 0;
-        return changed;
+        return countDifferentPixels(enabled, disabled);
     };
     CHECK(changedPixels(button) > 200);
     CHECK(changedPixels(dial) > 200);
@@ -1085,11 +1093,7 @@ TEST_CASE("Drumhead animation follows transport tempo and seeks and rests when s
     host.position.setPpqPosition(0.0);
     processor.processBlock(audio, midi);
     auto struck = editor->createComponentSnapshot(drumhead);
-    int changedPixels = 0;
-    for (int y = 0; y < struck.getHeight(); ++y)
-        for (int x = 0; x < struck.getWidth(); ++x)
-            if (struck.getPixelAt(x, y) != resting.getPixelAt(x, y)) ++changedPixels;
-    CHECK(changedPixels > 200);
+    CHECK(countDifferentPixels(struck, resting) > 200);
     processor.setPlayHead(nullptr);
     processor.processBlock(audio, midi);
     CHECK(std::abs(processor.animationBeatPhase(2.75) - 0.75f) < 0.001f);

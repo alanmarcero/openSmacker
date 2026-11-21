@@ -40,13 +40,18 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     opensmacker::core::EngineSettings currentSettings() const;
-    // Empty when no preset load set a name, for example in an earlier session.
+    // Empty when no preset load named the sound.
     [[nodiscard]] juce::String presetName() const { return parameters.state.getProperty("presetName").toString(); }
     [[nodiscard]] bool isPresetEdited() const noexcept { return presetEdited_.load(); }
     void triggerAudition() noexcept { auditionPending_.store(true); }
     [[nodiscard]] bool isSmackLockedIn() const noexcept { return displayLockedIn.load(); }
-    // Read it only while isSmackLockedIn() is true. The audio thread leaves it alone until unfreeze.
-    [[nodiscard]] const opensmacker::core::SmackWavCache& frozenHit() const noexcept { return engine_.wavCache(); }
+    // A hit is stored and MIDI gate is One-shot, so the engine plays the stored hit.
+    [[nodiscard]] bool frozenHitPlays() const noexcept;
+    // Returns false when no hit is stored or the audio thread holds it.
+    [[nodiscard]] bool copyFrozenHit(opensmacker::core::VoiceMode voice, std::vector<float>& left, std::vector<float>& right,
+                                     double& sampleRate) const {
+        return engine_.copyStoredVoice(voice, left, right, sampleRate);
+    }
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
     void setSectionLocked(opensmacker::presets::Section section, bool locked);
 
@@ -86,10 +91,10 @@ public:
     std::atomic<float> displaySmackProgress{ 1.0f };
     std::atomic<float> displayVelocity{ 1.0f };
     std::atomic<uint32_t> displayTriggerCount{ 0 };
-    // displayLastNote holds a MIDI note, kAuditionNote, or -1 before the first hit.
+    // MIDI note, kAuditionNote, or -1 before any hit.
     static constexpr int kAuditionNote = 128;
     std::atomic<int> displayLastNote{ -1 };
-    // The voice that played the last note, or -1 when no key zone takes the note.
+    // -1 when no key zone takes the note.
     std::atomic<int> displayLastVoice{ -1 };
     std::atomic<int> displayLastController{ 0 };
     std::atomic<uint32_t> displayControllerCount{ 0 };
