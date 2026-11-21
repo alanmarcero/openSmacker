@@ -5,6 +5,8 @@
 #include "Presets.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/reporters/catch_reporter_event_listener.hpp>
+#include <catch2/reporters/catch_reporter_registrars.hpp>
 #include <array>
 #include <cmath>
 #include <complex>
@@ -13,6 +15,21 @@
 #include <set>
 #include <utility>
 #include <vector>
+
+namespace {
+// Start the JUCE message system before the tests run. Editor timers can fire while an editor is built.
+class JuceGuiSession final : public Catch::EventListenerBase {
+public:
+    using Catch::EventListenerBase::EventListenerBase;
+    void testRunStarting(const Catch::TestRunInfo&) override { gui_ = std::make_unique<juce::ScopedJuceInitialiser_GUI>(); }
+    void testRunEnded(const Catch::TestRunStats&) override { gui_.reset(); }
+
+private:
+    std::unique_ptr<juce::ScopedJuceInitialiser_GUI> gui_;
+};
+} // namespace
+
+CATCH_REGISTER_LISTENER(JuceGuiSession)
 
 namespace {
 int countDifferentPixels(const juce::Image& first, const juce::Image& second) {
