@@ -23,6 +23,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
     name_.setColour(juce::TextEditor::textColourId, style_.text);
     name_.setColour(juce::TextEditor::outlineColourId, style_.edge);
     name_.setColour(juce::TextEditor::focusedOutlineColourId, style_.accent);
+    name_.onTextChange = [this] { disarm(); };
 
     favoritesBtn_.setClickingTogglesState(true);
     favoritesBtn_.setColour(juce::TextButton::buttonOnColourId, style_.accent);
@@ -33,7 +34,17 @@ PresetBrowser::PresetBrowser(PresetStore store,
     };
     saveBtn_.onClick = [this] {
         const auto presetName = PresetStore::cleanName(name_.getText());
-        if (presetName.isEmpty() || !saveUser_ || !saveUser_(presetName))
+        if (presetName.isEmpty() || !saveUser_)
+            return;
+        if (armedButton_ != &saveBtn_ && store_.userPresetNames().contains(presetName, true)) {
+            disarm();
+            armedButton_ = &saveBtn_;
+            saveBtn_.setButtonText("Replace?");
+            startTimer(3000);
+            return;
+        }
+        disarm();
+        if (!saveUser_(presetName))
             return;
         name_.setText(presetName, juce::dontSendNotification);
         rebuild();
@@ -54,6 +65,14 @@ PresetBrowser::PresetBrowser(PresetStore store,
         const auto* selected = entry(list_.getSelectedRow());
         if (selected == nullptr || selected->factory)
             return;
+        if (armedButton_ != &deleteBtn_) {
+            disarm();
+            armedButton_ = &deleteBtn_;
+            deleteBtn_.setButtonText("Delete?");
+            startTimer(3000);
+            return;
+        }
+        disarm();
         if (store_.deleteUserPreset(selected->name)) {
             name_.clear();
             rebuild();
@@ -139,7 +158,19 @@ void PresetBrowser::listBoxItemClicked(int row, const juce::MouseEvent& event) {
     loadRow(row);
 }
 
-void PresetBrowser::selectedRowsChanged(int) { updateButtons(); }
+void PresetBrowser::selectedRowsChanged(int) {
+    disarm();
+    updateButtons();
+}
+
+void PresetBrowser::timerCallback() { disarm(); }
+
+void PresetBrowser::disarm() {
+    stopTimer();
+    armedButton_ = nullptr;
+    saveBtn_.setButtonText("Save");
+    deleteBtn_.setButtonText("Delete");
+}
 
 void PresetBrowser::rebuild() {
     const auto query = search_.getText();

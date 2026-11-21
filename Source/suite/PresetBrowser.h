@@ -8,7 +8,7 @@
 
 namespace suite {
 
-class PresetBrowser : public juce::Component, private juce::ListBoxModel {
+class PresetBrowser : public juce::Component, private juce::ListBoxModel, private juce::Timer {
 public:
     struct FactoryPreset {
         juce::String name;
@@ -40,9 +40,11 @@ private:
     void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override;
     void listBoxItemClicked(int row, const juce::MouseEvent& event) override;
     void selectedRowsChanged(int lastRowSelected) override;
+    void timerCallback() override;
 
     void rebuild();
     void updateButtons();
+    void disarm();
     void loadRow(int row);
     void toggleFavorite(int row);
     [[nodiscard]] const Entry* entry(int row) const;
@@ -63,6 +65,8 @@ private:
     juce::TextButton renameBtn_ { "Rename" };
     juce::TextButton deleteBtn_ { "Delete" };
     bool favoritesOnly_ = false;
+    // Save or Delete while it waits for a second click.
+    juce::TextButton* armedButton_ = nullptr;
 };
 
 } // namespace suite

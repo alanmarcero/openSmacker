@@ -295,6 +295,20 @@ TEST_CASE("User presets save, search, favorite, rename, and delete without touch
                 return button;
         return nullptr;
     }();
+    auto* saveButton = [&]() -> juce::TextButton* {
+        for (auto* child : browser.getChildren())
+            if (auto* button = dynamic_cast<juce::TextButton*>(child); button != nullptr && button->getButtonText() == "Save")
+                return button;
+        return nullptr;
+    }();
+    auto* nameEditor = [&]() -> juce::TextEditor* {
+        for (auto* child : browser.getChildren())
+            if (auto* editor = dynamic_cast<juce::TextEditor*>(child); editor != nullptr && editor->getName() == "Preset name")
+                return editor;
+        return nullptr;
+    }();
+    REQUIRE(saveButton != nullptr);
+    REQUIRE(nameEditor != nullptr);
     REQUIRE(search != nullptr);
     REQUIRE(list != nullptr);
     REQUIRE(deleteButton != nullptr);
@@ -308,6 +322,23 @@ TEST_CASE("User presets save, search, favorite, rename, and delete without touch
     deleteButton->onClick();
     CHECK(store.userPresetNames().size() == 1);
     CHECK(loadedFactory == -1);
+
+    nameEditor->setText("Hall");
+    saveButton->onClick();
+    CHECK(saveButton->getButtonText() == "Replace?");
+    CHECK(store.loadUserPreset("Hall") == "<PRESET>hall</PRESET>");
+    saveButton->onClick();
+    CHECK(saveButton->getButtonText() == "Save");
+    CHECK(store.loadUserPreset("Hall") == "<PRESET>live</PRESET>");
+
+    list->selectRow(1);
+    REQUIRE(deleteButton->isEnabled());
+    deleteButton->onClick();
+    CHECK(deleteButton->getButtonText() == "Delete?");
+    CHECK(store.userPresetNames().contains("Hall"));
+    deleteButton->onClick();
+    CHECK(deleteButton->getButtonText() == "Delete");
+    CHECK(store.userPresetNames().isEmpty());
 }
 
 TEST_CASE("Loading a user preset restores the sound and leaves factory programs unchanged", "[plugin][suite][presets]") {
