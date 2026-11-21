@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "EditorSizing.h"
+#include "Parameters.h"
 #include "PresetBrowser.h"
 #include "PresetStore.h"
 #include "Theme.h"
@@ -68,13 +69,18 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     });
     if (sounds.getNumItems() > 0)
         presetBox_.getRootMenu()->addSubMenu(style, sounds);
-    for (size_t i = 0; i < families_.size(); ++i) {
-        const auto first = presets::firstPresetForFamily(i);
-        auto& family = families_[i];
-        family.setButtonText(presets::kFamilyNames[i]);
-        family.setTooltip("Load the first preset in this voice.");
-        family.onClick = [this, first] { chooseProgram(first); };
-        addAndMakeVisible(family);
+    auto* voice = processor_.parameters.getParameter(params::kVoiceMode);
+    voiceAttachment_ = std::make_unique<juce::ParameterAttachment>(*voice, [this](float value) {
+        std::ranges::for_each(std::views::iota(size_t{ 0 }, voices_.size()), [this, value](size_t i) {
+            markSelected(voices_[i], static_cast<int>(i) == juce::roundToInt(value));
+        });
+    });
+    for (size_t i = 0; i < voices_.size(); ++i) {
+        auto& voiceButton = voices_[i];
+        voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
+        voiceButton.setTooltip("Set the voice to " + voiceButton.getButtonText() + ".");
+        voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
+        addAndMakeVisible(voiceButton);
         pages_[i].setButtonText(pageNames[i]);
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
         addAndMakeVisible(pages_[i]);
@@ -125,6 +131,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     processor_.setEditorSize(getWidth(), getHeight());
     setAdvancedView(false);
     setPage(0);
+    voiceAttachment_->sendInitialUpdate();
     syncPresetBox();
     syncSuiteButtons();
     startTimerHz(30);
@@ -202,8 +209,6 @@ void OpenSmackerEditor::syncPresetBox() {
     const auto program = processor_.getCurrentProgram();
     const auto custom = processor_.isRestoredCustomSound();
     presetBox_.setSelectedId(custom ? 0 : program + 1, juce::dontSendNotification);
-    for (size_t i = 0; i < families_.size(); ++i)
-        markSelected(families_[i], !custom && i == presets::familyForProgram(program));
 }
 
 void OpenSmackerEditor::syncSuiteButtons() {
@@ -241,7 +246,7 @@ void OpenSmackerEditor::paint(juce::Graphics& g) {
     if (!editLabelBounds_.isEmpty())
         g.drawText("Edit", editLabelBounds_, juce::Justification::centredLeft);
     if (!voicesLabelBounds_.isEmpty())
-        g.drawText("Voices", voicesLabelBounds_, juce::Justification::centredLeft);
+        g.drawText("Voice", voicesLabelBounds_, juce::Justification::centredLeft);
     if (!versionBounds_.isEmpty())
         g.drawText("v" JucePlugin_VersionString, versionBounds_, juce::Justification::centredLeft);
     if (membrane_ && !artBounds_.isEmpty() && g.clipRegionIntersects(artBounds_)) {
@@ -303,8 +308,8 @@ void OpenSmackerEditor::resized() {
     rail.removeFromTop(8);
     voicesLabelBounds_ = rail.removeFromTop(19);
     rail.removeFromTop(6);
-    for (auto& family : families_) {
-        family.setBounds(rail.removeFromTop(37));
+    for (auto& voiceButton : voices_) {
+        voiceButton.setBounds(rail.removeFromTop(37));
         rail.removeFromTop(6);
     }
 

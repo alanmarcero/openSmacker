@@ -7,8 +7,6 @@
 
 namespace opensmacker::presets {
 
-inline constexpr std::array<const char*, 4> kFamilyNames{ "Snares", "Bells & chimes", "Toms", "Rim smacks" };
-
 struct FactoryPreset {
     const char* name;
     std::vector<std::pair<juce::String, float>> values;

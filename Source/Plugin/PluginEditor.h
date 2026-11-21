@@ -29,7 +29,8 @@ private:
     OpenSmackerProcessor& processor_;
     opensmacker::ui::EdmLookAndFeel lookAndFeel_;
     std::unique_ptr<juce::Drawable> membrane_;
-    std::array<juce::TextButton, 4> families_, pages_;
+    std::array<juce::TextButton, 4> voices_, pages_;
+    std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
     juce::ComboBox presetBox_;
     juce::TextButton prevPresetBtn_{ "Previous" }, nextPresetBtn_{ "Next" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };

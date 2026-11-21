@@ -283,16 +283,26 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     (void) editor->createComponentSnapshot(editor->getLocalBounds());
     click("Locked");
     REQUIRE_FALSE(processor.isSectionLocked(opensmacker::presets::Section::VoiceTuning));
-    const int firstRim = opensmacker::presets::firstPresetForFamily(3);
-    click("Rim smacks");
-    CHECK(processor.getCurrentProgram() == firstRim);
-    CHECK_FALSE(processor.currentSettings().synth.fullAdsrEnabled);
+    const int program = processor.getCurrentProgram();
+    auto* voice = processor.parameters.getParameter(opensmacker::params::kVoiceMode);
+    auto railButton = [&editor](juce::String name) {
+        return findVisible<juce::TextButton>(*editor, [name](const auto& b) { return b.getButtonText() == name; });
+    };
+    click("Rim");
+    CHECK(voice->getCurrentValueAsText() == "Rim");
+    CHECK(processor.getCurrentProgram() == program);
+    CHECK(railButton("Rim")->getToggleState());
+    auto* voiceMenu = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Voice"; });
+    REQUIRE(voiceMenu != nullptr);
+    voiceMenu->setSelectedId(2, juce::sendNotificationSync);
+    CHECK(railButton("Tom")->getToggleState());
+    CHECK_FALSE(railButton("Rim")->getToggleState());
     click("Next");
-    CHECK(processor.getCurrentProgram() == firstRim + 1);
+    CHECK(processor.getCurrentProgram() == program + 1);
     click("Previous");
-    CHECK(processor.getCurrentProgram() == firstRim);
-    click("Snares");
-    CHECK(processor.getCurrentProgram() == opensmacker::presets::firstPresetForFamily(0));
+    CHECK(processor.getCurrentProgram() == program);
+    click("Snare");
+    CHECK(voice->getCurrentValueAsText() == "Snare");
     auto* browser = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Factory preset"; });
     REQUIRE(browser != nullptr);
     CHECK(browser->getRootMenu()->getNumItems() == 6);
@@ -444,7 +454,7 @@ TEST_CASE("All factory hits have attack, body, headroom and a compact tail", "[p
             shortest = std::min(shortest, endMs);
             longest = std::max(longest, endMs);
         }
-        std::cout << opensmacker::presets::kFamilyNames[static_cast<size_t>(family)]
+        std::cout << processor.parameters.getParameter(opensmacker::params::kVoiceMode)->getCurrentValueAsText()
                   << " peak " << lowPeak << " to " << highPeak << ", -40 dB tail "
                   << shortest << " to " << longest << " ms\n";
     }

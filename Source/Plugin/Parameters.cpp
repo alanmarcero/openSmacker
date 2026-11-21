@@ -23,7 +23,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kPreLevel, 1 }, "Flam Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f));
 
     // Tunable Drum / Bell / Tom Body
-    juce::StringArray voiceModes{ "Dance Snare", "Club Tom-Tom", "FM Bell / Chime", "Pryda / Rim Smack" };
+    juce::StringArray voiceModes{ "Snare", "Tom", "Bell", "Rim" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{ kVoiceMode, 1 }, "Voice Mode", voiceModes, 0));
     juce::StringArray noteNames{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
