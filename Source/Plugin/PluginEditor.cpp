@@ -303,9 +303,9 @@ void OpenSmackerEditor::layoutContent() {
     auto top = content_.getLocalBounds().withTrimmedLeft(220).withTrimmedRight(18).withY(26).withHeight(39);
     auditionBtn_.setBounds(top.removeFromRight(159));
     top.removeFromRight(12);
-    nextPresetBtn_.setBounds(top.removeFromRight(80));
+    nextPresetBtn_.setBounds(top.removeFromRight(40).withHeight(40));
     top.removeFromRight(6);
-    prevPresetBtn_.setBounds(top.removeFromRight(88));
+    prevPresetBtn_.setBounds(top.removeFromRight(40).withHeight(40));
     top.removeFromRight(8);
     presetBox_.setBounds(top);
 

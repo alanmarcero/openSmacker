@@ -45,7 +45,7 @@ private:
     std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
     std::optional<juce::String> voiceReason_;
     juce::ComboBox presetBox_;
-    juce::TextButton prevPresetBtn_{ "Previous" }, nextPresetBtn_{ "Next" };
+    juce::TextButton prevPresetBtn_{ "<" }, nextPresetBtn_{ ">" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
     juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };
     juce::TextButton abABtn_{ "A" }, abBBtn_{ "B" };

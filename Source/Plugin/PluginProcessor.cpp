@@ -390,8 +390,19 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
         ab_.arm(copySoundState(true));
     if (undo_ != nullptr)
         undo_->resetHistory(ab_.active());
-    if (auto* editor = getActiveEditor())
-        editor->setSize(editorWidth_.load(), editorHeight_.load());
+    if (auto* editor = getActiveEditor()) {
+        const int width = editorWidth_.load();
+        const int height = editorHeight_.load();
+        if (auto* mm = juce::MessageManager::getInstanceWithoutCreating(); mm != nullptr && mm->isThisTheMessageThread()) {
+            editor->setSize(width, height);
+        } else {
+            juce::Component::SafePointer<juce::AudioProcessorEditor> safeEditor(editor);
+            juce::MessageManager::callAsync([safeEditor, width, height]() mutable {
+                if (safeEditor != nullptr)
+                    safeEditor->setSize(width, height);
+            });
+        }
+    }
 }
 
 bool OpenSmackerProcessor::undo() {

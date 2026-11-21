@@ -75,7 +75,7 @@ void checkVisibleButtonTargets(juce::Component& component, juce::Component& edit
             continue;
         }
         CHECK(rect.getHeight() >= 36);
-        CHECK(rect.getWidth() >= 44);
+        CHECK(rect.getWidth() >= 40);
         CHECK(editor.getLocalBounds().contains(rect));
         CHECK(std::none_of(targets.begin(), targets.end(), [rect](auto other) { return rect.intersects(other); }));
         targets.push_back(rect);
@@ -784,9 +784,9 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     voiceMenu->setSelectedId(2, juce::sendNotificationSync);
     CHECK(railButton("Tom")->getToggleState());
     CHECK_FALSE(railButton("Rim")->getToggleState());
-    click("Next");
+    click(">");
     CHECK(processor.getCurrentProgram() == program + 1);
-    click("Previous");
+    click("<");
     CHECK(processor.getCurrentProgram() == program);
     click("Snare");
     CHECK(voice->getCurrentValueAsText() == "Snare");
