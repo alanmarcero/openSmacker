@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.1
+
+- **UI & Suite Fixes:** UI polish, Learn for key zones and roll note, unit formatting and typed-value entry, per-slot A/B undo, inline preset confirms, 40x40 preset steppers, and screen-reader titles.
+
 ## v2.8.0
 
 Upgrades the core synth, reverb, and distortion DSP:
