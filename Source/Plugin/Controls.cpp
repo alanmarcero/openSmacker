@@ -5,13 +5,6 @@
 
 namespace opensmacker::ui {
 
-namespace {
-juce::String formatHz(float hz) {
-    if (hz >= 1000.0f) return juce::String(hz / 1000.0f, hz >= 10000.0f ? 1 : 2) + " kHz";
-    return juce::String(juce::roundToInt(hz)) + " Hz";
-}
-} // namespace
-
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
     slider_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
@@ -33,16 +26,7 @@ Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& ti
 
 void Knob::bind(Apvts& state, const juce::String& parameterId) {
     attachment_ = std::make_unique<Apvts::SliderAttachment>(state, parameterId, slider_);
-    if (auto* param = state.getParameter(parameterId)) {
-        slider_.setName(title_.getText());
-        const auto unit = param->getLabel();
-        slider_.textFromValueFunction = [param, unit](double value) {
-            const auto display = param->getText(param->convertTo0to1(static_cast<float>(value)), 12);
-            return unit.isEmpty() ? display : display + " " + unit;
-        };
-        slider_.updateText();
-        slider_.setDoubleClickReturnValue(true, param->convertFrom0to1(param->getDefaultValue()));
-    }
+    slider_.setName(title_.getText());
 }
 
 void Knob::resized() {
@@ -145,7 +129,9 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
         dbSlider_.setDoubleClickReturnValue(true, dbParam->convertFrom0to1(dbParam->getDefaultValue()));
     }
     dbAttachment_ = std::make_unique<Apvts::SliderAttachment>(state, dbId, dbSlider_);
-    dbSlider_.onValueChange = [this] { updateDbReadout(); };
+    dbSlider_.onValueChange = [this] {
+        dbReadout_.setText(dbSlider_.getTextFromValue(dbSlider_.getValue()), juce::dontSendNotification);
+    };
     addAndMakeVisible(dbSlider_);
 
     dbReadout_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
@@ -169,13 +155,7 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
         });
         freqAttachment_->sendInitialUpdate();
     }
-    updateDbReadout();
-}
-
-void DualEqKnob::updateDbReadout() {
-    const double val = dbSlider_.getValue();
-    const juce::String prefix = val > 0.05 ? "+" : "";
-    dbReadout_.setText(prefix + juce::String(val, 1) + " dB", juce::dontSendNotification);
+    dbSlider_.onValueChange();
 }
 
 juce::Rectangle<float> DualEqKnob::dialBounds() const {
@@ -244,7 +224,8 @@ void DualEqKnob::paint(juce::Graphics& g) {
     g.drawRoundedRectangle(freqPill.reduced(0.5f), 3.5f, 1.0f);
     g.setColour(theme::kText);
     g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    g.drawFittedText(formatHz(freqHz_), freqPill.toNearestInt(), juce::Justification::centred, 1);
+    if (freqParam != nullptr)
+        g.drawFittedText(freqParam->getText(freqParam->convertTo0to1(freqHz_), 0), freqPill.toNearestInt(), juce::Justification::centred, 1);
 }
 
 void DualEqKnob::resized() {

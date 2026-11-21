@@ -49,7 +49,6 @@ private:
     [[nodiscard]] juce::Rectangle<int> dbPillBounds() const;
     [[nodiscard]] juce::Rectangle<int> freqPillBounds() const;
     [[nodiscard]] bool hitsOuterRing(juce::Point<float> pos) const;
-    void updateDbReadout();
 
     Apvts& state_;
     juce::String freqId_;

@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "PresetBrowser.h"
 #include "Presets.h"
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <array>
 #include <cmath>
@@ -123,6 +124,58 @@ TEST_CASE("OpenSmacker layer controls map to engine settings and survive state r
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     for (const auto& [id, value] : values)
         CHECK(std::abs(restored.parameters.getRawParameterValue(id)->load() - value) < 1.1f);
+}
+
+TEST_CASE("Every float parameter reads back the text it displays", "[plugin][parameters]") {
+    OpenSmackerProcessor processor;
+    for (auto* parameter : processor.getParameters()) {
+        const auto* floatParameter = dynamic_cast<juce::AudioParameterFloat*>(parameter);
+        if (floatParameter == nullptr)
+            continue;
+        for (int step = 0; step <= 40; ++step) {
+            const auto text = parameter->getText(static_cast<float>(step) / 40.0f, 0);
+            CAPTURE(floatParameter->paramID.toStdString(), text.toStdString());
+            CHECK(parameter->getText(parameter->getValueForText(text), 0) == text);
+        }
+    }
+}
+
+TEST_CASE("Displays use one unit format and typed values accept those units", "[plugin][parameters]") {
+    using namespace opensmacker::params;
+    OpenSmackerProcessor processor;
+    const auto shown = [&processor](const char* id, float value) {
+        auto* parameter = processor.parameters.getParameter(id);
+        return parameter->getText(parameter->convertTo0to1(value), 0);
+    };
+    const auto typed = [&processor](const char* id, const char* text) {
+        auto* parameter = processor.parameters.getParameter(id);
+        return parameter->convertFrom0to1(parameter->getValueForText(text));
+    };
+    CHECK(shown(kDistMix, 0.55f) == "55%");
+    CHECK(shown(kDistTone, 0.2f) == "+20%");
+    CHECK(shown(kCompMakeup, 3.0f) == "+3.0 dB");
+    CHECK(shown(kEqLowDb, -0.04f) == "0.0 dB");
+    CHECK(shown(kBodyLPF, 850.0f) == "850 Hz");
+    CHECK(shown(kNoiseLPF, 6800.0f) == "6.80 kHz");
+    CHECK(shown(kClickFreq, 12000.0f) == "12.0 kHz");
+    CHECK(shown(kAmpAttack, 4.5f) == "4.5 ms");
+    CHECK(shown(kToneDecay, 160.0f) == "160 ms");
+    CHECK(shown(kAmpRelease, 1200.0f) == "1.20 s");
+    CHECK(shown(kCompRatio, 2.5f) == "2.5:1");
+    CHECK(shown(kBodyPan, 0.0f) == "C");
+    CHECK(shown(kBodyPan, -0.4f) == "40 L");
+    CHECK(shown(kWirePan, 0.4f) == "40 R");
+
+    CHECK(typed(kClickFreq, "3.2k") == Catch::Approx(3200.0f));
+    CHECK(typed(kClickFreq, "3.2 kHz") == Catch::Approx(3200.0f));
+    CHECK(typed(kReverbMix, "50") == Catch::Approx(0.5f));
+    CHECK(typed(kReverbMix, "50%") == Catch::Approx(0.5f));
+    CHECK(typed(kAmpRelease, "1.2 s") == Catch::Approx(1200.0f));
+    CHECK(typed(kAmpRelease, "160 ms") == Catch::Approx(160.0f));
+    CHECK(typed(kOutputGain, "-3 dB") == Catch::Approx(-3.0f));
+    CHECK(typed(kBodyPan, "40 L") == Catch::Approx(-0.4f));
+    CHECK(typed(kBodyPan, "C") == Catch::Approx(0.0f).margin(1.0e-6));
+    CHECK(typed(kCompRatio, "2.5:1") == Catch::Approx(2.5f));
 }
 
 TEST_CASE("The factory bank has 84 distinct programs across six dance styles and four voices", "[plugin][presets]") {
