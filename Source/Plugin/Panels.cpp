@@ -96,7 +96,7 @@ void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings)
         dry.reverbMix = 0;
         core::SmackSynth synth;
         synth.prepare(rate);
-        synth.renderPrefix(left, right, dry, static_cast<int>(rate) / 2);
+        (void) synth.renderPrefix(left, right, dry, static_cast<int>(rate) / 2);
     }
     showsFrozenHit_ = frozen;
     lastSettings_ = settings;
@@ -211,7 +211,7 @@ void HitMonitor::timerCallback() {
     lastTriggerCount_ = count;
     const int note = processor_.displayLastNote.load();
     const int voice = processor_.displayLastVoice.load();
-    if (glow == glow_ && note == shownNote_ && voice == shownVoice_)
+    if (juce::exactlyEqual(glow, glow_) && note == shownNote_ && voice == shownVoice_)
         return;
     glow_ = glow;
     shownNote_ = note;
@@ -264,7 +264,8 @@ void PeakMeter::timerCallback() {
     const float holdDb = newHold ? peakDb : holdDb_;
     const bool clipped = clipped_ || peak > 1.0f;
     const float ceilingDb = ceilingDb_.load();
-    if (levelDb == levelDb_ && holdDb == holdDb_ && clipped == clipped_ && ceilingDb == shownCeilingDb_)
+    if (juce::exactlyEqual(levelDb, levelDb_) && juce::exactlyEqual(holdDb, holdDb_) && clipped == clipped_
+        && juce::exactlyEqual(ceilingDb, shownCeilingDb_))
         return;
     levelDb_ = levelDb;
     holdDb_ = holdDb;
