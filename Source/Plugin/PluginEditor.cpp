@@ -85,9 +85,8 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
         addAndMakeVisible(pages_[i]);
     }
-    presetBox_.setName("Factory preset");
+    presetBox_.setName("Preset");
     presetBox_.setTooltip("Choose a factory preset across six dance styles.");
-    presetBox_.setTextWhenNothingSelected("Custom sound");
     presetBox_.onChange = [this] { chooseProgram(presetBox_.getSelectedId() - 1); };
     prevPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + processor_.getNumPrograms() - 1) % processor_.getNumPrograms()); };
     nextPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + 1) % processor_.getNumPrograms()); };
@@ -176,13 +175,14 @@ void OpenSmackerEditor::openPresets() {
     auto browser = std::make_unique<suite::PresetBrowser>(
         processor_.presetStore(), std::move(factory),
         [this](int index) { chooseProgram(index); },
-        [this](const juce::String& xml) {
-            if (processor_.loadUserPresetXml(xml))
+        [this](const juce::String& name, const juce::String& xml) {
+            if (processor_.loadUserPresetXml(name, xml))
                 syncPresetBox();
         },
-        [this] { return processor_.currentPresetXml(); },
+        [this](const juce::String& name) { return processor_.saveUserPreset(name); },
         suiteStyle());
-    juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getScreenBounds(), this);
+    browser->setSize(360, 440);
+    juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getBounds(), this);
 }
 
 void OpenSmackerEditor::setAdvancedView(bool advanced) {
@@ -206,9 +206,11 @@ void OpenSmackerEditor::setPage(int page) {
 }
 
 void OpenSmackerEditor::syncPresetBox() {
-    const auto program = processor_.getCurrentProgram();
-    const auto custom = processor_.isRestoredCustomSound();
-    presetBox_.setSelectedId(custom ? 0 : program + 1, juce::dontSendNotification);
+    const auto name = processor_.presetName();
+    const juce::String suffix = processor_.isPresetEdited() ? " *" : "";
+    const auto text = name.isEmpty() ? juce::String("Custom sound") : name + suffix;
+    if (presetBox_.getText() != text)
+        presetBox_.setText(text, juce::dontSendNotification);
 }
 
 void OpenSmackerEditor::syncSuiteButtons() {
@@ -221,9 +223,7 @@ void OpenSmackerEditor::syncSuiteButtons() {
 void OpenSmackerEditor::timerCallback() {
     if (!artBounds_.isEmpty())
         repaint(artBounds_);
-    const auto selected = processor_.isRestoredCustomSound() ? 0 : processor_.getCurrentProgram() + 1;
-    if (presetBox_.getSelectedId() != selected)
-        syncPresetBox();
+    syncPresetBox();
     if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
         || abABtn_.getToggleState() != (processor_.abSlot() == 0))
         syncSuiteButtons();
@@ -242,7 +242,7 @@ void OpenSmackerEditor::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(13.0f));
     g.setColour(theme::kTextDim);
     g.drawText("Trance percussion synth", 20, 32, 190, 16, juce::Justification::centredLeft);
-    g.drawText("Factory preset", 220, 6, 200, 18, juce::Justification::centredLeft);
+    g.drawText("Preset", 220, 6, 200, 18, juce::Justification::centredLeft);
     if (!editLabelBounds_.isEmpty())
         g.drawText("Edit", editLabelBounds_, juce::Justification::centredLeft);
     if (!voicesLabelBounds_.isEmpty())

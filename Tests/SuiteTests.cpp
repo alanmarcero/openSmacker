@@ -246,8 +246,8 @@ TEST_CASE("User presets save, search, favorite, rename, and delete without touch
     juce::String loadedXml;
     suite::PresetBrowser browser(store, factory,
         [&](int index) { loadedFactory = index; },
-        [&](const juce::String& xml) { loadedXml = xml; },
-        [] { return juce::String("<PRESET>live</PRESET>"); });
+        [&](const juce::String&, const juce::String& xml) { loadedXml = xml; },
+        [&](const juce::String& name) { return store.saveUserPreset(name, "<PRESET>live</PRESET>"); });
     browser.setSize(360, 440);
     auto* search = [&]() -> juce::TextEditor* {
         for (auto* child : browser.getChildren())
@@ -298,7 +298,15 @@ TEST_CASE("Loading a user preset restores the sound and leaves factory programs 
     REQUIRE(processor.canUndo());
     REQUIRE(processor.loadUserPreset("My Pocket"));
     CHECK(normalised(processor, opensmacker::params::kOutputGain) == Catch::Approx(savedGain));
-    CHECK(processor.isRestoredCustomSound());
+    CHECK(processor.presetName() == "My Pocket");
+    CHECK(processor.currentSettings().synth.shapedEngine);
+    CHECK(processor.currentSettings().synth.articulatedModes);
+    juce::MemoryBlock session;
+    processor.getStateInformation(session);
+    OpenSmackerProcessor reopened;
+    reopened.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+    CHECK(reopened.presetName() == "My Pocket");
+    CHECK(reopened.currentSettings().synth.shapedEngine);
     REQUIRE(processor.undo());
     CHECK(processor.getCurrentProgram() == 0);
     processor.setCurrentProgram(4);
@@ -306,5 +314,57 @@ TEST_CASE("Loading a user preset restores the sound and leaves factory programs 
     CHECK(normalised(processor, opensmacker::params::kOutputGain) != Catch::Approx(savedGain));
     REQUIRE(processor.deleteUserPreset("My Pocket"));
     CHECK_FALSE(processor.loadUserPreset("My Pocket"));
+    root.deleteRecursively();
+}
+
+TEST_CASE("A user preset saved by an earlier build on the legacy model stays on it", "[plugin][suite][presets]") {
+    OpenSmackerProcessor source;
+    auto tree = source.parameters.copyState();
+    tree.setProperty("factoryBank", 2, nullptr);
+    tree.setProperty("customSound", true, nullptr);
+    tree.setProperty("synthModel", 2, nullptr);
+    OpenSmackerProcessor processor;
+    REQUIRE(processor.loadUserPresetXml("Old Kit", tree.createXml()->toString()));
+    CHECK(processor.presetName() == "Old Kit");
+    CHECK_FALSE(processor.currentSettings().synth.articulatedModes);
+    CHECK_FALSE(processor.currentSettings().synth.shapedEngine);
+}
+
+TEST_CASE("The preset name follows loads, edits, saves, A/B slots, undo and sessions", "[plugin][suite][presets]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("opensmacker-suite-names");
+    root.deleteRecursively();
+    OpenSmackerProcessor processor;
+    processor.setPresetDocumentsRoot(root);
+    processor.setCurrentProgram(3);
+    CHECK(processor.presetName() == processor.getProgramName(3));
+    CHECK_FALSE(processor.isPresetEdited());
+
+    gestureTo(processor, opensmacker::params::kOutputGain, 0.3f);
+    CHECK(processor.isPresetEdited());
+    REQUIRE(processor.undo());
+    CHECK_FALSE(processor.isPresetEdited());
+    REQUIRE(processor.redo());
+    CHECK(processor.isPresetEdited());
+
+    REQUIRE(processor.saveUserPreset("Night Kit"));
+    CHECK(processor.presetName() == "Night Kit");
+    CHECK_FALSE(processor.isPresetEdited());
+    gestureTo(processor, opensmacker::params::kOutputGain, 0.4f);
+    CHECK(processor.isPresetEdited());
+
+    processor.selectAbSlot(1);
+    CHECK(processor.presetName() == processor.getProgramName(0));
+    CHECK_FALSE(processor.isPresetEdited());
+    processor.selectAbSlot(0);
+    CHECK(processor.presetName() == "Night Kit");
+    CHECK(processor.isPresetEdited());
+
+    juce::MemoryBlock session;
+    processor.getStateInformation(session);
+    OpenSmackerProcessor reopened;
+    reopened.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+    CHECK(reopened.presetName() == "Night Kit");
+    CHECK(reopened.isPresetEdited());
     root.deleteRecursively();
 }

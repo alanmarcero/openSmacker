@@ -18,8 +18,8 @@ public:
     PresetBrowser(PresetStore store,
                   std::vector<FactoryPreset> factory,
                   std::function<void(int index)> loadFactory,
-                  std::function<void(const juce::String& xml)> loadUser,
-                  std::function<juce::String()> captureXml,
+                  std::function<void(const juce::String& name, const juce::String& xml)> loadUser,
+                  std::function<bool(const juce::String& name)> saveUser,
                   Style style = {});
 
     void paint(juce::Graphics& g) override;
@@ -50,8 +50,8 @@ private:
     PresetStore store_;
     std::vector<FactoryPreset> factory_;
     std::function<void(int)> loadFactory_;
-    std::function<void(const juce::String&)> loadUser_;
-    std::function<juce::String()> captureXml_;
+    std::function<void(const juce::String&, const juce::String&)> loadUser_;
+    std::function<bool(const juce::String&)> saveUser_;
     Style style_;
     std::vector<Entry> visible_;
 

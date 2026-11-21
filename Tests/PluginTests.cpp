@@ -1,6 +1,7 @@
 #include "Parameters.h"
 #include "PluginEditor.h"
 #include "PluginProcessor.h"
+#include "PresetBrowser.h"
 #include "Presets.h"
 #include <catch2/catch_test_macros.hpp>
 #include <array>
@@ -303,7 +304,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
     CHECK(processor.getCurrentProgram() == program);
     click("Snare");
     CHECK(voice->getCurrentValueAsText() == "Snare");
-    auto* browser = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Factory preset"; });
+    auto* browser = findVisible<juce::ComboBox>(*editor, [](auto& c) { return c.getName() == "Preset"; });
     REQUIRE(browser != nullptr);
     CHECK(browser->getRootMenu()->getNumItems() == 6);
     browser->setSelectedId(2, juce::sendNotificationSync);
@@ -344,6 +345,42 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
         }
         click("Advanced controls");
     }
+}
+
+TEST_CASE("The Presets button opens a sized browser that points at the button", "[plugin][gui][presets]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    auto root = juce::File::getSpecialLocation(juce::File::tempDirectory).getChildFile("opensmacker-launch-presets");
+    root.deleteRecursively();
+    OpenSmackerProcessor processor;
+    processor.setPresetDocumentsRoot(root);
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    juce::Component host;
+    host.setBounds(0, 0, 1600, 1100);
+    host.addAndMakeVisible(*editor);
+    editor->setTopLeftPosition(300, 200);
+    auto* presets = findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getButtonText() == "Presets"; });
+    REQUIRE(presets != nullptr);
+
+    presets->onClick();
+
+    auto* callout = findVisible<juce::CallOutBox>(*editor, [](const auto&) { return true; });
+    REQUIRE(callout != nullptr);
+    auto* browser = findVisible<suite::PresetBrowser>(*callout, [](const auto&) { return true; });
+    REQUIRE(browser != nullptr);
+    CHECK(browser->getWidth() >= 300);
+    CHECK(browser->getHeight() >= 400);
+    CHECK(browser->visiblePresetCount() == processor.getNumPrograms());
+    auto* save = findVisible<juce::TextButton>(*browser, [](const auto& b) { return b.getButtonText() == "Save"; });
+    REQUIRE(save != nullptr);
+    CHECK(save->getHeight() >= 28);
+    const auto calloutArea = editor->getLocalArea(callout, callout->getLocalBounds());
+    const auto buttonArea = editor->getLocalArea(presets, presets->getLocalBounds());
+    CHECK(editor->getLocalBounds().contains(calloutArea));
+    CHECK(std::abs(calloutArea.getY() - buttonArea.getBottom()) <= 12);
+    CHECK(calloutArea.getX() < buttonArea.getRight());
+    CHECK(calloutArea.getRight() > buttonArea.getX());
+    host.removeChildComponent(editor.get());
+    root.deleteRecursively();
 }
 
 TEST_CASE("OpenSmacker exposes 3-band EQ with glide and Output controls on the main Hit page", "[plugin][ui][eq]") {
@@ -465,11 +502,12 @@ TEST_CASE("Earlier sessions keep their exact voice settings and original resonan
     auto* hold = source.parameters.getParameter(opensmacker::params::kAmpEnabled);
     hold->setValueNotifyingHost(1);
     auto tree = source.parameters.copyState();
+    tree.removeProperty("presetName", nullptr);
     auto xml = tree.createXml();
     juce::MemoryBlock state;
     juce::AudioProcessor::copyXmlToBinary(*xml, state);
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
-    REQUIRE(restored.isRestoredCustomSound());
+    REQUIRE(restored.presetName().isEmpty());
     auto expected = source.currentSettings().synth;
     expected.articulatedModes = false;
     expected.shapedEngine = false;
@@ -851,6 +889,7 @@ TEST_CASE("A saved factoryBank 2 session keeps the pre-shaped voice until a new 
     OpenSmackerProcessor source;
     source.setCurrentProgram(4);
     auto tree = source.parameters.copyState();
+    tree.removeProperty("presetName", nullptr);
     tree.setProperty("factoryBank", 2, nullptr);
     tree.setProperty("customSound", false, nullptr);
     juce::MemoryBlock state;
@@ -860,7 +899,7 @@ TEST_CASE("A saved factoryBank 2 session keeps the pre-shaped voice until a new 
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     CHECK(restored.currentSettings().synth.articulatedModes);
     CHECK_FALSE(restored.currentSettings().synth.shapedEngine);
-    CHECK_FALSE(restored.isRestoredCustomSound());
+    CHECK(restored.presetName() == restored.getProgramName(4));
 
     OpenSmackerProcessor modern;
     modern.setCurrentProgram(2);

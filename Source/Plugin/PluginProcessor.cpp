@@ -19,14 +19,25 @@ OpenSmackerProcessor::OpenSmackerProcessor()
         *this,
         [this] { return copySoundState(false); },
         [this](const juce::ValueTree& tree) { applySoundState(tree, false); });
+    for (auto* parameter : getParameters())
+        parameter->addListener(this);
+}
+
+OpenSmackerProcessor::~OpenSmackerProcessor() {
+    for (auto* parameter : getParameters())
+        parameter->removeListener(this);
+}
+
+void OpenSmackerProcessor::parameterValueChanged(int, float) {
+    if (!loadingSound_.load())
+        presetEdited_.store(true);
 }
 
 opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const {
     auto settings = opensmacker::params::readSettings(parameters);
-    const bool legacySession = restoredCustom_.load();
     const int model = synthModel_.load(std::memory_order_relaxed);
-    settings.synth.articulatedModes = !legacySession && model >= 1;
-    settings.synth.shapedEngine = !legacySession && model >= 2;
+    settings.synth.articulatedModes = model >= 1;
+    settings.synth.shapedEngine = model >= 2;
     return settings;
 }
 
@@ -237,25 +248,28 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
     const auto& presets = opensmacker::presets::factoryPresets();
     if (index >= 0 && index < static_cast<int>(presets.size())) {
         currentProgram_ = index;
-        restoredCustom_.store(false);
         synthModel_.store(2);
         const bool preservePitch = parameters.getRawParameterValue(opensmacker::params::kLockPitch) != nullptr
             && *parameters.getRawParameterValue(opensmacker::params::kLockPitch) > 0.5f;
         opensmacker::presets::SectionLocks locks{};
         for (size_t i = 0; i < locks.size(); ++i)
             locks[i] = sectionLocks_[i].load(std::memory_order_relaxed);
+        loadingSound_.store(true);
         opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch);
         if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {
             param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(index)));
         }
+        loadingSound_.store(false);
+        parameters.state.setProperty("presetName", juce::String(presets[static_cast<size_t>(index)].name), nullptr);
+        presetEdited_.store(false);
     }
 }
 
 juce::ValueTree OpenSmackerProcessor::copySoundState(bool includeWav) {
     auto state = parameters.copyState();
     state.setProperty("factoryBank", 2, nullptr);
-    state.setProperty("customSound", restoredCustom_.load(), nullptr);
     state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
+    state.setProperty("presetEdited", presetEdited_.load(), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     state.removeProperty("abSlot0", nullptr);
@@ -286,15 +300,11 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
             missing.setProperty("value", param->convertFrom0to1(param->getDefaultValue()), nullptr);
         state.addChild(missing, -1, nullptr);
     }
+    // Earlier builds played every custom sound on the legacy model.
     const int bank = int(state.getProperty("factoryBank", 0));
-    const bool customFlag = bool(state.getProperty("customSound", false));
-    restoredCustom_.store(bank != 2 || customFlag);
-    if (state.hasProperty("synthModel"))
-        synthModel_.store(int(state.getProperty("synthModel", 0)), std::memory_order_relaxed);
-    else if (bank >= 2 && !customFlag)
-        synthModel_.store(1, std::memory_order_relaxed);
-    else
-        synthModel_.store(0, std::memory_order_relaxed);
+    const bool legacySound = bank != 2 || bool(state.getProperty("customSound", false));
+    synthModel_.store(legacySound ? 0 : int(state.getProperty("synthModel", 1)), std::memory_order_relaxed);
+    const bool edited = bool(state.getProperty("presetEdited", false));
 
     const bool hadWav = state.hasProperty("locked_wav_bank") || state.hasProperty("locked_wav");
     const auto wavProperty = state.hasProperty("locked_wav_bank") ? state.getProperty("locked_wav_bank").toString()
@@ -306,14 +316,21 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
     state.removeProperty("abActive", nullptr);
     state.removeProperty("editorWidth", nullptr);
     state.removeProperty("editorHeight", nullptr);
+    state.removeProperty("customSound", nullptr);
+    state.removeProperty("presetEdited", nullptr);
 
+    loadingSound_.store(true);
     parameters.replaceState(state);
+    loadingSound_.store(false);
+    presetEdited_.store(edited);
     for (size_t i = 0; i < sectionLocks_.size(); ++i) {
         const auto key = "section_lock_" + juce::String(static_cast<int>(i));
         sectionLocks_[i].store(state.getProperty(key, false), std::memory_order_relaxed);
     }
     if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
         currentProgram_ = juce::jlimit(0, std::max(0, getNumPrograms() - 1), static_cast<int>(*preset));
+    if (!legacySound && !state.hasProperty("presetName"))
+        parameters.state.setProperty("presetName", getProgramName(currentProgram_), nullptr);
 
     if (!restoreWav)
         return;
@@ -407,9 +424,11 @@ suite::PresetStore OpenSmackerProcessor::presetStore() const {
 
 bool OpenSmackerProcessor::saveUserPreset(const juce::String& name) {
     const auto clean = suite::PresetStore::cleanName(name);
-    if (clean.isEmpty())
+    if (clean.isEmpty() || !presetStore().saveUserPreset(clean, currentPresetXml()))
         return false;
-    return presetStore().saveUserPreset(clean, currentPresetXml());
+    parameters.state.setProperty("presetName", clean, nullptr);
+    presetEdited_.store(false);
+    return true;
 }
 
 bool OpenSmackerProcessor::renameUserPreset(const juce::String& oldName, const juce::String& newName) {
@@ -426,14 +445,14 @@ juce::String OpenSmackerProcessor::currentPresetXml() {
     return {};
 }
 
-bool OpenSmackerProcessor::loadUserPresetXml(const juce::String& xml) {
+bool OpenSmackerProcessor::loadUserPresetXml(const juce::String& name, const juce::String& xml) {
     if (auto parsed = juce::parseXML(xml)) {
         auto tree = juce::ValueTree::fromXml(*parsed);
         if (!tree.isValid())
             return false;
         applySoundState(tree, true);
-        restoredCustom_.store(true);
-        parameters.state.setProperty("customSound", true, nullptr);
+        parameters.state.setProperty("presetName", name, nullptr);
+        presetEdited_.store(false);
         return true;
     }
     return false;
@@ -441,7 +460,7 @@ bool OpenSmackerProcessor::loadUserPresetXml(const juce::String& xml) {
 
 bool OpenSmackerProcessor::loadUserPreset(const juce::String& name) {
     const auto xml = presetStore().loadUserPreset(name);
-    return xml.isNotEmpty() && loadUserPresetXml(xml);
+    return xml.isNotEmpty() && loadUserPresetXml(name, xml);
 }
 
 std::vector<uint8_t> OpenSmackerProcessor::exportHitWav() const {

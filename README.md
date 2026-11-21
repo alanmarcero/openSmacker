@@ -12,7 +12,7 @@ openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a
 
 ## Find a sound
 
-Choose **Snare**, **Tom**, **Bell**, or **Rim** in the sidebar to set the voice. The **Factory preset** menu organizes all 84 presets into six dance styles: 24 Uplifting and 12 each of Rolling, Progressive, Psy, Tech, and Classic. **Previous**, **Next**, and **Audition hit** work on every page.
+Choose **Snare**, **Tom**, **Bell**, or **Rim** in the sidebar to set the voice. The **Preset** menu organizes all 84 factory presets into six dance styles: 24 Uplifting and 12 each of Rolling, Progressive, Psy, Tech, and Classic. It shows the name of the loaded preset, factory or your own, and adds * after you edit it. **Previous**, **Next**, and **Audition hit** work on every page.
 
 Try *Backbeat* for a snare with a short pitched shell and tight wires, *Glass Pin* for a struck FM chime, *Floor Pocket* for a low tom, or *Rim Tick* for a short side accent. Snares and rim shots fall off into noise. Bells and toms keep a pitch. Harder strikes produce a brighter attack. Factory hits sit under the output limiter. The **Hit** page shows a preview of the dry one-shot at its root pitch. The illustrated drumhead in the sidebar pulses on the host beat, rests when playback stops, and runs on an internal clock in Standalone.
 

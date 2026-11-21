@@ -11,9 +11,10 @@
 #include <memory>
 #include <vector>
 
-class OpenSmackerProcessor : public juce::AudioProcessor {
+class OpenSmackerProcessor : public juce::AudioProcessor, private juce::AudioProcessorParameter::Listener {
 public:
     OpenSmackerProcessor();
+    ~OpenSmackerProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -39,7 +40,9 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     opensmacker::core::EngineSettings currentSettings() const;
-    bool isRestoredCustomSound() const noexcept { return restoredCustom_.load(); }
+    // Empty when no preset load set a name, for example in an earlier session.
+    [[nodiscard]] juce::String presetName() const { return parameters.state.getProperty("presetName").toString(); }
+    [[nodiscard]] bool isPresetEdited() const noexcept { return presetEdited_.load(); }
     void triggerAudition() noexcept { auditionPending_.store(true); }
     [[nodiscard]] bool isSmackLockedIn() const noexcept { return displayLockedIn.load(); }
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
@@ -63,7 +66,7 @@ public:
     [[nodiscard]] bool renameUserPreset(const juce::String& oldName, const juce::String& newName);
     [[nodiscard]] bool deleteUserPreset(const juce::String& name);
     [[nodiscard]] bool loadUserPreset(const juce::String& name);
-    [[nodiscard]] bool loadUserPresetXml(const juce::String& xml);
+    [[nodiscard]] bool loadUserPresetXml(const juce::String& name, const juce::String& xml);
     [[nodiscard]] juce::String currentPresetXml();
     [[nodiscard]] suite::PresetStore presetStore() const;
 
@@ -84,6 +87,8 @@ public:
     std::atomic<bool> displayLockedIn{ false };
 
 private:
+    void parameterValueChanged(int parameterIndex, float newValue) override;
+    void parameterGestureChanged(int, bool) override {}
     [[nodiscard]] juce::ValueTree copySoundState(bool includeWav);
     void applySoundState(const juce::ValueTree& state, bool restoreWav);
 
@@ -95,7 +100,8 @@ private:
     juce::File presetDocumentsRoot_;
     std::atomic<bool> auditionPending_{ false };
     std::atomic<int> currentProgram_{ 0 };
-    std::atomic<bool> restoredCustom_{ false };
+    std::atomic<bool> presetEdited_{ false };
+    std::atomic<bool> loadingSound_{ false };
     // 0 legacy ratios, 1 articulated voices, 2 shaped one-shots. Missing on old saves.
     std::atomic<int> synthModel_{ 2 };
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};

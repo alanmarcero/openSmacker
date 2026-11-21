@@ -5,11 +5,11 @@ namespace suite {
 PresetBrowser::PresetBrowser(PresetStore store,
                              std::vector<FactoryPreset> factory,
                              std::function<void(int)> loadFactory,
-                             std::function<void(const juce::String&)> loadUser,
-                             std::function<juce::String()> captureXml,
+                             std::function<void(const juce::String&, const juce::String&)> loadUser,
+                             std::function<bool(const juce::String&)> saveUser,
                              Style style)
     : store_(std::move(store)), factory_(std::move(factory)), loadFactory_(std::move(loadFactory)),
-      loadUser_(std::move(loadUser)), captureXml_(std::move(captureXml)), style_(style) {
+      loadUser_(std::move(loadUser)), saveUser_(std::move(saveUser)), style_(style) {
     search_.setName("Preset search");
     search_.setTextToShowWhenEmpty("Search presets", style_.dim);
     search_.setColour(juce::TextEditor::backgroundColourId, style_.ink);
@@ -32,15 +32,11 @@ PresetBrowser::PresetBrowser(PresetStore store,
         rebuild();
     };
     saveBtn_.onClick = [this] {
-        if (!captureXml_)
-            return;
         const auto presetName = PresetStore::cleanName(name_.getText());
-        if (presetName.isEmpty())
+        if (presetName.isEmpty() || !saveUser_ || !saveUser_(presetName))
             return;
-        if (store_.saveUserPreset(presetName, captureXml_())) {
-            name_.setText(presetName, juce::dontSendNotification);
-            rebuild();
-        }
+        name_.setText(presetName, juce::dontSendNotification);
+        rebuild();
     };
     renameBtn_.onClick = [this] {
         const auto* selected = entry(list_.getSelectedRow());
@@ -187,7 +183,7 @@ void PresetBrowser::loadRow(int row) {
     }
     const auto xml = store_.loadUserPreset(item->name);
     if (xml.isNotEmpty() && loadUser_)
-        loadUser_(xml);
+        loadUser_(item->name, xml);
 }
 
 void PresetBrowser::toggleFavorite(int row) {
