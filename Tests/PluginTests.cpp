@@ -41,6 +41,10 @@ void checkVisibleButtonTargets(juce::Component& component, juce::Component& edit
                 INFO(box->getItemText(i));
                 CHECK(juce::GlyphArrangement::getStringWidthInt(font, box->getItemText(i)) + 38 <= rect.getWidth());
             }
+        } else if (auto* slider = dynamic_cast<juce::Slider*>(child);
+                   slider != nullptr && slider->isRotary() && slider->getTextBoxPosition() != juce::Slider::NoTextBox) {
+            const auto dial = slider->getLookAndFeel().getSliderLayout(*slider).sliderBounds;
+            CHECK(std::min(dial.getWidth(), dial.getHeight()) >= 36);
         } else if (!dynamic_cast<juce::Slider*>(child)) {
             checkVisibleButtonTargets(*child, editor, targets);
             continue;

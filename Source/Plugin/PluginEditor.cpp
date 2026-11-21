@@ -80,10 +80,10 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
         voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
         voiceButton.setTooltip("Set the voice to " + voiceButton.getButtonText() + ".");
         voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
-        addAndMakeVisible(voiceButton);
+        content_.addAndMakeVisible(voiceButton);
         pages_[i].setButtonText(pageNames[i]);
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
-        addAndMakeVisible(pages_[i]);
+        content_.addAndMakeVisible(pages_[i]);
     }
     presetBox_.setName("Preset");
     presetBox_.setTooltip("Choose a factory preset across six dance styles.");
@@ -114,7 +114,9 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
              &presetBox_, &prevPresetBtn_, &nextPresetBtn_, &auditionBtn_, &viewToggleBtn_,
              &undoBtn_, &redoBtn_, &abABtn_, &abBBtn_, &copyAtoBBtn_, &copyBtoABtn_, &presetsBtn_, &dragBtn_,
              &stagePanel_, &synthPanel_, &effectsPanel_, &performancePanel_ })
-        addAndMakeVisible(child);
+        content_.addAndMakeVisible(child);
+    addAndMakeVisible(content_);
+    content_.setBounds(0, 0, suite::kDefaultEditorWidth, suite::kDefaultEditorHeight);
     setWantsKeyboardFocus(true);
     shortcuts_ = std::make_unique<ShortcutKeys>(*this);
     addKeyListener(shortcuts_.get());
@@ -182,7 +184,7 @@ void OpenSmackerEditor::openPresets() {
         [this](const juce::String& name) { return processor_.saveUserPreset(name); },
         suiteStyle());
     browser->setSize(360, 440);
-    juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getBounds(), this);
+    juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getBounds(), &content_);
 }
 
 void OpenSmackerEditor::setAdvancedView(bool advanced) {
@@ -190,7 +192,7 @@ void OpenSmackerEditor::setAdvancedView(bool advanced) {
     effectsPanel_.setAdvancedMode(advanced);
     performancePanel_.setAdvancedMode(advanced);
     markSelected(viewToggleBtn_, advanced);
-    resized();
+    layoutContent();
 }
 
 void OpenSmackerEditor::setPage(int page) {
@@ -202,7 +204,7 @@ void OpenSmackerEditor::setPage(int page) {
     synthPanel_.setVisible(currentPage_ <= 1);
     effectsPanel_.setVisible(currentPage_ == 2);
     performancePanel_.setVisible(currentPage_ == 3);
-    resized();
+    layoutContent();
 }
 
 void OpenSmackerEditor::syncPresetBox() {
@@ -222,7 +224,7 @@ void OpenSmackerEditor::syncSuiteButtons() {
 
 void OpenSmackerEditor::timerCallback() {
     if (!artBounds_.isEmpty())
-        repaint(artBounds_);
+        content_.repaint(artBounds_);
     syncPresetBox();
     if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
         || abABtn_.getToggleState() != (processor_.abSlot() == 0))
@@ -230,12 +232,16 @@ void OpenSmackerEditor::timerCallback() {
 }
 
 void OpenSmackerEditor::paint(juce::Graphics& g) {
+    g.fillAll(theme::kInk);
+}
+
+void OpenSmackerEditor::paintContent(juce::Graphics& g) {
     g.fillAll(theme::kBackground);
     g.setColour(theme::kInk);
-    g.fillRect(0, 0, getWidth(), headerHeight);
-    g.fillRect(0, headerHeight, railWidth, getHeight() - headerHeight);
+    g.fillRect(0, 0, content_.getWidth(), headerHeight);
+    g.fillRect(0, headerHeight, railWidth, content_.getHeight() - headerHeight);
     g.setColour(theme::kPanelEdge);
-    g.drawHorizontalLine(headerHeight - 1, 0, static_cast<float>(getWidth()));
+    g.drawHorizontalLine(headerHeight - 1, 0, static_cast<float>(content_.getWidth()));
     g.setColour(theme::kText);
     g.setFont(juce::FontOptions(30.0f, juce::Font::bold));
     g.drawText("openSmacker", 18, 2, 196, 32, juce::Justification::centredLeft);
@@ -266,7 +272,19 @@ void OpenSmackerEditor::resized() {
         setSize(width, height);
         return;
     }
-    auto top = getLocalBounds().withTrimmedLeft(220).withTrimmedRight(18).withY(26).withHeight(39);
+    // One scale keeps the layout in proportion. The spare width or height stays centred.
+    const float scale = std::min(static_cast<float>(width) / suite::kDefaultEditorWidth,
+                                 static_cast<float>(height) / suite::kDefaultEditorHeight);
+    content_.setTransform(juce::AffineTransform::scale(scale).translated(
+        (static_cast<float>(width) - suite::kDefaultEditorWidth * scale) * 0.5f,
+        (static_cast<float>(height) - suite::kDefaultEditorHeight * scale) * 0.5f));
+    AudioProcessorEditor::resized();
+    if (persistEditorSize_)
+        processor_.setEditorSize(width, height);
+}
+
+void OpenSmackerEditor::layoutContent() {
+    auto top = content_.getLocalBounds().withTrimmedLeft(220).withTrimmedRight(18).withY(26).withHeight(39);
     auditionBtn_.setBounds(top.removeFromRight(159));
     top.removeFromRight(12);
     nextPresetBtn_.setBounds(top.removeFromRight(80));
@@ -275,7 +293,7 @@ void OpenSmackerEditor::resized() {
     top.removeFromRight(8);
     presetBox_.setBounds(top);
 
-    auto suite = getLocalBounds().withTrimmedLeft(16).withTrimmedRight(18).withY(82).withHeight(36);
+    auto suite = content_.getLocalBounds().withTrimmedLeft(16).withTrimmedRight(18).withY(82).withHeight(36);
     auto take = [&suite](juce::Component& component, int slotWidth) {
         component.setBounds(suite.removeFromLeft(slotWidth));
         suite.removeFromLeft(6);
@@ -292,7 +310,7 @@ void OpenSmackerEditor::resized() {
     suite.removeFromLeft(8);
     dragBtn_.setBounds(suite.removeFromLeft(108));
 
-    auto rail = getLocalBounds().withTrimmedTop(headerHeight).withWidth(railWidth).reduced(16, 8);
+    auto rail = content_.getLocalBounds().withTrimmedTop(headerHeight).withWidth(railWidth).reduced(16, 8);
     versionBounds_ = rail.removeFromBottom(20);
     rail.removeFromBottom(6);
     viewToggleBtn_.setBounds(rail.removeFromBottom(40));
@@ -313,7 +331,7 @@ void OpenSmackerEditor::resized() {
         rail.removeFromTop(6);
     }
 
-    auto area = getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(railWidth).reduced(14);
+    auto area = content_.getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(railWidth).reduced(14);
     if (currentPage_ == 0) {
         stagePanel_.setBounds(area.removeFromTop(88));
         area.removeFromTop(6);
@@ -321,7 +339,4 @@ void OpenSmackerEditor::resized() {
     synthPanel_.setBounds(area);
     effectsPanel_.setBounds(area);
     performancePanel_.setBounds(area);
-    AudioProcessorEditor::resized();
-    if (persistEditorSize_)
-        processor_.setEditorSize(getWidth(), getHeight());
 }

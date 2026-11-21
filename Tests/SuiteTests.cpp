@@ -21,6 +21,16 @@ void gestureTo(OpenSmackerProcessor& processor, const char* id, float value) {
     parameter->endChangeGesture();
 }
 
+juce::TextButton* findButton(juce::Component& parent, const juce::String& text) {
+    for (auto* child : parent.getChildren()) {
+        if (auto* button = dynamic_cast<juce::TextButton*>(child); button != nullptr && button->getButtonText() == text)
+            return button;
+        if (auto* found = findButton(*child, text))
+            return found;
+    }
+    return nullptr;
+}
+
 bool wavHasEnergy(const std::vector<uint8_t>& wav) {
     if (wav.size() < 80 || std::memcmp(wav.data(), "RIFF", 4) != 0 || std::memcmp(wav.data() + 8, "WAVE", 4) != 0)
         return false;
@@ -96,12 +106,9 @@ TEST_CASE("Editor shortcuts and buttons undo parameter edits", "[plugin][suite][
     REQUIRE(editor->keyPressed(redoKey));
     CHECK(normalised(processor, opensmacker::params::kStereoWidth) == Catch::Approx(0.15f));
 
-    for (auto* child : editor->getChildren()) {
-        if (auto* button = dynamic_cast<juce::TextButton*>(child); button != nullptr && button->getButtonText() == "Undo") {
-            button->onClick();
-            break;
-        }
-    }
+    auto* undoButton = findButton(*editor, "Undo");
+    REQUIRE(undoButton != nullptr);
+    undoButton->onClick();
     CHECK(normalised(processor, opensmacker::params::kStereoWidth) == Catch::Approx(original));
 }
 
@@ -163,7 +170,7 @@ TEST_CASE("Each A/B slot keeps its own undo history", "[plugin][suite][ab][undo]
     CHECK_FALSE(processor.canRedo());
 }
 
-TEST_CASE("Editor size is resizable, unlocked, and restored with the session", "[plugin][suite][editor]") {
+TEST_CASE("Editor size is resizable, scales its layout evenly, and restores with the session", "[plugin][suite][editor]") {
     juce::ScopedJuceInitialiser_GUI gui;
     OpenSmackerProcessor processor;
     processor.setEditorSize(1480, 900);
@@ -175,13 +182,24 @@ TEST_CASE("Editor size is resizable, unlocked, and restored with the session", "
     CHECK(constrainer->getFixedAspectRatio() == 0.0);
     CHECK(constrainer->getMinimumWidth() == suite::kMinEditorWidth);
     CHECK(constrainer->getMinimumHeight() == suite::kMinEditorHeight);
-    CHECK(constrainer->getMinimumWidth() >= 1000);
-    CHECK(constrainer->getMinimumHeight() >= 700);
+    CHECK(constrainer->getMinimumWidth() <= suite::kDefaultEditorWidth * 3 / 4);
+    CHECK(constrainer->getMaximumWidth() >= suite::kDefaultEditorWidth * 3 / 2);
+    CHECK(constrainer->getMaximumHeight() >= suite::kDefaultEditorHeight * 3 / 2);
     editor->setSize(1600, 860);
     CHECK(editor->getWidth() == 1600);
     CHECK(editor->getHeight() == 860);
     CHECK(processor.editorWidth() == 1600);
     CHECK(processor.editorHeight() == 860);
+
+    // 860 / 752 is the smaller ratio, so the layout scales by it and centres across the width.
+    const float scale = 860.0f / static_cast<float>(suite::kDefaultEditorHeight);
+    auto* presets = findButton(*editor, "Presets");
+    REQUIRE(presets != nullptr);
+    const auto area = editor->getLocalArea(presets, presets->getLocalBounds().toFloat());
+    CHECK(area.getWidth() == Catch::Approx(static_cast<float>(presets->getWidth()) * scale).margin(1.0f));
+    CHECK(area.getHeight() == Catch::Approx(static_cast<float>(presets->getHeight()) * scale).margin(1.0f));
+    const float leftMargin = (1600.0f - static_cast<float>(suite::kDefaultEditorWidth) * scale) * 0.5f;
+    CHECK(area.getX() == Catch::Approx(leftMargin + static_cast<float>(presets->getX()) * scale).margin(1.0f));
 
     std::vector<juce::Rectangle<int>> targets;
     for (auto* child : editor->getChildren())

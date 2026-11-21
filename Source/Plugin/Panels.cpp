@@ -200,22 +200,28 @@ void ParameterCard::resized() {
 
 SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     : voiceCard_(processor, "Body & tuning", presets::Section::VoiceTuning, theme::kApricot),
+      detailCard_(processor, "Body detail", presets::Section::VoiceTuning, theme::kApricot),
       transientCard_(processor, "Transient strike", presets::Section::Transient, theme::kIce),
       envelopeCard_(processor, "Amplitude envelope", presets::Section::VoiceTuning, theme::kLilac, false),
       outputCard_(processor, "Output", presets::Section::SpaceOutput, theme::kLilac),
       preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 16> voice{
+    const std::array<std::pair<const char*, const char*>, 6> voice{
         std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" },
-        { kToneDecay, "Body decay" }, { kTonePitchEnv, "Pitch sweep" }, { kToneLevel, "Body level" },
-        { kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" }, { kShellSpread, "Mode spread" },
-        { kTonePitchDecay, "Pitch decay" }, { kToneFine, "Fine tune" },
-        { kBodyHPF, "High-pass" }, { kBodyLPF, "Low-pass" }, { kBodyPan, "Pan" }, { kLockPitch, "Lock pitch" }
+        { kToneDecay, "Body decay" }, { kTonePitchEnv, "Pitch sweep" }, { kToneLevel, "Body level" }
     };
     for (const auto& [id, title] : voice)
         voiceCard_.addParameter(id, title);
-    voiceCard_.setRows({ 3, 3 }, { 3, 7, 6 });
+    voiceCard_.setRows({ 3, 3 });
+    const std::array<std::pair<const char*, const char*>, 10> detail{
+        std::pair{ kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" }, { kShellSpread, "Mode spread" },
+        { kTonePitchDecay, "Pitch decay" }, { kToneFine, "Fine tune" }, { kLockPitch, "Lock pitch" },
+        { kBodyHPF, "High-pass" }, { kBodyLPF, "Low-pass" }, { kBodyPan, "Pan" }
+    };
+    for (const auto& [id, title] : detail)
+        detailCard_.addParameter(id, title);
+    detailCard_.setRows({ 4, 3, 3 });
     envelopeCard_.addParameter(kAmpEnabled, "MIDI gate");
     envelopeCard_.addParameter(kAmpAttack, "Attack");
     envelopeCard_.addParameter(kAmpDecay, "Decay");
@@ -230,7 +236,7 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     transientCard_.addParameter(kTransientHPF, "Transient HPF");
     transientCard_.addParameter(kTransientLPF, "Transient LPF");
     transientCard_.addParameter(kTransientPan, "Transient Pan");
-    transientCard_.setRows({ 1, 2 }, { 1, 3, 3 });
+    transientCard_.setRows({ 1, 2 }, { 4, 3 });
 
     const std::array<std::pair<const char*, const char*>, 6> pre{
         std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spacing" }, { kPreDecay, "Decay" },
@@ -266,6 +272,7 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f });
     addAndMakeVisible(outputCard_);
 
+    addAndMakeVisible(detailCard_);
     addAndMakeVisible(preStrikeCard_);
     addAndMakeVisible(wiresCard_);
     setPage(0);
@@ -277,6 +284,7 @@ void SmackSynthPanel::setPage(int page) {
     envelopeCard_.setVisible(page_ == 0);
     transientCard_.setVisible(page_ == 0);
     outputCard_.setVisible(page_ == 0);
+    detailCard_.setVisible(page_ == 1 && advancedMode_);
     preStrikeCard_.setVisible(page_ == 1);
     wiresCard_.setVisible(page_ == 1);
     resized();
@@ -285,6 +293,7 @@ void SmackSynthPanel::setPage(int page) {
 void SmackSynthPanel::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
     voiceCard_.setAdvancedMode(advanced);
+    detailCard_.setVisible(page_ == 1 && advanced);
     transientCard_.setAdvancedMode(advanced);
     outputCard_.setAdvancedMode(advanced);
     preStrikeCard_.setAdvancedMode(advanced);
@@ -301,10 +310,14 @@ void SmackSynthPanel::resized() {
         area.removeFromBottom(gap);
         envelopeCard_.setBounds(area.removeFromBottom(120));
         area.removeFromBottom(gap);
-        voiceCard_.setBounds(area.removeFromLeft(area.getWidth() * 64 / 100));
+        voiceCard_.setBounds(area.removeFromLeft((area.getWidth() - 8) / 2));
         area.removeFromLeft(8);
         transientCard_.setBounds(area);
         return;
+    }
+    if (advancedMode_) {
+        detailCard_.setBounds(area.removeFromLeft((area.getWidth() - 10) / 2));
+        area.removeFromLeft(10);
     }
     preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * 4 / 10));
     area.removeFromTop(10);

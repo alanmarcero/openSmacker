@@ -63,6 +63,7 @@ private:
     bool advancedMode_ = false;
     int page_ = 0;
     ParameterCard voiceCard_;
+    ParameterCard detailCard_;
     ParameterCard transientCard_;
     ParameterCard envelopeCard_;
     ParameterCard outputCard_;

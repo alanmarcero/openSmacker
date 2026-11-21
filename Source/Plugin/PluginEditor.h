@@ -19,6 +19,18 @@ public:
 
 private:
     class ShortcutKeys;
+    // Holds the layout at the design size. The editor scales it to the window.
+    class Content : public juce::Component {
+    public:
+        explicit Content(OpenSmackerEditor& editor) : editor_(editor) {}
+        void paint(juce::Graphics& g) override { editor_.paintContent(g); }
+        void resized() override { editor_.layoutContent(); }
+    private:
+        OpenSmackerEditor& editor_;
+    };
+
+    void paintContent(juce::Graphics& g);
+    void layoutContent();
     void timerCallback() override;
     bool handleShortcut(const juce::KeyPress& key);
     void syncPresetBox();
@@ -28,6 +40,7 @@ private:
 
     OpenSmackerProcessor& processor_;
     opensmacker::ui::EdmLookAndFeel lookAndFeel_;
+    Content content_{ *this };
     std::unique_ptr<juce::Drawable> membrane_;
     std::array<juce::TextButton, 4> voices_, pages_;
     std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
