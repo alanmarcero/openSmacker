@@ -34,7 +34,7 @@ On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced c
 
 The window resizes freely from 70% of its default size, and the layout scales evenly with it. The project remembers the size. **Undo** and **Redo** step through parameter edits, including Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. **A** and **B** keep two copies of the sound; **A>B** and **B>A** copy between them. **Presets** lists the factory bank and your own sounds, with search and favorites. Save, rename, and delete write user presets to Documents/Alan Marcero/openSmacker/Presets. Before Save replaces a preset with the same name, or Delete removes one, the button asks again; click it a second time within three seconds to confirm. Factory presets stay read-only.
 
-The MIDI page also has editable voice zones. The default ranges are 36–47 for snare, 48–59 for tom, 60–71 for bell, and 72–84 for rim. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign CCs to each layer. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
+The MIDI page also has editable voice zones. The default ranges are C2 to B2 for snare, C3 to B3 for tom, C4 to B4 for bell, and C5 to C6 for rim. Zone edges and the roll note show note names and accept typed names such as C#4. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign a CC to each layer by typing its number or with **Learn**, which takes the next controller the plugin receives. **Off** turns a slot off. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
 
 ## Screenshots
 

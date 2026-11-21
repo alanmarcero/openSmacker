@@ -84,6 +84,8 @@ public:
     std::atomic<float> displaySmackProgress{ 1.0f };
     std::atomic<float> displayVelocity{ 1.0f };
     std::atomic<uint32_t> displayTriggerCount{ 0 };
+    std::atomic<int> displayLastController{ 0 };
+    std::atomic<uint32_t> displayControllerCount{ 0 };
     std::atomic<bool> displayLockedIn{ false };
 
 private:

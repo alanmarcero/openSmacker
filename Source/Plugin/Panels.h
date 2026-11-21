@@ -34,6 +34,7 @@ public:
     void addParameter(const juce::String& id, const juce::String& title);
     void addDualEq(const juce::String& freqId, const juce::String& dbId,
                    const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
+    void addLearn(const juce::String& id, const juce::String& title);
     void setRows(std::vector<int> basic, std::vector<int> advanced = {});
     void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);

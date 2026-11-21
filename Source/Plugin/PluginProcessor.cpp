@@ -141,6 +141,11 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                 .value = msg.getControllerValue(),
                 .channel = msg.getChannel()
             });
+            // Hosts send channel mode messages (120 and up) on stop, so Learn ignores them.
+            if (msg.getControllerNumber() < 120) {
+                displayLastController.store(msg.getControllerNumber());
+                displayControllerCount.fetch_add(1);
+            }
         } else if (msg.isChannelPressure()) {
             midiPressureEvents_.push_back({
                 .sampleOffset = meta.samplePosition,

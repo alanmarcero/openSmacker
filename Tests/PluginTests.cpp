@@ -343,6 +343,55 @@ TEST_CASE("Sessions from before per-card locks keep the locks their cards showed
     CHECK_FALSE(reopened.isSectionLocked(Section::BodyDetail));
 }
 
+TEST_CASE("The MIDI page shows note names, Off and steppers, and Learn sets a CC slot", "[plugin][gui][midi]") {
+    using namespace opensmacker::params;
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000.0, 512);
+    auto* snareLow = processor.parameters.getParameter(kSnareZoneLow);
+    CHECK(snareLow->getCurrentValueAsText() == "C2");
+    CHECK(snareLow->convertFrom0to1(snareLow->getValueForText("C#4")) == 61.0f);
+    CHECK(snareLow->convertFrom0to1(snareLow->getValueForText("Db2")) == 37.0f);
+    CHECK(snareLow->convertFrom0to1(snareLow->getValueForText("40")) == 40.0f);
+    CHECK(processor.parameters.getParameter(kRollNote)->getCurrentValueAsText() == "A4");
+    auto* bodyCc = processor.parameters.getParameter(kMidiCcBody);
+    bodyCc->setValueNotifyingHost(0.0f);
+    CHECK(bodyCc->getCurrentValueAsText() == "Off");
+    CHECK(bodyCc->getValueForText("Off") == 0.0f);
+
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    const auto slider = [&editor](juce::String name) {
+        return findVisible<juce::Slider>(*editor, [name](const auto& s) { return s.getName() == name; });
+    };
+    const auto button = [&editor](juce::String text) {
+        return findVisible<juce::TextButton>(*editor, [text](const auto& b) { return b.getButtonText() == text; });
+    };
+    button("Advanced controls")->onClick();
+    REQUIRE(slider("Octave") != nullptr);
+    CHECK(slider("Octave")->getSliderStyle() == juce::Slider::IncDecButtons);
+    button("Layers")->onClick();
+    REQUIRE(slider("Hits") != nullptr);
+    CHECK(slider("Hits")->getSliderStyle() == juce::Slider::IncDecButtons);
+    button("MIDI")->onClick();
+    REQUIRE(slider("Accent Every") != nullptr);
+    CHECK(slider("Accent Every")->getSliderStyle() == juce::Slider::IncDecButtons);
+    CHECK(slider("Snare Low")->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag);
+
+    auto* learn = findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getTitle() == "Learn Body CC"; });
+    REQUIRE(learn != nullptr);
+    learn->onClick();
+    CHECK(learn->getButtonText() == "Listening");
+    juce::AudioBuffer<float> buffer(2, 512);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::controllerEvent(1, 33, 90), 0);
+    processor.processBlock(buffer, midi);
+    auto* learnTimer = dynamic_cast<juce::Timer*>(learn->getParentComponent());
+    REQUIRE(learnTimer != nullptr);
+    learnTimer->timerCallback();
+    CHECK(processor.currentSettings().midiCcForBody == 33);
+    CHECK(learn->getButtonText() == "Learn");
+}
+
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
     juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;

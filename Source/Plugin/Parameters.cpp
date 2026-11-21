@@ -73,6 +73,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
                 return std::abs(amount);
             return amount;
         });
+    const auto noteName = juce::AudioParameterIntAttributes()
+        .withStringFromValueFunction([](int note, int) { return juce::MidiMessage::getMidiNoteName(note, true, true, 4); })
+        .withValueFromStringFunction([](const juce::String& text) {
+            const auto name = text.trim().toUpperCase();
+            const int letter = juce::String("C D EF G A B").indexOfChar(name[0]);
+            if (letter < 0)
+                return name.getIntValue();
+            const bool sharp = name[1] == '#';
+            const bool flat = name[1] == 'B';
+            const int octave = name.substring(sharp || flat ? 2 : 1).getIntValue();
+            return 12 * (octave + 1) + letter + (sharp ? 1 : 0) - (flat ? 1 : 0);
+        });
+    const auto controller = juce::AudioParameterIntAttributes().withStringFromValueFunction([](int number, int) {
+        if (number == 0)
+            return juce::String("Off");
+        return juce::String(number);
+    });
 
     // Pre-Strike Flam / Drag Roll
     params.push_back(std::make_unique<juce::AudioParameterInt>(
@@ -263,21 +280,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kKeyZonesEnabled, 1 }, "MIDI Voice Zones", false));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare Zone Low", 0, 127, 36));
+        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare Zone Low", 0, 127, 36, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare Zone High", 0, 127, 47));
+        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare Zone High", 0, 127, 47, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneLow, 1 }, "Tom Zone Low", 0, 127, 48));
+        juce::ParameterID{ kTomZoneLow, 1 }, "Tom Zone Low", 0, 127, 48, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom Zone High", 0, 127, 59));
+        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom Zone High", 0, 127, 59, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneLow, 1 }, "Bell Zone Low", 0, 127, 60));
+        juce::ParameterID{ kBellZoneLow, 1 }, "Bell Zone Low", 0, 127, 60, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell Zone High", 0, 127, 71));
+        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell Zone High", 0, 127, 71, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneLow, 1 }, "Rim Zone Low", 0, 127, 72));
+        juce::ParameterID{ kRimZoneLow, 1 }, "Rim Zone Low", 0, 127, 72, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim Zone High", 0, 127, 84));
+        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim Zone High", 0, 127, 84, noteName));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kBodyVelocityDepth, 1 }, "Body Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -304,13 +321,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kRollAccentEvery, 1 }, "Accent Every", 1, 16, 4));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRollNote, 1 }, "Roll Note", 0, 127, 69));
+        juce::ParameterID{ kRollNote, 1 }, "Roll Note", 0, 127, 69, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kMidiCcBody, 1 }, "Body CC", 0, 127, 20));
+        juce::ParameterID{ kMidiCcBody, 1 }, "Body CC", 0, 127, 20, controller));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kMidiCcWire, 1 }, "Wire CC", 0, 127, 21));
+        juce::ParameterID{ kMidiCcWire, 1 }, "Wire CC", 0, 127, 21, controller));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kMidiCcTransient, 1 }, "Transient CC", 0, 127, 22));
+        juce::ParameterID{ kMidiCcTransient, 1 }, "Transient CC", 0, 127, 22, controller));
 
     return { params.begin(), params.end() };
 }

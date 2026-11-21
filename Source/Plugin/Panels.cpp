@@ -9,6 +9,55 @@
 
 namespace opensmacker::ui {
 
+namespace {
+// Sets a CC slot from the next controller message the plugin receives.
+class LearnControl : public juce::Component, public juce::Timer {
+public:
+    LearnControl(OpenSmackerProcessor& processor, juce::RangedAudioParameter& slot, const juce::String& title)
+        : processor_(processor), slot_(slot) {
+        button_.setButtonText("Learn");
+        button_.setTitle("Learn " + title);
+        button_.setTooltip("Click, then move a hardware control to set " + title + ". Click again to cancel.");
+        button_.setColour(juce::TextButton::buttonOnColourId, theme::kIce);
+        button_.setColour(juce::TextButton::textColourOnId, theme::kInk);
+        button_.onClick = [this] {
+            if (isTimerRunning()) {
+                stopTimer();
+                button_.setToggleState(false, juce::dontSendNotification);
+                button_.setButtonText("Learn");
+                return;
+            }
+            armedCount_ = processor_.displayControllerCount.load();
+            button_.setToggleState(true, juce::dontSendNotification);
+            button_.setButtonText("Listening");
+            startTimerHz(20);
+        };
+        addAndMakeVisible(button_);
+    }
+
+    void resized() override {
+        button_.setBounds(getLocalBounds().withSizeKeepingCentre(std::min(160, getWidth() - 8), 40));
+    }
+
+    void timerCallback() override {
+        if (processor_.displayControllerCount.load() == armedCount_)
+            return;
+        slot_.beginChangeGesture();
+        slot_.setValueNotifyingHost(slot_.convertTo0to1(static_cast<float>(processor_.displayLastController.load())));
+        slot_.endChangeGesture();
+        stopTimer();
+        button_.setToggleState(false, juce::dontSendNotification);
+        button_.setButtonText("Learn");
+    }
+
+private:
+    OpenSmackerProcessor& processor_;
+    juce::RangedAudioParameter& slot_;
+    juce::TextButton button_;
+    uint32_t armedCount_ = 0;
+};
+} // namespace
+
 SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor) : processor_(processor) {
     startTimerHz(12);
 }
@@ -109,7 +158,8 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     } else if (dynamic_cast<juce::AudioParameterBool*>(parameter) != nullptr) {
         component = std::make_unique<Toggle>(state, id, title, accent_);
     } else {
-        component = std::make_unique<Knob>(state, id, title, accent_);
+        const auto* integer = dynamic_cast<juce::AudioParameterInt*>(parameter);
+        component = std::make_unique<Knob>(state, id, title, accent_, integer != nullptr && integer->getRange().getLength() <= 16);
     }
     const auto tip = id == params::kAmpEnabled
         ? juce::String("Play a one-shot or sustain until the matching MIDI note is released.")
@@ -127,6 +177,12 @@ void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& db
     knob->setTooltip(tip);
     addAndMakeVisible(*knob);
     controls_.push_back(std::move(knob));
+}
+
+void ParameterCard::addLearn(const juce::String& id, const juce::String& title) {
+    auto learn = std::make_unique<LearnControl>(processor_, *processor_.parameters.getParameter(id), title);
+    addAndMakeVisible(*learn);
+    controls_.push_back(std::move(learn));
 }
 
 void ParameterCard::setRows(std::vector<int> basic, std::vector<int> advanced) {
@@ -397,7 +453,10 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
     };
     for (const auto& [id, title] : roll)
         rollCard_.addParameter(id, title);
-    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3 });
+    rollCard_.addLearn(kMidiCcBody, "Body CC");
+    rollCard_.addLearn(kMidiCcWire, "Wire CC");
+    rollCard_.addLearn(kMidiCcTransient, "Transient CC");
+    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3, 3 });
 
     addAndMakeVisible(zonesCard_);
     addAndMakeVisible(responseCard_);

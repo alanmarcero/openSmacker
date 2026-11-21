@@ -9,7 +9,7 @@ using Apvts = juce::AudioProcessorValueTreeState;
 
 class Knob : public juce::Component {
 public:
-    Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent);
+    Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper = false);
     void resized() override;
     void bind(Apvts& state, const juce::String& parameterId);
     void setTooltip(const juce::String& text);

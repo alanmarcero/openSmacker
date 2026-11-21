@@ -5,8 +5,8 @@
 
 namespace opensmacker::ui {
 
-Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
-    slider_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper) {
+    slider_.setSliderStyle(stepper ? juce::Slider::IncDecButtons : juce::Slider::RotaryHorizontalVerticalDrag);
     slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
     slider_.setWantsKeyboardFocus(true);
     slider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
@@ -31,6 +31,13 @@ void Knob::bind(Apvts& state, const juce::String& parameterId) {
 
 void Knob::resized() {
     auto area = getLocalBounds();
+    if (slider_.getSliderStyle() == juce::Slider::IncDecButtons) {
+        area = area.withSizeKeepingCentre(std::min(area.getWidth(), 168), std::min(area.getHeight(), 62));
+        title_.setBounds(area.removeFromTop(20));
+        slider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, area.getWidth() - 96, area.getHeight());
+        slider_.setBounds(area);
+        return;
+    }
     area = area.withSizeKeepingCentre(area.getWidth(), std::min(106, area.getHeight()));
     const int labelHeight = area.getHeight() < 86 ? 15 : 18;
     const int boxHeight = area.getHeight() < 86 ? 15 : 17;
