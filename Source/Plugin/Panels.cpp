@@ -17,27 +17,36 @@ void setTooltipDeep(juce::Component& component, const juce::String& text) {
     std::ranges::for_each(component.getChildren(), [&text](juce::Component* child) { setTooltipDeep(*child, text); });
 }
 
+// Each step sets its parameter from the next controller number or note the source reports.
 class LearnControl : public juce::Component, public juce::Timer {
 public:
-    LearnControl(OpenSmackerProcessor& processor, juce::RangedAudioParameter& slot)
-        : processor_(processor), slot_(slot, nullptr) {
-        const auto title = slot.getName(64);
+    struct Step {
+        juce::RangedAudioParameter& parameter;
+        const char* prompt;
+    };
+
+    LearnControl(const std::atomic<int>& value, const std::atomic<uint32_t>& count, std::initializer_list<Step> steps,
+                 const juce::String& title, const juce::String& tooltip)
+        : value_(value), count_(count) {
+        std::ranges::for_each(steps, [this](const Step& step) {
+            targets_.push_back({ std::make_unique<juce::ParameterAttachment>(step.parameter, nullptr), step.prompt });
+        });
         button_.setButtonText("Learn");
-        button_.setTitle("Learn " + title);
-        button_.setTooltip("Click, then move a hardware control to set " + title + ". Click again to cancel.");
+        button_.setTitle(title);
+        button_.setTooltip(tooltip);
         button_.setColour(juce::TextButton::buttonOnColourId, theme::kIce);
         button_.setColour(juce::TextButton::textColourOnId, theme::kInk);
         button_.onClick = [this] {
             if (isTimerRunning()) {
-                stopTimer();
-                button_.setToggleState(false, juce::dontSendNotification);
-                button_.setButtonText("Learn");
+                stop();
                 return;
             }
-            armedCount_ = processor_.displayControllerCount.load();
+            nextTarget_ = 0;
+            seenCount_ = count_.load();
+            ticksLeft_ = kTimeoutTicks;
             button_.setToggleState(true, juce::dontSendNotification);
-            button_.setButtonText("Listening");
-            startTimerHz(20);
+            button_.setButtonText(targets_.front().prompt);
+            startTimerHz(kTicksPerSecond);
         };
         addAndMakeVisible(button_);
     }
@@ -46,20 +55,51 @@ public:
         button_.setBounds(getLocalBounds().withSizeKeepingCentre(std::min(160, getWidth() - 8), 40));
     }
 
+    bool keyPressed(const juce::KeyPress& key) override {
+        if (key != juce::KeyPress::escapeKey || !isTimerRunning())
+            return false;
+        stop();
+        return true;
+    }
+
     void timerCallback() override {
-        if (processor_.displayControllerCount.load() == armedCount_)
+        const auto count = count_.load();
+        if (count == seenCount_) {
+            if (--ticksLeft_ <= 0)
+                stop();
             return;
-        slot_.setValueAsCompleteGesture(static_cast<float>(processor_.displayLastController.load()));
+        }
+        seenCount_ = count;
+        ticksLeft_ = kTimeoutTicks;
+        targets_[nextTarget_].attachment->setValueAsCompleteGesture(static_cast<float>(value_.load()));
+        if (++nextTarget_ == targets_.size()) {
+            stop();
+            return;
+        }
+        button_.setButtonText(targets_[nextTarget_].prompt);
+    }
+
+private:
+    struct Target {
+        std::unique_ptr<juce::ParameterAttachment> attachment;
+        const char* prompt;
+    };
+    static constexpr int kTicksPerSecond = 20;
+    static constexpr int kTimeoutTicks = 10 * kTicksPerSecond;
+
+    void stop() {
         stopTimer();
         button_.setToggleState(false, juce::dontSendNotification);
         button_.setButtonText("Learn");
     }
 
-private:
-    OpenSmackerProcessor& processor_;
-    juce::ParameterAttachment slot_;
+    const std::atomic<int>& value_;
+    const std::atomic<uint32_t>& count_;
+    std::vector<Target> targets_;
     juce::TextButton button_;
-    uint32_t armedCount_ = 0;
+    uint32_t seenCount_ = 0;
+    size_t nextTarget_ = 0;
+    int ticksLeft_ = 0;
 };
 } // namespace
 
@@ -370,8 +410,10 @@ void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& db
     activity_.push_back({ controls_.back().get(), dbId, tip, {} });
 }
 
-void ParameterCard::addControl(std::unique_ptr<juce::Component> control) {
+void ParameterCard::addControl(std::unique_ptr<juce::Component> control, const juce::String& id, const juce::String& tip) {
     addAndMakeVisible(*control);
+    if (id.isNotEmpty())
+        activity_.push_back({ control.get(), id, tip, {} });
     controls_.push_back(std::move(control));
 }
 
@@ -649,15 +691,27 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
         { kMidiMode, "MIDI pitch", "Fixed plays the root note. Note tracking plays the pitch of each MIDI note." },
         { kKeyZonesEnabled, "Key zones", "Each note range plays its own voice in place of the Voice setting." },
         { kSnareZoneLow, "Snare low", "Lowest note that plays the snare." },
-        { kSnareZoneHigh, "Snare high", "Highest note that plays the snare." },
         { kTomZoneLow, "Tom low", "Lowest note that plays the tom." },
-        { kTomZoneHigh, "Tom high", "Highest note that plays the tom." },
         { kBellZoneLow, "Bell low", "Lowest note that plays the bell." },
-        { kBellZoneHigh, "Bell high", "Highest note that plays the bell." },
         { kRimZoneLow, "Rim low", "Lowest note that plays the rim." },
+        { kSnareZoneHigh, "Snare high", "Highest note that plays the snare." },
+        { kTomZoneHigh, "Tom high", "Highest note that plays the tom." },
+        { kBellZoneHigh, "Bell high", "Highest note that plays the bell." },
         { kRimZoneHigh, "Rim high", "Highest note that plays the rim." },
     });
-    zonesCard_.setRows({ 2, 4, 4 });
+    const juce::String cancelHint = " Click again or press Escape to cancel.";
+    const auto addZoneLearn = [this, &processor, &cancelHint](const char* voice, const char* lowId, const char* highId) {
+        const auto tip = juce::String("Click, then play the lowest and the highest note of the ") + voice + " zone." + cancelHint;
+        zonesCard_.addControl(std::make_unique<LearnControl>(processor.displayLastNoteOn, processor.displayNoteOnCount,
+            std::initializer_list<LearnControl::Step>{ { *processor.parameters.getParameter(lowId), "Play low" },
+                                                       { *processor.parameters.getParameter(highId), "Play high" } },
+            juce::String("Learn ") + voice + " zone", tip), lowId, tip);
+    };
+    addZoneLearn("snare", kSnareZoneLow, kSnareZoneHigh);
+    addZoneLearn("tom", kTomZoneLow, kTomZoneHigh);
+    addZoneLearn("bell", kBellZoneLow, kBellZoneHigh);
+    addZoneLearn("rim", kRimZoneLow, kRimZoneHigh);
+    zonesCard_.setRows({ 2, 4, 4, 4 });
 
     responseCard_.addParameters({
         { kBodyVelocityDepth, "Body velocity", "How much note velocity changes the body level." },
@@ -681,10 +735,20 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
         { kMidiCcWire, "Wire CC", "Controller number that sets the wire level. Off ignores controllers." },
         { kMidiCcTransient, "Strike CC", "Controller number that sets the strike level. Off ignores controllers." },
     });
-    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcBody)));
-    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcWire)));
-    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcTransient)));
-    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3, 3 });
+    const auto rollNoteTip = juce::String("Click, then play the note the roll should use.") + cancelHint;
+    rollCard_.addControl(std::make_unique<LearnControl>(processor.displayLastNoteOn, processor.displayNoteOnCount,
+        std::initializer_list<LearnControl::Step>{ { *processor.parameters.getParameter(kRollNote), "Listening" } },
+        "Learn roll note", rollNoteTip), kRollNote, rollNoteTip);
+    const auto addControllerLearn = [this, &processor, &cancelHint](const char* id) {
+        auto& slot = *processor.parameters.getParameter(id);
+        const auto tip = "Click, then move a hardware control to set " + slot.getName(64) + "." + cancelHint;
+        rollCard_.addControl(std::make_unique<LearnControl>(processor.displayLastController, processor.displayControllerCount,
+            std::initializer_list<LearnControl::Step>{ { slot, "Listening" } }, "Learn " + slot.getName(64), tip), id, tip);
+    };
+    addControllerLearn(kMidiCcBody);
+    addControllerLearn(kMidiCcWire);
+    addControllerLearn(kMidiCcTransient);
+    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 1, 4, 4 });
 
     addAndMakeVisible(zonesCard_);
     addAndMakeVisible(responseCard_);
@@ -704,7 +768,7 @@ void PerformancePanel::resized() {
     const int gap = 8;
     rollCard_.setBounds(area.removeFromRight(area.getWidth() * 42 / 100));
     area.removeFromRight(gap);
-    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 55 / 100));
+    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 62 / 100));
     area.removeFromTop(gap);
     responseCard_.setBounds(area);
 }

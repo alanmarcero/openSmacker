@@ -121,6 +121,8 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         const auto msg = meta.getMessage();
         if (msg.isNoteOn()) {
             const float vel = msg.getFloatVelocity();
+            displayLastNoteOn.store(msg.getNoteNumber());
+            displayNoteOnCount.fetch_add(1);
             midiTriggers_.push_back({
                 .sampleOffset = meta.samplePosition,
                 .noteNumber = msg.getNoteNumber(),

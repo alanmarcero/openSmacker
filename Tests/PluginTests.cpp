@@ -417,6 +417,72 @@ TEST_CASE("The MIDI page shows note names, Off and steppers, and Learn sets a CC
     CHECK(learn->getButtonText() == "Learn");
 }
 
+TEST_CASE("Learn sets a zone from two notes and the roll note from one, and cancels", "[plugin][gui][midi]") {
+    using namespace opensmacker::params;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000.0, 512);
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getButtonText() == "Advanced controls"; })->onClick();
+    findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getButtonText() == "MIDI"; })->onClick();
+    const auto learnButton = [&editor](juce::String title) {
+        return findVisible<juce::TextButton>(*editor, [title](const auto& b) { return b.getTitle() == title; });
+    };
+    juce::AudioBuffer<float> buffer(2, 512);
+    const auto playNote = [&processor, &buffer](int note) {
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(100)), 0);
+        processor.processBlock(buffer, midi);
+    };
+    const auto value = [&processor](const char* id) { return processor.parameters.getRawParameterValue(id)->load(); };
+
+    auto* snare = learnButton("Learn snare zone");
+    REQUIRE(snare != nullptr);
+    auto* snareTimer = dynamic_cast<juce::Timer*>(snare->getParentComponent());
+    REQUIRE(snareTimer != nullptr);
+    snare->findParentComponentOfClass<opensmacker::ui::ParameterCard>()->dimInactiveControls();
+    CHECK(snare->getParentComponent()->getAlpha() < 0.5f);
+    snare->onClick();
+    CHECK(snare->getButtonText() == "Play low");
+    playNote(40);
+    snareTimer->timerCallback();
+    CHECK(value(kSnareZoneLow) == 40.0f);
+    CHECK(snare->getButtonText() == "Play high");
+    playNote(52);
+    snareTimer->timerCallback();
+    CHECK(value(kSnareZoneHigh) == 52.0f);
+    CHECK(snare->getButtonText() == "Learn");
+    REQUIRE(processor.undo());
+    CHECK(value(kSnareZoneHigh) == 47.0f);
+    CHECK(value(kSnareZoneLow) == 40.0f);
+    REQUIRE(processor.undo());
+    CHECK(value(kSnareZoneLow) == 36.0f);
+
+    auto* rollNote = learnButton("Learn roll note");
+    REQUIRE(rollNote != nullptr);
+    auto* rollTimer = dynamic_cast<juce::Timer*>(rollNote->getParentComponent());
+    REQUIRE(rollTimer != nullptr);
+    rollNote->onClick();
+    CHECK(rollNote->getButtonText() == "Listening");
+    playNote(62);
+    rollTimer->timerCallback();
+    CHECK(value(kRollNote) == 62.0f);
+    CHECK_FALSE(rollTimer->isTimerRunning());
+
+    rollNote->onClick();
+    rollNote->onClick();
+    CHECK_FALSE(rollTimer->isTimerRunning());
+    CHECK(rollNote->getButtonText() == "Learn");
+    rollNote->onClick();
+    CHECK(rollNote->getParentComponent()->keyPressed(juce::KeyPress(juce::KeyPress::escapeKey)));
+    CHECK_FALSE(rollTimer->isTimerRunning());
+    rollNote->onClick();
+    for (int tick = 0; tick < 200; ++tick)
+        rollTimer->timerCallback();
+    CHECK_FALSE(rollTimer->isTimerRunning());
+    CHECK(rollNote->getButtonText() == "Learn");
+    CHECK(value(kRollNote) == 62.0f);
+}
+
 TEST_CASE("Every slider, menu and button has a spoken title", "[plugin][gui][accessibility]") {
     juce::ScopedJuceInitialiser_GUI gui;
     OpenSmackerProcessor processor;

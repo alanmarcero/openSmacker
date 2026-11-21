@@ -83,7 +83,8 @@ public:
     void addParameters(std::initializer_list<ControlSpec> specs);
     void addDualEq(const juce::String& freqId, const juce::String& dbId,
                    const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
-    void addControl(std::unique_ptr<juce::Component> control);
+    // A control with an id dims with that parameter. Its tip is the tooltip it shows when active.
+    void addControl(std::unique_ptr<juce::Component> control, const juce::String& id = {}, const juce::String& tip = {});
     void setRows(std::vector<int> basic, std::vector<int> advanced = {});
     void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);

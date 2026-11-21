@@ -98,6 +98,8 @@ public:
     std::atomic<int> displayLastVoice{ -1 };
     std::atomic<int> displayLastController{ 0 };
     std::atomic<uint32_t> displayControllerCount{ 0 };
+    std::atomic<int> displayLastNoteOn{ 0 };
+    std::atomic<uint32_t> displayNoteOnCount{ 0 };
     std::atomic<bool> displayLockedIn{ false };
 
 private:
