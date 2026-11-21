@@ -2,6 +2,10 @@
 
 namespace suite {
 
+namespace {
+constexpr int kConfirmMs = 3000;
+}
+
 PresetBrowser::PresetBrowser(PresetStore store,
                              std::vector<FactoryPreset> factory,
                              std::function<void(int)> loadFactory,
@@ -42,7 +46,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
             disarm();
             armedButton_ = &saveBtn_;
             saveBtn_.setButtonText("Replace?");
-            startTimer(3000);
+            startTimer(kConfirmMs);
             return;
         }
         disarm();
@@ -71,7 +75,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
             disarm();
             armedButton_ = &deleteBtn_;
             deleteBtn_.setButtonText("Delete?");
-            startTimer(3000);
+            startTimer(kConfirmMs);
             return;
         }
         disarm();
@@ -81,7 +85,6 @@ PresetBrowser::PresetBrowser(PresetStore store,
         }
     };
     for (auto* button : { &favoritesBtn_, &saveBtn_, &renameBtn_, &deleteBtn_ }) {
-        button->setTitle(button->getButtonText());
         button->setColour(juce::TextButton::buttonColourId, style_.panel);
         button->setColour(juce::TextButton::textColourOffId, style_.text);
     }
@@ -93,6 +96,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
              &search_, &favoritesBtn_, &list_, &name_, &saveBtn_, &renameBtn_, &deleteBtn_ })
         addAndMakeVisible(child);
     rebuild();
+    setSize(360, 440);
 }
 
 void PresetBrowser::setSearchText(const juce::String& query) {

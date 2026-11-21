@@ -8,7 +8,6 @@ namespace {
 constexpr float kArcThickness = 2.8f;
 constexpr float kCornerRadius = 5.0f;
 constexpr float kControlFontSize = 14.0f;
-constexpr float kDisabledOpacity = 0.4f;
 constexpr float kToggleLightSize = 9.0f;
 constexpr float kToggleLightInset = 14.0f;
 
@@ -44,7 +43,7 @@ void EdmLookAndFeel::drawRotarySlider(
     float endAngle,
     juce::Slider& slider) {
     const auto accent = slider.findColour(juce::Slider::rotarySliderFillColourId);
-    const float opacity = slider.isEnabled() ? 1.0f : kDisabledOpacity;
+    const float opacity = slider.isEnabled() ? 1.0f : theme::kInactiveOpacity;
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(1.5f);
     const float radius = std::min(30.0f, 0.5f * std::min(bounds.getWidth(), bounds.getHeight()));
     if (radius < 5.0f) return;
@@ -90,7 +89,7 @@ void EdmLookAndFeel::drawComboBox(
     int,
     juce::ComboBox& box) {
     const auto bounds = juce::Rectangle<float>(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)).reduced(0.5f);
-    const float opacity = box.isEnabled() ? 1.0f : kDisabledOpacity;
+    const float opacity = box.isEnabled() ? 1.0f : theme::kInactiveOpacity;
     g.setColour(box.findColour(juce::ComboBox::backgroundColourId).withMultipliedAlpha(opacity));
     g.fillRoundedRectangle(bounds, kCornerRadius);
     g.setColour(theme::kPanelEdge.withMultipliedAlpha(opacity));
@@ -123,7 +122,7 @@ void EdmLookAndFeel::drawButtonBackground(
     auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
     const auto onColour = button.findColour(juce::TextButton::buttonOnColourId);
     const bool isOn = button.getToggleState();
-    const float opacity = button.isEnabled() ? 1.0f : kDisabledOpacity;
+    const float opacity = button.isEnabled() ? 1.0f : theme::kInactiveOpacity;
 
     if (isOn) {
         g.setColour(onColour.withAlpha(0.25f * opacity));
@@ -158,7 +157,7 @@ void EdmLookAndFeel::drawButtonText(
     bool,
     bool) {
     const auto colourId = button.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId;
-    const float opacity = button.isEnabled() ? 1.0f : kDisabledOpacity;
+    const float opacity = button.isEnabled() ? 1.0f : theme::kInactiveOpacity;
     auto area = button.getLocalBounds().reduced(4, 2);
     if (button.getClickingTogglesState())
         area.removeFromLeft(static_cast<int>(kToggleLightSize));

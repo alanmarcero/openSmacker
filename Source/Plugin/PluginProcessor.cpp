@@ -27,8 +27,7 @@ OpenSmackerProcessor::~OpenSmackerProcessor() {
 }
 
 void OpenSmackerProcessor::parameterValueChanged(int, float) {
-    if (!loadingSound_.load())
-        presetEdited_.store(true);
+    presetEdited_.store(true, std::memory_order_relaxed);
 }
 
 opensmacker::core::EngineSettings OpenSmackerProcessor::currentSettings() const {
@@ -268,12 +267,10 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
         opensmacker::presets::SectionLocks locks{};
         for (size_t i = 0; i < locks.size(); ++i)
             locks[i] = sectionLocks_[i].load(std::memory_order_relaxed);
-        loadingSound_.store(true);
         opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch);
         if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {
             param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(index)));
         }
-        loadingSound_.store(false);
         parameters.state.setProperty("presetName", juce::String(presets[static_cast<size_t>(index)].name), nullptr);
         presetEdited_.store(false);
     }
@@ -337,9 +334,7 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
     state.removeProperty("customSound", nullptr);
     state.removeProperty("presetEdited", nullptr);
 
-    loadingSound_.store(true);
     parameters.replaceState(state);
-    loadingSound_.store(false);
     presetEdited_.store(edited);
     // In earlier saves, locks 0 and 5 also covered the cards added later.
     constexpr std::array<int, 9> coveringLock{ 0, 1, 2, 3, 4, 5, 0, 5, 0 };

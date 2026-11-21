@@ -41,12 +41,13 @@ public:
     explicit HitMonitor(OpenSmackerProcessor& processor);
     void paint(juce::Graphics& g) override;
     void timerCallback() override;
-    [[nodiscard]] const juce::String& readout() const noexcept { return readout_; }
+    [[nodiscard]] juce::String readout() const;
 private:
     OpenSmackerProcessor& processor_;
     uint32_t lastTriggerCount_ = 0;
     float glow_ = 0.0f;
-    juce::String readout_;
+    int shownNote_ = -1;
+    int shownVoice_ = -1;
 };
 
 class PeakMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
@@ -58,13 +59,20 @@ public:
     [[nodiscard]] bool isClipped() const noexcept { return clipped_; }
     [[nodiscard]] float holdDb() const noexcept { return holdDb_; }
 private:
+    static constexpr float kFloorDb = -60.0f;
     std::atomic<float>& peak_;
     const std::atomic<float>& ceilingDb_;
-    float levelDb_ = -60.0f;
-    float holdDb_ = -60.0f;
+    float levelDb_ = kFloorDb;
+    float holdDb_ = kFloorDb;
     float shownCeilingDb_ = 0.0f;
     double holdStartMs_ = 0.0;
     bool clipped_ = false;
+};
+
+struct ControlSpec {
+    const char* id;
+    const char* label;
+    const char* tip;
 };
 
 class ParameterCard : public juce::Component, private juce::Timer {
@@ -72,6 +80,7 @@ public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                   presets::Section section, juce::Colour accent, bool lockable = true);
     void addParameter(const juce::String& id, const juce::String& title, const juce::String& tip);
+    void addParameters(std::initializer_list<ControlSpec> specs);
     void addDualEq(const juce::String& freqId, const juce::String& dbId,
                    const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
     void addControl(std::unique_ptr<juce::Component> control);
@@ -84,6 +93,7 @@ public:
     void dimInactiveControls();
 private:
     struct Activity {
+        juce::Component* control;
         juce::String id;
         juce::String tip;
         juce::String reason;

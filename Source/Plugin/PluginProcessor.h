@@ -115,7 +115,6 @@ private:
     std::atomic<bool> auditionPending_{ false };
     std::atomic<int> currentProgram_{ 0 };
     std::atomic<bool> presetEdited_{ false };
-    std::atomic<bool> loadingSound_{ false };
     // 0 legacy ratios, 1 articulated voices, 2 shaped one-shots. Missing on old saves.
     std::atomic<int> synthModel_{ 2 };
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};

@@ -31,6 +31,8 @@ ParameterUndo::ParameterUndo(juce::AudioProcessor& processor, Capture capture, A
     for (auto* parameter : processor_.getParameters())
         if (parameter != nullptr)
             parameter->addListener(this);
+    // Each step keeps two full snapshots, so cap the history of each slot.
+    std::ranges::for_each(histories_, [](juce::UndoManager& history) { history.setMaxNumberOfStoredUnits(300, 30); });
     committed_ = capture_();
 }
 

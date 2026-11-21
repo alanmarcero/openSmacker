@@ -196,7 +196,6 @@ void OpenSmackerEditor::openPresets() {
         },
         [this](const juce::String& name) { return processor_.saveUserPreset(name); },
         suiteStyle());
-    browser->setSize(360, 440);
     juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getBounds(), &content_);
 }
 
@@ -240,10 +239,13 @@ void OpenSmackerEditor::timerCallback() {
         content_.repaint(artBounds_);
     syncPresetBox();
     const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode, processor_.frozenHitPlays());
-    std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
-        voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : 0.4f);
-        voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());
-    });
+    if (voiceReason_ != voiceReason) {
+        voiceReason_ = voiceReason;
+        std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
+            voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : theme::kInactiveOpacity);
+            voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());
+        });
+    }
     if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
         || abABtn_.getToggleState() != (processor_.abSlot() == 0))
         syncSuiteButtons();
@@ -290,11 +292,8 @@ void OpenSmackerEditor::resized() {
         setSize(width, height);
         return;
     }
-    const float scale = std::min(static_cast<float>(width) / suite::kDefaultEditorWidth,
-                                 static_cast<float>(height) / suite::kDefaultEditorHeight);
-    content_.setTransform(juce::AffineTransform::scale(scale).translated(
-        (static_cast<float>(width) - suite::kDefaultEditorWidth * scale) * 0.5f,
-        (static_cast<float>(height) - suite::kDefaultEditorHeight * scale) * 0.5f));
+    content_.setTransform(juce::RectanglePlacement(juce::RectanglePlacement::centred)
+        .getTransformToFit(content_.getLocalBounds().toFloat(), getLocalBounds().toFloat()));
     AudioProcessorEditor::resized();
     if (persistEditorSize_)
         processor_.setEditorSize(width, height);

@@ -295,7 +295,6 @@ TEST_CASE("User presets save, search, favorite, rename, and delete without touch
         [&](int index) { loadedFactory = index; },
         [&](const juce::String&, const juce::String& xml) { loadedXml = xml; },
         [&](const juce::String& name) { return store.saveUserPreset(name, "<PRESET>live</PRESET>"); });
-    browser.setSize(360, 440);
     auto* search = [&]() -> juce::TextEditor* {
         for (auto* child : browser.getChildren())
             if (auto* editor = dynamic_cast<juce::TextEditor*>(child); editor != nullptr && editor->getName() == "Preset search")
@@ -308,18 +307,8 @@ TEST_CASE("User presets save, search, favorite, rename, and delete without touch
                 return box;
         return nullptr;
     }();
-    auto* deleteButton = [&]() -> juce::TextButton* {
-        for (auto* child : browser.getChildren())
-            if (auto* button = dynamic_cast<juce::TextButton*>(child); button != nullptr && button->getButtonText() == "Delete")
-                return button;
-        return nullptr;
-    }();
-    auto* saveButton = [&]() -> juce::TextButton* {
-        for (auto* child : browser.getChildren())
-            if (auto* button = dynamic_cast<juce::TextButton*>(child); button != nullptr && button->getButtonText() == "Save")
-                return button;
-        return nullptr;
-    }();
+    auto* deleteButton = findButton(browser, "Delete");
+    auto* saveButton = findButton(browser, "Save");
     auto* nameEditor = [&]() -> juce::TextEditor* {
         for (auto* child : browser.getChildren())
             if (auto* editor = dynamic_cast<juce::TextEditor*>(child); editor != nullptr && editor->getName() == "Preset name")

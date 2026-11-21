@@ -43,6 +43,7 @@ private:
     std::unique_ptr<juce::Drawable> membrane_;
     std::array<juce::TextButton, 4> voices_, pages_;
     std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
+    std::optional<juce::String> voiceReason_;
     juce::ComboBox presetBox_;
     juce::TextButton prevPresetBtn_{ "Previous" }, nextPresetBtn_{ "Next" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
