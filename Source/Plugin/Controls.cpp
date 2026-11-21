@@ -27,6 +27,7 @@ Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& ti
 void Knob::bind(Apvts& state, const juce::String& parameterId) {
     attachment_ = std::make_unique<Apvts::SliderAttachment>(state, parameterId, slider_);
     slider_.setName(title_.getText());
+    slider_.setTitle(state.getParameter(parameterId)->getName(64));
 }
 
 void Knob::resized() {
@@ -44,11 +45,6 @@ void Knob::resized() {
     title_.setBounds(area.removeFromTop(labelHeight));
     slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, std::min(88, area.getWidth()), boxHeight);
     slider_.setBounds(area);
-}
-
-void Knob::setTooltip(const juce::String& text) {
-    slider_.setTooltip(text);
-    title_.setTooltip(text);
 }
 
 Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent) {
@@ -69,12 +65,14 @@ Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String
 void Choice::bind(Apvts& state, const juce::String& parameterId) {
     attachment_.reset();
     box_.clear(juce::dontSendNotification);
-    if (auto* param = dynamic_cast<juce::AudioParameterChoice*>(state.getParameter(parameterId))) {
+    auto* parameter = state.getParameter(parameterId);
+    if (auto* param = dynamic_cast<juce::AudioParameterChoice*>(parameter)) {
         box_.addItemList(param->choices, 1);
-    } else if (dynamic_cast<juce::AudioParameterBool*>(state.getParameter(parameterId)) != nullptr) {
-        box_.addItemList({ "One-shot", "Hold notes" }, 1);
+    } else if (dynamic_cast<juce::AudioParameterBool*>(parameter) != nullptr) {
+        box_.addItemList({ parameter->getText(0.0f, 0), parameter->getText(1.0f, 0) }, 1);
     }
     box_.setName(title_.getText());
+    box_.setTitle(parameter->getName(64));
     attachment_ = std::make_unique<Apvts::ComboBoxAttachment>(state, parameterId, box_);
 }
 
@@ -85,14 +83,10 @@ void Choice::resized() {
     box_.setBounds(area.reduced(3, 3));
 }
 
-void Choice::setTooltip(const juce::String& text) {
-    box_.setTooltip(text);
-    title_.setTooltip(text);
-}
-
 Toggle::Toggle(Apvts& state, const juce::String& parameterId, const juce::String& text, juce::Colour accent)
     : attachment_(state, parameterId, button_) {
     button_.setButtonText(text);
+    button_.setTitle(state.getParameter(parameterId)->getName(64));
     button_.setClickingTogglesState(true);
     button_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
     button_.setColour(juce::TextButton::buttonOnColourId, accent);
@@ -106,10 +100,6 @@ void Toggle::resized() {
     const int width = std::min(160, area.getWidth());
     const int height = std::min(40, area.getHeight());
     button_.setBounds(area.withSizeKeepingCentre(width, height));
-}
-
-void Toggle::setTooltip(const juce::String& text) {
-    button_.setTooltip(text);
 }
 
 bool DualEqKnob::GainSlider::hitTest(int x, int y) {
@@ -129,6 +119,7 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
 
     dbSlider_.setName(title + " Gain");
     dbSlider_.setComponentID(dbId);
+    dbSlider_.setTitle(state.getParameter(dbId)->getName(64));
     dbSlider_.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
     dbSlider_.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     dbSlider_.setColour(juce::Slider::rotarySliderFillColourId, dbAccent_);
@@ -305,12 +296,6 @@ void DualEqKnob::mouseWheelMove(const juce::MouseEvent& event, const juce::Mouse
     freqHz_ = nextHz;
     freqAttachment_->setValueAsCompleteGesture(nextHz);
     repaint();
-}
-
-void DualEqKnob::setTooltip(const juce::String& text) {
-    dbSlider_.setTooltip(text);
-    dbReadout_.setTooltip(text);
-    title_.setTooltip(text);
 }
 
 } // namespace opensmacker::ui

@@ -10,6 +10,19 @@
 namespace opensmacker::ui {
 
 namespace {
+struct ControlSpec {
+    const char* id;
+    const char* label;
+    const char* tip;
+};
+
+// Also reaches slider text boxes and stepper buttons, which keep their own tooltips.
+void setTooltipDeep(juce::Component& component, const juce::String& text) {
+    if (auto* client = dynamic_cast<juce::SettableTooltipClient*>(&component))
+        client->setTooltip(text);
+    std::ranges::for_each(component.getChildren(), [&text](juce::Component* child) { setTooltipDeep(*child, text); });
+}
+
 // Sets a CC slot from the next controller message the plugin receives.
 class LearnControl : public juce::Component, public juce::Timer {
 public:
@@ -141,6 +154,7 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
     lockButton_.setClickingTogglesState(false);
     lockButton_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
     lockButton_.setColour(juce::TextButton::textColourOffId, theme::kTextDim);
+    lockButton_.setTitle("Lock " + title_);
     lockButton_.setTooltip("Keep the " + title_ + " values when you load a preset. The controls stay editable.");
     lockButton_.onClick = [this] {
         processor_.setSectionLocked(section_, !processor_.isSectionLocked(section_));
@@ -150,7 +164,7 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
     lockButton_.setVisible(lockable_);
 }
 
-void ParameterCard::addParameter(const juce::String& id, const juce::String& title) {
+void ParameterCard::addParameter(const juce::String& id, const juce::String& title, const juce::String& tip) {
     std::unique_ptr<juce::Component> component;
     auto& state = processor_.parameters;
     if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr || id == params::kAmpEnabled) {
@@ -161,12 +175,7 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
         const auto* integer = dynamic_cast<juce::AudioParameterInt*>(parameter);
         component = std::make_unique<Knob>(state, id, title, accent_, integer != nullptr && integer->getRange().getLength() <= 16);
     }
-    const auto tip = id == params::kAmpEnabled
-        ? juce::String("Play a one-shot or sustain until the matching MIDI note is released.")
-        : state.getParameter(id)->getName(80);
-    if (auto* knob = dynamic_cast<Knob*>(component.get())) knob->setTooltip(tip);
-    if (auto* menu = dynamic_cast<Choice*>(component.get())) menu->setTooltip(tip);
-    if (auto* toggle = dynamic_cast<Toggle*>(component.get())) toggle->setTooltip(tip);
+    setTooltipDeep(*component, tip);
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
 }
@@ -174,7 +183,7 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
 void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& dbId,
                               const juce::String& title, juce::Colour freqAccent, const juce::String& tip) {
     auto knob = std::make_unique<DualEqKnob>(processor_.parameters, freqId, dbId, title, accent_, freqAccent);
-    knob->setTooltip(tip);
+    setTooltipDeep(*knob, tip);
     addAndMakeVisible(*knob);
     controls_.push_back(std::move(knob));
 }
@@ -263,67 +272,94 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
       preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 6> voice{
-        std::pair{ kVoiceMode, "Voice" }, { kToneNote, "Root" }, { kToneOctave, "Octave" },
-        { kToneDecay, "Body decay" }, { kTonePitchEnv, "Pitch sweep" }, { kToneLevel, "Body level" }
-    };
-    for (const auto& [id, title] : voice)
-        voiceCard_.addParameter(id, title);
+    const std::array<ControlSpec, 6> voice{ {
+        { kVoiceMode, "Voice", "Drum model: snare, tom, bell or rim." },
+        { kToneNote, "Root note", "Pitch of the hit. With MIDI pitch on Fixed, every note plays this pitch." },
+        { kToneOctave, "Octave", "Octave of the root note." },
+        { kToneDecay, "Body decay", "How long the drum body rings." },
+        { kTonePitchEnv, "Pitch sweep", "Pitch offset at the start of the hit, in semitones. The pitch glides back to the root." },
+        { kToneLevel, "Body level", "Volume of the drum body." },
+    } };
+    std::ranges::for_each(voice, [this](const ControlSpec& spec) { voiceCard_.addParameter(spec.id, spec.label, spec.tip); });
     voiceCard_.setRows({ 3, 3 });
-    const std::array<std::pair<const char*, const char*>, 10> detail{
-        std::pair{ kFmAmount, "FM depth" }, { kToneFreq, "Shell frequency" }, { kToneQ, "Shell Q" }, { kShellSpread, "Mode spread" },
-        { kTonePitchDecay, "Pitch decay" }, { kToneFine, "Fine tune" }, { kLockPitch, "Lock pitch" },
-        { kBodyHPF, "High-pass" }, { kBodyLPF, "Low-pass" }, { kBodyPan, "Pan" }
-    };
-    for (const auto& [id, title] : detail)
-        detailCard_.addParameter(id, title);
+    const std::array<ControlSpec, 10> detail{ {
+        { kFmAmount, "FM depth", "Amount of FM overtones in the body." },
+        { kToneFreq, "Shell frequency", "Center of the shell resonance." },
+        { kToneQ, "Shell Q", "Width of the shell resonance. Higher values ring at a narrower pitch." },
+        { kShellSpread, "Mode spread", "Moves the upper drum modes apart or closer together." },
+        { kTonePitchDecay, "Pitch decay", "Time the pitch sweep takes to reach the root." },
+        { kToneFine, "Fine tune", "Fine pitch offset in cents." },
+        { kLockPitch, "Lock pitch", "Keep the root note, octave, fine tune and shell frequency when you load a preset." },
+        { kBodyHPF, "High-pass", "Removes body content below this frequency." },
+        { kBodyLPF, "Low-pass", "Removes body content above this frequency." },
+        { kBodyPan, "Pan", "Stereo position of the body." },
+    } };
+    std::ranges::for_each(detail, [this](const ControlSpec& spec) { detailCard_.addParameter(spec.id, spec.label, spec.tip); });
     detailCard_.setRows({ 4, 3, 3 });
-    envelopeCard_.addParameter(kAmpEnabled, "MIDI gate");
-    envelopeCard_.addParameter(kAmpAttack, "Attack");
-    envelopeCard_.addParameter(kAmpDecay, "Decay");
-    envelopeCard_.addParameter(kAmpSustain, "Sustain");
-    envelopeCard_.addParameter(kAmpRelease, "Release");
+    const std::array<ControlSpec, 5> envelope{ {
+        { kAmpEnabled, "MIDI gate", "One-shot plays the whole hit. Hold notes sustains until the matching note-off." },
+        { kAmpAttack, "Attack", "Fade-in time at the start of the hit." },
+        { kAmpDecay, "Decay", "Time to fall from the peak to the sustain level." },
+        { kAmpSustain, "Sustain", "Level the hit holds after the decay." },
+        { kAmpRelease, "Release", "Fade-out time at the end of the hit, or after note-off with Hold notes." },
+    } };
+    std::ranges::for_each(envelope, [this](const ControlSpec& spec) { envelopeCard_.addParameter(spec.id, spec.label, spec.tip); });
     envelopeCard_.setRows({ 5 });
 
-    transientCard_.addParameter(kClickType, "Strike Type");
-    transientCard_.addParameter(kClickLevel, "Strike Level");
-    transientCard_.addParameter(kClickFreq, "Strike Freq");
-    transientCard_.addParameter(kSubThump, "Sub Thump");
-    transientCard_.addParameter(kTransientHPF, "Transient HPF");
-    transientCard_.addParameter(kTransientLPF, "Transient LPF");
-    transientCard_.addParameter(kTransientPan, "Transient Pan");
+    const std::array<ControlSpec, 7> transient{ {
+        { kClickType, "Strike type", "Strike sound: stick, mallet, rimshot or laser." },
+        { kClickLevel, "Level", "Volume of the strike." },
+        { kClickFreq, "Frequency", "Pitch of the strike click. Higher values sound brighter." },
+        { kSubThump, "Sub thump", "Adds a low thump under the strike." },
+        { kTransientHPF, "High-pass", "Removes strike content below this frequency." },
+        { kTransientLPF, "Low-pass", "Removes strike content above this frequency." },
+        { kTransientPan, "Pan", "Stereo position of the strike." },
+    } };
+    std::ranges::for_each(transient, [this](const ControlSpec& spec) { transientCard_.addParameter(spec.id, spec.label, spec.tip); });
     transientCard_.setRows({ 1, 2 }, { 4, 3 });
 
-    const std::array<std::pair<const char*, const char*>, 6> pre{
-        std::pair{ kPreBursts, "Hits" }, { kPreSpread, "Spacing" }, { kPreDecay, "Decay" },
-        { kPreJitter, "Humanize" }, { kFlamSpread, "Stereo Pan" }, { kPreLevel, "Level" }
-    };
-    for (const auto& [id, title] : pre)
-        preStrikeCard_.addParameter(id, title);
+    const std::array<ControlSpec, 6> flam{ {
+        { kPreBursts, "Hits", "Number of strikes, counting the main hit. Set 2 or more for a flam or drag." },
+        { kPreSpread, "Spacing", "Time between the flam strikes." },
+        { kPreDecay, "Decay", "How fast each grace strike fades." },
+        { kPreJitter, "Humanize", "Random timing of the grace strikes." },
+        { kFlamSpread, "Stereo spread", "Pans the grace strikes left and right." },
+        { kPreLevel, "Level", "Volume of the grace strikes against the main hit." },
+    } };
+    std::ranges::for_each(flam, [this](const ControlSpec& spec) { preStrikeCard_.addParameter(spec.id, spec.label, spec.tip); });
     preStrikeCard_.setRows({ 3 }, { 3, 3 });
 
-    const std::array<std::pair<const char*, const char*>, 11> air{
-        std::pair{ kNoiseType, "Texture" }, { kNoiseLevel, "Level" }, { kNoiseDecay, "Decay" },
-        { kWireTension, "Wire tension" }, { kNoiseHPF, "High-pass" }, { kNoiseLPF, "Low-pass" },
-        { kNoiseAttack, "Attack" }, { kNoiseHold, "Hold" }, { kNoiseCurve, "Curve" },
-        { kNoiseStereoWidth, "Width" }, { kWirePan, "Pan" }
-    };
-    for (const auto& [id, title] : air)
-        wiresCard_.addParameter(id, title);
+    const std::array<ControlSpec, 11> wires{ {
+        { kNoiseType, "Texture", "Noise layer: snare wires, white sizzle, velvet air or a metallic ring." },
+        { kNoiseLevel, "Level", "Volume of the wire layer." },
+        { kNoiseDecay, "Decay", "How long the wires sound." },
+        { kWireTension, "Tension", "How tight the snare wires are. It changes the buzz of the wire layer." },
+        { kNoiseHPF, "High-pass", "Removes wire content below this frequency." },
+        { kNoiseLPF, "Low-pass", "Removes wire content above this frequency." },
+        { kNoiseAttack, "Attack", "Fade-in time of the wires." },
+        { kNoiseHold, "Hold", "Time the wires stay at full level before they decay." },
+        { kNoiseCurve, "Curve", "Shape of the wire decay. Below zero it drops faster, above zero it fades more evenly." },
+        { kNoiseStereoWidth, "Width", "Stereo width of the wires." },
+        { kWirePan, "Pan", "Stereo position of the wires." },
+    } };
+    std::ranges::for_each(wires, [this](const ControlSpec& spec) { wiresCard_.addParameter(spec.id, spec.label, spec.tip); });
     wiresCard_.setRows({ 3, 3 }, { 3, 4, 4 });
 
     addAndMakeVisible(voiceCard_);
     addAndMakeVisible(envelopeCard_);
     addAndMakeVisible(transientCard_);
 
-    outputCard_.addDualEq(kEqLowFreq, kEqLowDb, "Low EQ", theme::kApricot, "Inner cap sets Low gain (-12 to +12 dB); outer collar glides cutoff frequency smoothly.");
-    outputCard_.addDualEq(kEqMidFreq, kEqMidDb, "Mid EQ", theme::kApricot, "Inner cap sets Mid gain (-12 to +12 dB); outer collar glides center frequency smoothly.");
-    outputCard_.addDualEq(kEqHighFreq, kEqHighDb, "High EQ", theme::kApricot, "Inner cap sets High gain (-12 to +12 dB); outer collar glides cutoff frequency smoothly.");
-    outputCard_.addParameter(kStereoWidth, "Stereo width");
-    outputCard_.addParameter(kOutputGain, "Output");
-    outputCard_.addParameter(kLimiterCeiling, "Ceiling");
-    outputCard_.addParameter(kLimiterRelease, "Limit Release");
-    outputCard_.addParameter(kLimiterEnabled, "Limiter");
+    outputCard_.addDualEq(kEqLowFreq, kEqLowDb, "Low EQ", theme::kApricot, "Low shelf. The inner dial sets gain and the outer ring sets frequency.");
+    outputCard_.addDualEq(kEqMidFreq, kEqMidDb, "Mid EQ", theme::kApricot, "Mid bell. The inner dial sets gain and the outer ring sets frequency.");
+    outputCard_.addDualEq(kEqHighFreq, kEqHighDb, "High EQ", theme::kApricot, "High shelf. The inner dial sets gain and the outer ring sets frequency.");
+    const std::array<ControlSpec, 5> output{ {
+        { kStereoWidth, "Stereo width", "Width of the output. 0% is mono." },
+        { kOutputGain, "Gain", "Output level after the limiter." },
+        { kLimiterCeiling, "Ceiling", "Highest peak level the limiter lets through." },
+        { kLimiterRelease, "Release", "How fast the limiter recovers after it reduces a peak." },
+        { kLimiterEnabled, "Limiter", "Turns the brickwall limiter on or off." },
+    } };
+    std::ranges::for_each(output, [this](const ControlSpec& spec) { outputCard_.addParameter(spec.id, spec.label, spec.tip); });
     outputCard_.setRows({ 8 });
     outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f });
     addAndMakeVisible(outputCard_);
@@ -384,20 +420,33 @@ EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
     : dynamicsCard_(processor, "Saturation & dynamics", presets::Section::SaturationDynamics, theme::kApricot),
       spaceCard_(processor, "Space & WAV lock", presets::Section::Space, theme::kIce) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 10> dynamics{
-        std::pair{ kDistType, "Saturation" }, { kDistDrive, "Drive" }, { kDistTone, "Tone" }, { kDistMix, "Mix" },
-        { kCompThresh, "Threshold" }, { kCompRatio, "Ratio" }, { kCompAttack, "Comp Attack" },
-        { kCompRelease, "Comp Release" }, { kCompMakeup, "Makeup" }, { kCompMix, "Comp Mix" }
-    };
-    std::ranges::for_each(dynamics, [&](const auto& entry) { dynamicsCard_.addParameter(entry.first, entry.second); });
+    const std::array<ControlSpec, 10> dynamics{ {
+        { kDistType, "Saturation", "Saturation curve: tape, tube, hard clip or wavefold." },
+        { kDistDrive, "Drive", "How hard the saturation is driven." },
+        { kDistTone, "Tone", "Darker below zero, brighter above zero." },
+        { kDistMix, "Mix", "Blend of saturated and clean sound." },
+        { kCompThresh, "Threshold", "Level where compression starts." },
+        { kCompRatio, "Ratio", "How much the compressor reduces level above the threshold." },
+        { kCompAttack, "Comp attack", "How fast the compressor reacts to a hit." },
+        { kCompRelease, "Comp release", "How fast the compressor lets go." },
+        { kCompMakeup, "Makeup", "Gain added after compression." },
+        { kCompMix, "Comp mix", "Blend of compressed and dry sound." },
+    } };
+    std::ranges::for_each(dynamics, [this](const ControlSpec& spec) { dynamicsCard_.addParameter(spec.id, spec.label, spec.tip); });
     dynamicsCard_.setRows({ 2, 2 }, { 3, 3, 4 });
 
-    const std::array<std::pair<const char*, const char*>, 9> space{
-        std::pair{ kReverbMix, "Room mix" }, { kReverbGate, "Gate time" }, { kReverbSize, "Room size" },
-        std::pair{ kReverbDecay, "Room decay" }, { kReverbDamp, "Damping" }, { kEchoMix, "Echo mix" },
-        { kReverseMix, "Reverse mix" }, { kReverseMode, "Reverse sync" }, { kLockIn, "Lock WAV" }
-    };
-    std::ranges::for_each(space, [&](const auto& entry) { spaceCard_.addParameter(entry.first, entry.second); });
+    const std::array<ControlSpec, 9> space{ {
+        { kReverbMix, "Room mix", "Amount of gated room." },
+        { kReverbGate, "Gate time", "Time before the gate cuts the room tail." },
+        { kReverbSize, "Room size", "Size of the room." },
+        { kReverbDecay, "Room decay", "Length of the room tail." },
+        { kReverbDamp, "Damping", "Darkens the room tail." },
+        { kEchoMix, "Echo mix", "Amount of tempo-synced slapback echo." },
+        { kReverseMix, "Reverse mix", "Level of the reversed swell before the hit." },
+        { kReverseMode, "Reverse sync", "When the reversed swell plays, in time with the host." },
+        { kLockIn, "Lock WAV", "Renders the hit once and plays that recording in place of the synth." },
+    } };
+    std::ranges::for_each(space, [this](const ControlSpec& spec) { spaceCard_.addParameter(spec.id, spec.label, spec.tip); });
     spaceCard_.setRows({ 2, 2 }, { 3, 4, 2 });
     addAndMakeVisible(dynamicsCard_);
     addAndMakeVisible(spaceCard_);
@@ -424,38 +473,48 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
       responseCard_(processor, "Velocity & aftertouch", presets::Section::Transient, theme::kApricot, false),
       rollCard_(processor, "Host roll & controllers", presets::Section::PreStrike, theme::kIce, false) {
     using namespace opensmacker::params;
-    const std::array<std::pair<const char*, const char*>, 10> zones{
-        std::pair{ kMidiMode, "MIDI pitch" }, { kKeyZonesEnabled, "Key zones" },
-        { kSnareZoneLow, "Snare Low" }, { kSnareZoneHigh, "Snare High" },
-        { kTomZoneLow, "Tom Low" }, { kTomZoneHigh, "Tom High" },
-        { kBellZoneLow, "Bell Low" }, { kBellZoneHigh, "Bell High" },
-        { kRimZoneLow, "Rim Low" }, { kRimZoneHigh, "Rim High" }
-    };
-    for (const auto& [id, title] : zones)
-        zonesCard_.addParameter(id, title);
+    const std::array<ControlSpec, 10> zones{ {
+        { kMidiMode, "MIDI pitch", "Fixed plays the root note. Note tracking plays the pitch of each MIDI note." },
+        { kKeyZonesEnabled, "Key zones", "Each note range plays its own voice in place of the Voice setting." },
+        { kSnareZoneLow, "Snare low", "Lowest note that plays the snare." },
+        { kSnareZoneHigh, "Snare high", "Highest note that plays the snare." },
+        { kTomZoneLow, "Tom low", "Lowest note that plays the tom." },
+        { kTomZoneHigh, "Tom high", "Highest note that plays the tom." },
+        { kBellZoneLow, "Bell low", "Lowest note that plays the bell." },
+        { kBellZoneHigh, "Bell high", "Highest note that plays the bell." },
+        { kRimZoneLow, "Rim low", "Lowest note that plays the rim." },
+        { kRimZoneHigh, "Rim high", "Highest note that plays the rim." },
+    } };
+    std::ranges::for_each(zones, [this](const ControlSpec& spec) { zonesCard_.addParameter(spec.id, spec.label, spec.tip); });
     zonesCard_.setRows({ 2, 4, 4 });
 
-    const std::array<std::pair<const char*, const char*>, 6> response{
-        std::pair{ kBodyVelocityDepth, "Body velocity" }, { kWireVelocityDepth, "Wire velocity" },
-        { kTransientVelocityDepth, "Strike velocity" }, { kBodyAftertouchDepth, "Body aftertouch" },
-        { kWireAftertouchDepth, "Wire aftertouch" }, { kTransientAftertouchDepth, "Strike aftertouch" }
-    };
-    for (const auto& [id, title] : response)
-        responseCard_.addParameter(id, title);
+    const std::array<ControlSpec, 6> response{ {
+        { kBodyVelocityDepth, "Body velocity", "How much note velocity changes the body level." },
+        { kWireVelocityDepth, "Wire velocity", "How much note velocity changes the wire level." },
+        { kTransientVelocityDepth, "Strike velocity", "How much note velocity changes the strike level." },
+        { kBodyAftertouchDepth, "Body aftertouch", "How much aftertouch raises the body level." },
+        { kWireAftertouchDepth, "Wire aftertouch", "How much aftertouch raises the wire level." },
+        { kTransientAftertouchDepth, "Strike aftertouch", "How much aftertouch raises the strike level." },
+    } };
+    std::ranges::for_each(response, [this](const ControlSpec& spec) { responseCard_.addParameter(spec.id, spec.label, spec.tip); });
     responseCard_.setRows({ 3, 3 });
 
-    const std::array<std::pair<const char*, const char*>, 10> roll{
-        std::pair{ kRollEnabled, "Roll" }, { kRollSubdivision, "Rate" },
-        { kRollProbability, "Probability" }, { kRollVelocity, "Velocity" },
-        { kRollAccentVelocity, "Accent" }, { kRollAccentEvery, "Accent Every" },
-        { kRollNote, "Roll Note" }, { kMidiCcBody, "Body CC" },
-        { kMidiCcWire, "Wire CC" }, { kMidiCcTransient, "Transient CC" }
-    };
-    for (const auto& [id, title] : roll)
-        rollCard_.addParameter(id, title);
+    const std::array<ControlSpec, 10> roll{ {
+        { kRollEnabled, "Roll", "Repeats the hit in time with the host while playback runs." },
+        { kRollSubdivision, "Rate", "Note length of each roll step." },
+        { kRollProbability, "Probability", "Chance that each roll step plays." },
+        { kRollVelocity, "Velocity", "Velocity of the roll hits without an accent." },
+        { kRollAccentVelocity, "Accent", "Velocity of the accented roll hits." },
+        { kRollAccentEvery, "Accent every", "Number of roll steps from one accent to the next." },
+        { kRollNote, "Roll note", "MIDI note the roll plays. With Key zones on, this note picks the voice." },
+        { kMidiCcBody, "Body CC", "Controller number that sets the body level. Off ignores controllers." },
+        { kMidiCcWire, "Wire CC", "Controller number that sets the wire level. Off ignores controllers." },
+        { kMidiCcTransient, "Strike CC", "Controller number that sets the strike level. Off ignores controllers." },
+    } };
+    std::ranges::for_each(roll, [this](const ControlSpec& spec) { rollCard_.addParameter(spec.id, spec.label, spec.tip); });
     rollCard_.addLearn(kMidiCcBody, "Body CC");
     rollCard_.addLearn(kMidiCcWire, "Wire CC");
-    rollCard_.addLearn(kMidiCcTransient, "Transient CC");
+    rollCard_.addLearn(kMidiCcTransient, "Strike CC");
     rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3, 3 });
 
     addAndMakeVisible(zonesCard_);

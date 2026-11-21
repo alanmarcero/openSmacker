@@ -49,7 +49,7 @@ private:
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
     juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };
     juce::TextButton abABtn_{ "A" }, abBBtn_{ "B" };
-    juce::TextButton copyAtoBBtn_{ "A>B" }, copyBtoABtn_{ "B>A" };
+    juce::TextButton copyAtoBBtn_{ "A to B" }, copyBtoABtn_{ "B to A" };
     juce::TextButton presetsBtn_{ "Presets" };
     suite::WavDragButton dragBtn_;
     int currentPage_ = 0;

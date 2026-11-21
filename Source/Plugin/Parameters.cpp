@@ -93,241 +93,244 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
 
     // Pre-Strike Flam / Drag Roll
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kPreBursts, 1 }, "Flam Strikes", 1, 5, 1));
+        juce::ParameterID{ kPreBursts, 1 }, "Flam hits", 1, 5, 1));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kPreSpread, 1 }, "Flam Spread", juce::NormalisableRange<float>(2.0f, 45.0f, 0.1f), 11.0f, milliseconds));
+        juce::ParameterID{ kPreSpread, 1 }, "Flam spacing", juce::NormalisableRange<float>(2.0f, 45.0f, 0.1f), 11.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kPreDecay, 1 }, "Flam Decay", juce::NormalisableRange<float>(2.0f, 35.0f, 0.1f), 8.0f, milliseconds));
+        juce::ParameterID{ kPreDecay, 1 }, "Flam decay", juce::NormalisableRange<float>(2.0f, 35.0f, 0.1f), 8.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kPreJitter, 1 }, "Flam Humanize", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.12f, percent));
+        juce::ParameterID{ kPreJitter, 1 }, "Flam humanize", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.12f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kFlamSpread, 1 }, "Flam Pan", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.40f, percent));
+        juce::ParameterID{ kFlamSpread, 1 }, "Flam stereo spread", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.40f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kPreLevel, 1 }, "Flam Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f, percent));
+        juce::ParameterID{ kPreLevel, 1 }, "Flam level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f, percent));
 
     // Tunable Drum / Bell / Tom Body
     juce::StringArray voiceModes{ "Snare", "Tom", "Bell", "Rim" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kVoiceMode, 1 }, "Voice Mode", voiceModes, 0));
+        juce::ParameterID{ kVoiceMode, 1 }, "Voice", voiceModes, 0));
     juce::StringArray noteNames{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kToneNote, 1 }, "Root Note", noteNames, 9)); // A
+        juce::ParameterID{ kToneNote, 1 }, "Root note", noteNames, 9)); // A
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kToneOctave, 1 }, "Octave", 1, 8, 3));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneFine, 1 }, "Fine Tune", juce::NormalisableRange<float>(-50.0f, 50.0f, 0.5f), 0.0f, cents));
+        juce::ParameterID{ kToneFine, 1 }, "Fine tune", juce::NormalisableRange<float>(-50.0f, 50.0f, 0.5f), 0.0f, cents));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneFreq, 1 }, "Shell / Formant", juce::NormalisableRange<float>(60.0f, 6000.0f, 1.0f, 0.35f), 220.0f, hertz));
+        juce::ParameterID{ kToneFreq, 1 }, "Shell frequency", juce::NormalisableRange<float>(60.0f, 6000.0f, 1.0f, 0.35f), 220.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kToneQ, 1 }, "Shell Q", juce::NormalisableRange<float>(0.5f, 15.0f, 0.1f), 3.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneDecay, 1 }, "Body Decay", juce::NormalisableRange<float>(15.0f, 1200.0f, 1.0f, 0.35f), 180.0f, milliseconds));
+        juce::ParameterID{ kToneDecay, 1 }, "Body decay", juce::NormalisableRange<float>(15.0f, 1200.0f, 1.0f, 0.35f), 180.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTonePitchEnv, 1 }, "Pitch Sweep", juce::NormalisableRange<float>(-24.0f, 36.0f, 0.5f), 12.0f, semitones));
+        juce::ParameterID{ kTonePitchEnv, 1 }, "Pitch sweep", juce::NormalisableRange<float>(-24.0f, 36.0f, 0.5f), 12.0f, semitones));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTonePitchDecay, 1 }, "Pitch Decay", juce::NormalisableRange<float>(3.0f, 150.0f, 0.5f), 22.0f, milliseconds));
+        juce::ParameterID{ kTonePitchDecay, 1 }, "Pitch decay", juce::NormalisableRange<float>(3.0f, 150.0f, 0.5f), 22.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kFmAmount, 1 }, "FM / Overtone", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.30f, percent));
+        juce::ParameterID{ kFmAmount, 1 }, "FM depth", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.30f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kShellSpread, 1 }, "Shell Spread", juce::NormalisableRange<float>(-0.5f, 0.5f, 0.01f), 0.0f, signedPercent));
+        juce::ParameterID{ kShellSpread, 1 }, "Mode spread", juce::NormalisableRange<float>(-0.5f, 0.5f, 0.01f), 0.0f, signedPercent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneLevel, 1 }, "Body Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f, percent));
+        juce::ParameterID{ kToneLevel, 1 }, "Body level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyHPF, 1 }, "Body HPF", juce::NormalisableRange<float>(20.0f, 4000.0f, 1.0f, 0.35f), 20.0f, hertz));
+        juce::ParameterID{ kBodyHPF, 1 }, "Body high-pass", juce::NormalisableRange<float>(20.0f, 4000.0f, 1.0f, 0.35f), 20.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyLPF, 1 }, "Body LPF", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
+        juce::ParameterID{ kBodyLPF, 1 }, "Body low-pass", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyPan, 1 }, "Body Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
+        juce::ParameterID{ kBodyPan, 1 }, "Body pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kAmpEnabled, 1 }, "Full ADSR", false));
+        juce::ParameterID{ kAmpEnabled, 1 }, "MIDI gate", false,
+        juce::AudioParameterBoolAttributes()
+            .withStringFromValueFunction([](bool hold, int) { return juce::String(hold ? "Hold notes" : "One-shot"); })
+            .withValueFromStringFunction([](const juce::String& text) { return text.containsIgnoreCase("hold"); })));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kAmpAttack, 1 }, "Amp Attack", juce::NormalisableRange<float>(0.05f, 20.0f, 0.05f, 0.45f), 0.35f, milliseconds));
+        juce::ParameterID{ kAmpAttack, 1 }, "Amp attack", juce::NormalisableRange<float>(0.05f, 20.0f, 0.05f, 0.45f), 0.35f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kAmpDecay, 1 }, "Amp Decay", juce::NormalisableRange<float>(1.0f, 600.0f, 1.0f, 0.4f), 72.0f, milliseconds));
+        juce::ParameterID{ kAmpDecay, 1 }, "Amp decay", juce::NormalisableRange<float>(1.0f, 600.0f, 1.0f, 0.4f), 72.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kAmpSustain, 1 }, "Amp Sustain", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.70f, percent));
+        juce::ParameterID{ kAmpSustain, 1 }, "Amp sustain", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.70f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kAmpRelease, 1 }, "Amp Release", juce::NormalisableRange<float>(0.0f, 20000.0f, 1.0f, 0.4f), 180.0f, milliseconds));
+        juce::ParameterID{ kAmpRelease, 1 }, "Amp release", juce::NormalisableRange<float>(0.0f, 20000.0f, 1.0f, 0.4f), 180.0f, milliseconds));
 
     // Snare Wires, Sizzle & Air
-    juce::StringArray noiseTypes{ "Snare Wires", "White Sizzle", "Velvet Air", "Metallic Ring" };
+    juce::StringArray noiseTypes{ "Snare wires", "White sizzle", "Velvet air", "Metallic ring" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kNoiseType, 1 }, "Wires / Air Type", noiseTypes, 0));
+        juce::ParameterID{ kNoiseType, 1 }, "Wire texture", noiseTypes, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseAttack, 1 }, "Wire Attack", juce::NormalisableRange<float>(0.0f, 20.0f, 0.1f), 0.0f, milliseconds));
+        juce::ParameterID{ kNoiseAttack, 1 }, "Wire attack", juce::NormalisableRange<float>(0.0f, 20.0f, 0.1f), 0.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseHold, 1 }, "Wire Hold", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 2.0f, milliseconds));
+        juce::ParameterID{ kNoiseHold, 1 }, "Wire hold", juce::NormalisableRange<float>(0.0f, 30.0f, 0.1f), 2.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseDecay, 1 }, "Wire Decay", juce::NormalisableRange<float>(15.0f, 1200.0f, 1.0f, 0.35f), 210.0f, milliseconds));
+        juce::ParameterID{ kNoiseDecay, 1 }, "Wire decay", juce::NormalisableRange<float>(15.0f, 1200.0f, 1.0f, 0.35f), 210.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseCurve, 1 }, "Wire Curve", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), -0.35f, signedPercent));
+        juce::ParameterID{ kNoiseCurve, 1 }, "Wire curve", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), -0.35f, signedPercent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseHPF, 1 }, "Wire HPF", juce::NormalisableRange<float>(20.0f, 2500.0f, 1.0f, 0.35f), 280.0f, hertz));
+        juce::ParameterID{ kNoiseHPF, 1 }, "Wire high-pass", juce::NormalisableRange<float>(20.0f, 2500.0f, 1.0f, 0.35f), 280.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseLPF, 1 }, "Wire LPF", juce::NormalisableRange<float>(800.0f, 20000.0f, 1.0f, 0.35f), 11000.0f, hertz));
+        juce::ParameterID{ kNoiseLPF, 1 }, "Wire low-pass", juce::NormalisableRange<float>(800.0f, 20000.0f, 1.0f, 0.35f), 11000.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseStereoWidth, 1 }, "Wire Width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.15f, percent));
+        juce::ParameterID{ kNoiseStereoWidth, 1 }, "Wire width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.15f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kNoiseLevel, 1 }, "Wire Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f, percent));
+        juce::ParameterID{ kNoiseLevel, 1 }, "Wire level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kWireTension, 1 }, "Wire Tension", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f, percent));
+        juce::ParameterID{ kWireTension, 1 }, "Wire tension", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kWirePan, 1 }, "Wire Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
+        juce::ParameterID{ kWirePan, 1 }, "Wire pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
 
     // Stick / Mallet / Rim Transient
     juce::StringArray clickTypes{ "Stick", "Mallet", "Rimshot", "Laser" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kClickType, 1 }, "Strike Type", clickTypes, 0));
+        juce::ParameterID{ kClickType, 1 }, "Strike type", clickTypes, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kClickLevel, 1 }, "Strike Level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.50f, percent));
+        juce::ParameterID{ kClickLevel, 1 }, "Strike level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.50f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kClickFreq, 1 }, "Strike Freq", juce::NormalisableRange<float>(500.0f, 12000.0f, 10.0f, 0.35f), 3800.0f, hertz));
+        juce::ParameterID{ kClickFreq, 1 }, "Strike frequency", juce::NormalisableRange<float>(500.0f, 12000.0f, 10.0f, 0.35f), 3800.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kSubThump, 1 }, "Sub Thump", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
+        juce::ParameterID{ kSubThump, 1 }, "Sub thump", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientHPF, 1 }, "Transient HPF", juce::NormalisableRange<float>(20.0f, 12000.0f, 1.0f, 0.35f), 20.0f, hertz));
+        juce::ParameterID{ kTransientHPF, 1 }, "Strike high-pass", juce::NormalisableRange<float>(20.0f, 12000.0f, 1.0f, 0.35f), 20.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientLPF, 1 }, "Transient LPF", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
+        juce::ParameterID{ kTransientLPF, 1 }, "Strike low-pass", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientPan, 1 }, "Transient Pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
+        juce::ParameterID{ kTransientPan, 1 }, "Strike pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
 
     // Impact Distortion
-    juce::StringArray distTypes{ "Tape", "Tube", "Hard Clip", "Wavefold" };
+    juce::StringArray distTypes{ "Tape", "Tube", "Hard clip", "Wavefold" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kDistType, 1 }, "Distortion Type", distTypes, 0));
+        juce::ParameterID{ kDistType, 1 }, "Saturation", distTypes, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kDistDrive, 1 }, "Distortion Drive", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.14f, percent));
+        juce::ParameterID{ kDistDrive, 1 }, "Saturation drive", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.14f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kDistTone, 1 }, "Distortion Tone", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, signedPercent));
+        juce::ParameterID{ kDistTone, 1 }, "Saturation tone", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, signedPercent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kDistMix, 1 }, "Distortion Mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.22f, percent));
+        juce::ParameterID{ kDistMix, 1 }, "Saturation mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.22f, percent));
 
     // Compressor
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompThresh, 1 }, "Comp Threshold", juce::NormalisableRange<float>(-40.0f, 0.0f, 0.5f), -14.0f, decibels));
+        juce::ParameterID{ kCompThresh, 1 }, "Comp threshold", juce::NormalisableRange<float>(-40.0f, 0.0f, 0.5f), -14.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompRatio, 1 }, "Comp Ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, ratio));
+        juce::ParameterID{ kCompRatio, 1 }, "Comp ratio", juce::NormalisableRange<float>(1.0f, 20.0f, 0.1f), 4.0f, ratio));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompAttack, 1 }, "Comp Attack", juce::NormalisableRange<float>(0.1f, 50.0f, 0.1f, 0.35f), 5.0f, milliseconds));
+        juce::ParameterID{ kCompAttack, 1 }, "Comp attack", juce::NormalisableRange<float>(0.1f, 50.0f, 0.1f, 0.35f), 5.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompRelease, 1 }, "Comp Release", juce::NormalisableRange<float>(10.0f, 500.0f, 1.0f, 0.35f), 80.0f, milliseconds));
+        juce::ParameterID{ kCompRelease, 1 }, "Comp release", juce::NormalisableRange<float>(10.0f, 500.0f, 1.0f, 0.35f), 80.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompMakeup, 1 }, "Comp Makeup", juce::NormalisableRange<float>(0.0f, 24.0f, 0.5f), 3.0f, decibels));
+        juce::ParameterID{ kCompMakeup, 1 }, "Comp makeup", juce::NormalisableRange<float>(0.0f, 24.0f, 0.5f), 3.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kCompMix, 1 }, "Comp Mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kCompMix, 1 }, "Comp mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
 
     // Limiter
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kLimiterCeiling, 1 }, "Limiter Ceiling", juce::NormalisableRange<float>(-12.0f, 0.0f, 0.1f), -0.3f, decibels));
+        juce::ParameterID{ kLimiterCeiling, 1 }, "Limiter ceiling", juce::NormalisableRange<float>(-12.0f, 0.0f, 0.1f), -0.3f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kLimiterRelease, 1 }, "Limiter Release", juce::NormalisableRange<float>(5.0f, 100.0f, 0.5f), 20.0f, milliseconds));
+        juce::ParameterID{ kLimiterRelease, 1 }, "Limiter release", juce::NormalisableRange<float>(5.0f, 100.0f, 0.5f), 20.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kLimiterEnabled, 1 }, "Limiter Enabled", true));
+        juce::ParameterID{ kLimiterEnabled, 1 }, "Limiter", true));
 
     // Trance Gated Reverb
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverbSize, 1 }, "Reverb Size", juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.65f, percent));
+        juce::ParameterID{ kReverbSize, 1 }, "Room size", juce::NormalisableRange<float>(0.1f, 1.0f, 0.01f), 0.65f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverbDecay, 1 }, "Reverb Decay", juce::NormalisableRange<float>(50.0f, 2500.0f, 10.0f, 0.35f), 480.0f, milliseconds));
+        juce::ParameterID{ kReverbDecay, 1 }, "Room decay", juce::NormalisableRange<float>(50.0f, 2500.0f, 10.0f, 0.35f), 480.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverbDamp, 1 }, "Reverb Damp", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.38f, percent));
+        juce::ParameterID{ kReverbDamp, 1 }, "Room damping", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.38f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverbGate, 1 }, "Reverb Gate", juce::NormalisableRange<float>(0.0f, 600.0f, 5.0f), 180.0f, milliseconds));
+        juce::ParameterID{ kReverbGate, 1 }, "Room gate time", juce::NormalisableRange<float>(0.0f, 600.0f, 5.0f), 180.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverbMix, 1 }, "Reverb Mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.32f, percent));
+        juce::ParameterID{ kReverbMix, 1 }, "Room mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.32f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEchoMix, 1 }, "Echo Mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
+        juce::ParameterID{ kEchoMix, 1 }, "Echo mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
 
     // Reverse & Sync
-    juce::StringArray revModes{ "Off", "Beat End (Sync)", "Beat 4 Auto", "1/2 Beat", "1/4 Beat" };
+    juce::StringArray revModes{ "Off", "Beat end (sync)", "Beat 4 auto", "1/2 beat", "1/4 beat" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kReverseMode, 1 }, "Reverse Mode", revModes, 0));
+        juce::ParameterID{ kReverseMode, 1 }, "Reverse sync", revModes, 0));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kReverseMix, 1 }, "Reverse Mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f, percent));
+        juce::ParameterID{ kReverseMix, 1 }, "Reverse mix", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.5f, percent));
 
     // Global / Master
-    juce::StringArray midiModes{ "Fixed (Root)", "Note Tracking" };
+    juce::StringArray midiModes{ "Fixed (root)", "Note tracking" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kMidiMode, 1 }, "MIDI Mode", midiModes, 0));
+        juce::ParameterID{ kMidiMode, 1 }, "MIDI pitch", midiModes, 0));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kLockPitch, 1 }, "Lock Pitch", false));
+        juce::ParameterID{ kLockPitch, 1 }, "Lock pitch", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kLockIn, 1 }, "Lock In (WAV)", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kStereoWidth, 1 }, "Master Width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kStereoWidth, 1 }, "Stereo width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kOutputGain, 1 }, "Output Gain", juce::NormalisableRange<float>(-36.0f, 12.0f, 0.5f), 0.0f, decibels));
+        juce::ParameterID{ kOutputGain, 1 }, "Output gain", juce::NormalisableRange<float>(-36.0f, 12.0f, 0.5f), 0.0f, decibels));
     const auto makeFreqRange = [](float minHz, float maxHz, float midHz) {
         juce::NormalisableRange<float> range(minHz, maxHz, 0.1f);
         range.setSkewForCentre(midHz);
         return range;
     };
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqLowFreq, 1 }, "EQ Low Freq", makeFreqRange(25.0f, 400.0f, 100.0f), 80.0f, hertz));
+        juce::ParameterID{ kEqLowFreq, 1 }, "Low EQ frequency", makeFreqRange(25.0f, 400.0f, 100.0f), 80.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqLowDb, 1 }, "EQ Low", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqLowDb, 1 }, "Low EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqMidFreq, 1 }, "EQ Mid Freq", makeFreqRange(200.0f, 6000.0f, 1100.0f), 1000.0f, hertz));
+        juce::ParameterID{ kEqMidFreq, 1 }, "Mid EQ frequency", makeFreqRange(200.0f, 6000.0f, 1100.0f), 1000.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqMidDb, 1 }, "EQ Mid", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqMidDb, 1 }, "Mid EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqHighFreq, 1 }, "EQ High Freq", makeFreqRange(2000.0f, 18000.0f, 6000.0f), 7500.0f, hertz));
+        juce::ParameterID{ kEqHighFreq, 1 }, "High EQ frequency", makeFreqRange(2000.0f, 18000.0f, 6000.0f), 7500.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqHighDb, 1 }, "EQ High", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqHighDb, 1 }, "High EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 83, 0));
 
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kKeyZonesEnabled, 1 }, "MIDI Voice Zones", false));
+        juce::ParameterID{ kKeyZonesEnabled, 1 }, "Key zones", false));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare Zone Low", 0, 127, 36, noteName));
+        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare zone low", 0, 127, 36, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare Zone High", 0, 127, 47, noteName));
+        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare zone high", 0, 127, 47, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneLow, 1 }, "Tom Zone Low", 0, 127, 48, noteName));
+        juce::ParameterID{ kTomZoneLow, 1 }, "Tom zone low", 0, 127, 48, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom Zone High", 0, 127, 59, noteName));
+        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom zone high", 0, 127, 59, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneLow, 1 }, "Bell Zone Low", 0, 127, 60, noteName));
+        juce::ParameterID{ kBellZoneLow, 1 }, "Bell zone low", 0, 127, 60, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell Zone High", 0, 127, 71, noteName));
+        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell zone high", 0, 127, 71, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneLow, 1 }, "Rim Zone Low", 0, 127, 72, noteName));
+        juce::ParameterID{ kRimZoneLow, 1 }, "Rim zone low", 0, 127, 72, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim Zone High", 0, 127, 84, noteName));
+        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim zone high", 0, 127, 84, noteName));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyVelocityDepth, 1 }, "Body Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kBodyVelocityDepth, 1 }, "Body velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kWireVelocityDepth, 1 }, "Wire Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kWireVelocityDepth, 1 }, "Wire velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientVelocityDepth, 1 }, "Transient Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kTransientVelocityDepth, 1 }, "Strike velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyAftertouchDepth, 1 }, "Body Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
+        juce::ParameterID{ kBodyAftertouchDepth, 1 }, "Body aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kWireAftertouchDepth, 1 }, "Wire Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
+        juce::ParameterID{ kWireAftertouchDepth, 1 }, "Wire aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientAftertouchDepth, 1 }, "Transient Aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
+        juce::ParameterID{ kTransientAftertouchDepth, 1 }, "Strike aftertouch", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kRollEnabled, 1 }, "Host Synced Roll", false));
+        juce::ParameterID{ kRollEnabled, 1 }, "Roll", false));
     juce::StringArray rollRates{ "1/8", "1/16", "1/32" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kRollSubdivision, 1 }, "Roll Rate", rollRates, 1));
+        juce::ParameterID{ kRollSubdivision, 1 }, "Roll rate", rollRates, 1));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kRollProbability, 1 }, "Roll Probability", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
+        juce::ParameterID{ kRollProbability, 1 }, "Roll probability", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kRollVelocity, 1 }, "Roll Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.35f, percent));
+        juce::ParameterID{ kRollVelocity, 1 }, "Roll velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.35f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kRollAccentVelocity, 1 }, "Accent Velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f, percent));
+        juce::ParameterID{ kRollAccentVelocity, 1 }, "Roll accent", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f, percent));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRollAccentEvery, 1 }, "Accent Every", 1, 16, 4));
+        juce::ParameterID{ kRollAccentEvery, 1 }, "Roll accent every", 1, 16, 4));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRollNote, 1 }, "Roll Note", 0, 127, 69, noteName));
+        juce::ParameterID{ kRollNote, 1 }, "Roll note", 0, 127, 69, noteName));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kMidiCcBody, 1 }, "Body CC", 0, 127, 20, controller));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kMidiCcWire, 1 }, "Wire CC", 0, 127, 21, controller));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kMidiCcTransient, 1 }, "Transient CC", 0, 127, 22, controller));
+        juce::ParameterID{ kMidiCcTransient, 1 }, "Strike CC", 0, 127, 22, controller));
 
     return { params.begin(), params.end() };
 }

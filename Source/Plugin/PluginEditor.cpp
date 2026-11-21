@@ -78,15 +78,29 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     for (size_t i = 0; i < voices_.size(); ++i) {
         auto& voiceButton = voices_[i];
         voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
+        voiceButton.setTitle(voiceButton.getButtonText() + " voice");
         voiceButton.setTooltip("Set the voice to " + voiceButton.getButtonText() + ".");
         voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
         content_.addAndMakeVisible(voiceButton);
         pages_[i].setButtonText(pageNames[i]);
+        pages_[i].setTitle(juce::String(pageNames[i]) + " page");
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
         content_.addAndMakeVisible(pages_[i]);
     }
     presetBox_.setName("Preset");
+    presetBox_.setTitle("Preset");
     presetBox_.setTooltip("Choose a factory preset across six dance styles.");
+    prevPresetBtn_.setTooltip("Previous preset");
+    nextPresetBtn_.setTooltip("Next preset");
+    auditionBtn_.setTooltip("Play the selected voice once.");
+    viewToggleBtn_.setTooltip("Show every control, including the Body detail card on the Layers page.");
+    const std::initializer_list<std::pair<juce::Button*, const char*>> titles{
+        { &prevPresetBtn_, "Previous preset" }, { &nextPresetBtn_, "Next preset" }, { &auditionBtn_, "Audition hit" },
+        { &viewToggleBtn_, "Advanced controls" }, { &undoBtn_, "Undo" }, { &redoBtn_, "Redo" },
+        { &abABtn_, "Slot A" }, { &abBBtn_, "Slot B" }, { &copyAtoBBtn_, "Copy A to B" }, { &copyBtoABtn_, "Copy B to A" },
+        { &presetsBtn_, "Presets" }, { &dragBtn_, "Drag hit as WAV" }
+    };
+    std::ranges::for_each(titles, [](const auto& entry) { entry.first->setTitle(entry.second); });
     presetBox_.onChange = [this] { chooseProgram(presetBox_.getSelectedId() - 1); };
     prevPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + processor_.getNumPrograms() - 1) % processor_.getNumPrograms()); };
     nextPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + 1) % processor_.getNumPrograms()); };

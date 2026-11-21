@@ -18,11 +18,11 @@ Try *Backbeat* for a snare with a short pitched shell and tight wires, *Glass Pi
 
 ## Play one-shots or held notes
 
-The factory sounds start in **One-shot**. Use **Body decay**, **Pitch sweep**, and **Strike Level** to fit the hit to your rhythm. On the **Layers** page, set the number and spacing of flam strikes, or adjust the wire texture, level and decay.
+The factory sounds start in **One-shot**. Use **Body decay**, **Pitch sweep**, and the strike **Level** to fit the hit to your rhythm. On the **Layers** page, set the number and spacing of flam strikes, or adjust the wire texture, level and decay.
 
 Choose **Hold notes** under **MIDI gate** on the Hit page to sustain the voice from a keyboard. **Attack**, **Decay**, **Sustain**, and **Release** are editable in both views. A matching note-off on the same MIDI channel starts the release, which can run up to 20 seconds. The struck FM overtones fade while the body continues to sound. **Audition hit** and the host roll play one-shots.
 
-Select **Note Tracking** under **MIDI pitch** on the MIDI page to play melodies. **Fixed (Root)** keeps the pitch set on the Hit page. Set the velocity or aftertouch response separately for the body, wires, and transient.
+Select **Note tracking** under **MIDI pitch** on the MIDI page to play melodies. **Fixed (root)** keeps the pitch set on the Hit page. Set the velocity or aftertouch response separately for the body, wires, and transient.
 
 ## Shape and route the layers
 
@@ -32,7 +32,7 @@ The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 d
 
 On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. **Drag WAV** pulls that locked hit out of the plugin as a WAV file. If nothing is locked, it renders a fresh hit instead. Three additional stereo output buses carry the dry body, wires, and transient.
 
-The window resizes freely from 70% of its default size, and the layout scales evenly with it. The project remembers the size. **Undo** and **Redo** step through parameter edits, including Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. **A** and **B** keep two copies of the sound; **A>B** and **B>A** copy between them. **Presets** lists the factory bank and your own sounds, with search and favorites. Save, rename, and delete write user presets to Documents/Alan Marcero/openSmacker/Presets. Before Save replaces a preset with the same name, or Delete removes one, the button asks again; click it a second time within three seconds to confirm. Factory presets stay read-only.
+The window resizes freely from 70% of its default size, and the layout scales evenly with it. The project remembers the size. **Undo** and **Redo** step through parameter edits, including Cmd/Ctrl+Z and Shift+Cmd/Ctrl+Z. **A** and **B** keep two copies of the sound; **A to B** and **B to A** copy between them. **Presets** lists the factory bank and your own sounds, with search and favorites. Save, rename, and delete write user presets to Documents/Alan Marcero/openSmacker/Presets. Before Save replaces a preset with the same name, or Delete removes one, the button asks again; click it a second time within three seconds to confirm. Factory presets stay read-only.
 
 The MIDI page also has editable voice zones. The default ranges are C2 to B2 for snare, C3 to B3 for tom, C4 to B4 for bell, and C5 to C6 for rim. Zone edges and the roll note show note names and accept typed names such as C#4. Use host-synced eighth-, sixteenth-, or thirty-second-note rolls and adjust their probability, velocity, and accent. Assign a CC to each layer by typing its number or with **Learn**, which takes the next controller the plugin receives. **Off** turns a slot off. CC 7 controls output, CC 74 controls the air filter, CC 120 and 123 stop sound, and CC 121 resets controllers.
 

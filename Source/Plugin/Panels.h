@@ -31,7 +31,7 @@ class ParameterCard : public juce::Component {
 public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                   presets::Section section, juce::Colour accent, bool lockable = true);
-    void addParameter(const juce::String& id, const juce::String& title);
+    void addParameter(const juce::String& id, const juce::String& title, const juce::String& tip);
     void addDualEq(const juce::String& freqId, const juce::String& dbId,
                    const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
     void addLearn(const juce::String& id, const juce::String& title);

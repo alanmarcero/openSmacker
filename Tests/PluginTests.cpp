@@ -373,9 +373,9 @@ TEST_CASE("The MIDI page shows note names, Off and steppers, and Learn sets a CC
     REQUIRE(slider("Hits") != nullptr);
     CHECK(slider("Hits")->getSliderStyle() == juce::Slider::IncDecButtons);
     button("MIDI")->onClick();
-    REQUIRE(slider("Accent Every") != nullptr);
-    CHECK(slider("Accent Every")->getSliderStyle() == juce::Slider::IncDecButtons);
-    CHECK(slider("Snare Low")->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag);
+    REQUIRE(slider("Accent every") != nullptr);
+    CHECK(slider("Accent every")->getSliderStyle() == juce::Slider::IncDecButtons);
+    CHECK(slider("Snare low")->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag);
 
     auto* learn = findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getTitle() == "Learn Body CC"; });
     REQUIRE(learn != nullptr);
@@ -390,6 +390,27 @@ TEST_CASE("The MIDI page shows note names, Off and steppers, and Learn sets a CC
     learnTimer->timerCallback();
     CHECK(processor.currentSettings().midiCcForBody == 33);
     CHECK(learn->getButtonText() == "Learn");
+}
+
+TEST_CASE("Every slider, menu and button has a spoken title", "[plugin][gui][accessibility]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    juce::StringArray untitled;
+    int titled = 0;
+    std::function<void(juce::Component&)> visit = [&](juce::Component& component) {
+        const bool control = dynamic_cast<juce::Slider*>(&component) != nullptr || dynamic_cast<juce::ComboBox*>(&component) != nullptr
+            || dynamic_cast<juce::Button*>(&component) != nullptr;
+        if (control && component.isAccessible() && component.getTitle().isEmpty())
+            untitled.add(component.getName());
+        if (control && !component.getTitle().isEmpty())
+            ++titled;
+        std::ranges::for_each(component.getChildren(), [&visit](juce::Component* child) { visit(*child); });
+    };
+    visit(*editor);
+    CAPTURE(untitled.joinIntoString(", ").toStdString());
+    CHECK(untitled.isEmpty());
+    CHECK(titled > 100);
 }
 
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
@@ -574,9 +595,9 @@ TEST_CASE("OpenSmacker exposes 3-band EQ with glide and Output controls on the m
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
     std::ranges::for_each(std::array<const char*, 7>{
-        "Low EQ Gain", "Mid EQ Gain", "High EQ Gain", "Stereo width", "Output", "Ceiling", "Limit Release"},
-        [&](const char* name) {
-            auto* slider = findVisible<juce::Slider>(*editor, [&](const auto& s) { return s.getName() == name; });
+        "Low EQ gain", "Mid EQ gain", "High EQ gain", "Stereo width", "Output gain", "Limiter ceiling", "Limiter release"},
+        [&](const char* title) {
+            auto* slider = findVisible<juce::Slider>(*editor, [&](const auto& s) { return s.getTitle() == title; });
             REQUIRE(slider != nullptr);
             CHECK(slider->isVisible());
         });

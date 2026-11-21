@@ -11,6 +11,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
     : store_(std::move(store)), factory_(std::move(factory)), loadFactory_(std::move(loadFactory)),
       loadUser_(std::move(loadUser)), saveUser_(std::move(saveUser)), style_(style) {
     search_.setName("Preset search");
+    search_.setTitle("Search presets");
     search_.setTextToShowWhenEmpty("Search presets", style_.dim);
     search_.setColour(juce::TextEditor::backgroundColourId, style_.ink);
     search_.setColour(juce::TextEditor::textColourId, style_.text);
@@ -18,6 +19,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
     search_.setColour(juce::TextEditor::focusedOutlineColourId, style_.accent);
     search_.onTextChange = [this] { rebuild(); };
     name_.setName("Preset name");
+    name_.setTitle("Preset name");
     name_.setTextToShowWhenEmpty("Preset name", style_.dim);
     name_.setColour(juce::TextEditor::backgroundColourId, style_.ink);
     name_.setColour(juce::TextEditor::textColourId, style_.text);
@@ -79,6 +81,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
         }
     };
     for (auto* button : { &favoritesBtn_, &saveBtn_, &renameBtn_, &deleteBtn_ }) {
+        button->setTitle(button->getButtonText());
         button->setColour(juce::TextButton::buttonColourId, style_.panel);
         button->setColour(juce::TextButton::textColourOffId, style_.text);
     }
