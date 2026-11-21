@@ -52,6 +52,7 @@ private:
     juce::TextButton copyAtoBBtn_{ "A to B" }, copyBtoABtn_{ "B to A" };
     juce::TextButton presetsBtn_{ "Presets" };
     suite::WavDragButton dragBtn_;
+    opensmacker::ui::HitMonitor hitMonitor_;
     int currentPage_ = 0;
     juce::Rectangle<int> artBounds_;
     juce::Rectangle<int> versionBounds_;

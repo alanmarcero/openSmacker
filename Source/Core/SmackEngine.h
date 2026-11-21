@@ -192,7 +192,7 @@ private:
         double beatsPerBar,
         float velocity,
         int semitoneOffset,
-        bool reverseCue,
+        bool audition,
         int noteNumber,
         int channel,
         bool oneShot = false) noexcept;

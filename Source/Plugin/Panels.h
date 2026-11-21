@@ -3,6 +3,7 @@
 #include "Controls.h"
 #include "Presets.h"
 #include "SmackSynth.h"
+#include <atomic>
 #include <optional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -27,6 +28,38 @@ private:
 
 };
 
+// Lamp that flashes with each hit's velocity, beside the last note and the voice it played.
+class HitMonitor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    explicit HitMonitor(OpenSmackerProcessor& processor);
+    void paint(juce::Graphics& g) override;
+    void timerCallback() override;
+    [[nodiscard]] const juce::String& readout() const noexcept { return readout_; }
+private:
+    OpenSmackerProcessor& processor_;
+    uint32_t lastTriggerCount_ = 0;
+    float glow_ = 0.0f;
+    juce::String readout_;
+};
+
+// Output peak in dBFS with a 1 s hold, a ceiling mark, and a clip light that a click clears.
+class PeakMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
+public:
+    PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb);
+    void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    void timerCallback() override;
+    [[nodiscard]] bool isClipped() const noexcept { return clipped_; }
+    [[nodiscard]] float holdDb() const noexcept { return holdDb_; }
+private:
+    std::atomic<float>& peak_;
+    const std::atomic<float>& ceilingDb_;
+    float levelDb_ = -60.0f;
+    float holdDb_ = -60.0f;
+    double holdStartMs_ = 0.0;
+    bool clipped_ = false;
+};
+
 class ParameterCard : public juce::Component {
 public:
     ParameterCard(OpenSmackerProcessor& processor, juce::String title,
@@ -34,7 +67,7 @@ public:
     void addParameter(const juce::String& id, const juce::String& title, const juce::String& tip);
     void addDualEq(const juce::String& freqId, const juce::String& dbId,
                    const juce::String& title, juce::Colour freqAccent, const juce::String& tip);
-    void addLearn(const juce::String& id, const juce::String& title);
+    void addControl(std::unique_ptr<juce::Component> control);
     void setRows(std::vector<int> basic, std::vector<int> advanced = {});
     void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);

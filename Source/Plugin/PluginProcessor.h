@@ -84,6 +84,11 @@ public:
     std::atomic<float> displaySmackProgress{ 1.0f };
     std::atomic<float> displayVelocity{ 1.0f };
     std::atomic<uint32_t> displayTriggerCount{ 0 };
+    // displayLastNote holds a MIDI note, kAuditionNote, or -1 before the first hit.
+    static constexpr int kAuditionNote = 128;
+    std::atomic<int> displayLastNote{ -1 };
+    // The voice that played the last note, or -1 when no key zone takes the note.
+    std::atomic<int> displayLastVoice{ -1 };
     std::atomic<int> displayLastController{ 0 };
     std::atomic<uint32_t> displayControllerCount{ 0 };
     std::atomic<bool> displayLockedIn{ false };

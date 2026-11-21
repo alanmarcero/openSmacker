@@ -47,7 +47,7 @@ private:
 
 OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     : AudioProcessorEditor(&processorToEdit), processor_(processorToEdit),
-      dragBtn_([this] { return processor_.createHitWavFile(); }),
+      dragBtn_([this] { return processor_.createHitWavFile(); }), hitMonitor_(processorToEdit),
       stagePanel_(processorToEdit), synthPanel_(processorToEdit),
       effectsPanel_(processorToEdit), performancePanel_(processorToEdit),
       tooltipWindow_(this, 500) {
@@ -126,7 +126,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     dragBtn_.setColour(juce::TextButton::textColourOffId, theme::kInk);
     for (auto* child : std::initializer_list<juce::Component*>{
              &presetBox_, &prevPresetBtn_, &nextPresetBtn_, &auditionBtn_, &viewToggleBtn_,
-             &undoBtn_, &redoBtn_, &abABtn_, &abBBtn_, &copyAtoBBtn_, &copyBtoABtn_, &presetsBtn_, &dragBtn_,
+             &undoBtn_, &redoBtn_, &abABtn_, &abBBtn_, &copyAtoBBtn_, &copyBtoABtn_, &presetsBtn_, &dragBtn_, &hitMonitor_,
              &stagePanel_, &synthPanel_, &effectsPanel_, &performancePanel_ })
         content_.addAndMakeVisible(child);
     addAndMakeVisible(content_);
@@ -323,6 +323,8 @@ void OpenSmackerEditor::layoutContent() {
     take(presetsBtn_, 88);
     suite.removeFromLeft(8);
     dragBtn_.setBounds(suite.removeFromLeft(108));
+    suite.removeFromLeft(24);
+    hitMonitor_.setBounds(suite);
 
     auto rail = content_.getLocalBounds().withTrimmedTop(headerHeight).withWidth(railWidth).reduced(16, 8);
     versionBounds_ = rail.removeFromBottom(20);

@@ -413,6 +413,92 @@ TEST_CASE("Every slider, menu and button has a spoken title", "[plugin][gui][acc
     CHECK(titled > 100);
 }
 
+TEST_CASE("Audition plays the selected Voice whatever the key zones say", "[plugin][midi][zones]") {
+    const auto renderAudition = [](bool keyZones) {
+        OpenSmackerProcessor processor;
+        processor.setCurrentProgram(0);
+        processor.parameters.getParameter(opensmacker::params::kKeyZonesEnabled)->setValueNotifyingHost(keyZones ? 1.0f : 0.0f);
+        processor.prepareToPlay(48000.0, 4096);
+        processor.triggerAudition();
+        juce::AudioBuffer<float> buffer(2, 4096);
+        juce::MidiBuffer midi;
+        processor.processBlock(buffer, midi);
+        return buffer;
+    };
+    const auto withZones = renderAudition(true);
+    const auto withoutZones = renderAudition(false);
+    float difference = 0.0f;
+    for (int i = 0; i < withZones.getNumSamples(); ++i)
+        difference = std::max(difference, std::abs(withZones.getSample(0, i) - withoutZones.getSample(0, i)));
+    CHECK(withoutZones.getMagnitude(0, 0, withoutZones.getNumSamples()) > 0.1f);
+    CHECK(difference < 1.0e-6f);
+}
+
+TEST_CASE("The hit readout names the last note and the voice that played it", "[plugin][gui][midi]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000.0, 512);
+    processor.parameters.getParameter(opensmacker::params::kKeyZonesEnabled)->setValueNotifyingHost(1.0f);
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    auto* monitor = findVisible<opensmacker::ui::HitMonitor>(*editor, [](const auto&) { return true; });
+    REQUIRE(monitor != nullptr);
+    juce::AudioBuffer<float> buffer(2, 512);
+    const auto play = [&processor, &buffer](int note) {
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, note, static_cast<juce::uint8>(100)), 0);
+        processor.processBlock(buffer, midi);
+    };
+    play(24);
+    monitor->timerCallback();
+    CHECK(monitor->readout() == "C1 -> no zone");
+    play(60);
+    monitor->timerCallback();
+    CHECK(monitor->readout() == "C4 -> Bell");
+    processor.triggerAudition();
+    juce::MidiBuffer none;
+    processor.processBlock(buffer, none);
+    monitor->timerCallback();
+    CHECK(monitor->readout() == "Audition -> Snare");
+}
+
+TEST_CASE("The peak meter shows the highest peak since its last read and latches clips", "[plugin][gui][meter]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000.0, 512);
+    juce::AudioBuffer<float> buffer(2, 512);
+    juce::MidiBuffer midi;
+    midi.addEvent(juce::MidiMessage::noteOn(1, 69, static_cast<juce::uint8>(120)), 0);
+    processor.processBlock(buffer, midi);
+    const float loud = std::max(buffer.getMagnitude(0, 0, 512), buffer.getMagnitude(1, 0, 512));
+    midi.clear();
+    for (int block = 0; block < 200; ++block)
+        processor.processBlock(buffer, midi);
+    CHECK(processor.displayPeak.exchange(0.0f) >= loud * 0.99f);
+    CHECK(processor.displayPeak.load() == 0.0f);
+
+    std::atomic<float> peak{ 0.5f };
+    const std::atomic<float> ceiling{ -1.0f };
+    opensmacker::ui::PeakMeter meter(peak, ceiling);
+    meter.timerCallback();
+    CHECK(meter.holdDb() == Catch::Approx(-6.02f).margin(0.01f));
+    CHECK(peak.load() == 0.0f);
+    peak = 0.1f;
+    meter.timerCallback();
+    CHECK(meter.holdDb() == Catch::Approx(-6.02f).margin(0.01f));
+    CHECK_FALSE(meter.isClipped());
+    peak = 1.2f;
+    meter.timerCallback();
+    peak = 0.2f;
+    meter.timerCallback();
+    CHECK(meter.isClipped());
+    const auto now = juce::Time::getCurrentTime();
+    meter.mouseDown(juce::MouseEvent(juce::Desktop::getInstance().getMainMouseSource(), {}, {},
+        juce::MouseInputSource::defaultPressure, juce::MouseInputSource::defaultOrientation,
+        juce::MouseInputSource::defaultRotation, juce::MouseInputSource::defaultTiltX, juce::MouseInputSource::defaultTiltY,
+        &meter, &meter, now, {}, now, 1, false));
+    CHECK_FALSE(meter.isClipped());
+}
+
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
     juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;

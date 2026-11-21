@@ -148,6 +148,92 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
+HitMonitor::HitMonitor(OpenSmackerProcessor& processor) : processor_(processor) {
+    setTooltip("Flashes on each hit, brighter for harder hits. Shows the last note and the voice it played.");
+    startTimerHz(30);
+}
+
+void HitMonitor::timerCallback() {
+    const auto count = processor_.displayTriggerCount.load();
+    const float velocity = processor_.displayVelocity.load();
+    glow_ = count != lastTriggerCount_ ? velocity : glow_ * 0.82f;
+    lastTriggerCount_ = count;
+
+    const int note = processor_.displayLastNote.load();
+    const int voice = processor_.displayLastVoice.load();
+    const auto* voiceParameter = processor_.parameters.getParameter(params::kVoiceMode);
+    auto source = juce::MidiMessage::getMidiNoteName(note, true, true, 4);
+    if (note == OpenSmackerProcessor::kAuditionNote)
+        source = "Audition";
+    auto target = juce::String("no zone");
+    if (voice >= 0)
+        target = voiceParameter->getText(voiceParameter->convertTo0to1(static_cast<float>(voice)), 0);
+    readout_ = note < 0 ? juce::String() : source + " -> " + target;
+    repaint();
+}
+
+void HitMonitor::paint(juce::Graphics& g) {
+    auto area = getLocalBounds();
+    const auto lamp = area.removeFromLeft(getHeight()).toFloat().reduced(9.0f);
+    g.setColour(theme::kPanelEdge);
+    g.fillEllipse(lamp);
+    g.setColour(theme::kApricot.withAlpha(glow_));
+    g.fillEllipse(lamp);
+    area.removeFromLeft(4);
+    g.setColour(theme::kTextDim);
+    g.setFont(juce::FontOptions(13.0f));
+    g.drawText("Last hit", area.removeFromLeft(58), juce::Justification::centredLeft);
+    g.setColour(theme::kText);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.drawText(readout_, area, juce::Justification::centredLeft, true);
+}
+
+PeakMeter::PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb) : peak_(peak), ceilingDb_(ceilingDb) {
+    setTooltip("Output peak in dBFS. The line holds the highest peak for 1 s. The top light stays on after a peak above 0 dBFS; click to clear it.");
+    startTimerHz(30);
+}
+
+void PeakMeter::timerCallback() {
+    constexpr float floorDb = -60.0f;
+    const float peak = peak_.exchange(0.0f);
+    const float peakDb = juce::Decibels::gainToDecibels(peak, floorDb);
+    levelDb_ = std::max(peakDb, levelDb_ - 1.0f);
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    if (peakDb >= holdDb_ || now - holdStartMs_ > 1000.0) {
+        holdDb_ = peakDb;
+        holdStartMs_ = now;
+    }
+    clipped_ = clipped_ || peak > 1.0f;
+    repaint();
+}
+
+void PeakMeter::mouseDown(const juce::MouseEvent&) {
+    clipped_ = false;
+    repaint();
+}
+
+void PeakMeter::paint(juce::Graphics& g) {
+    auto area = getLocalBounds();
+    g.setColour(theme::kTextDim);
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    g.drawText("Peak", area.removeFromTop(18), juce::Justification::centred);
+    area = area.withSizeKeepingCentre(std::min(16, area.getWidth()), area.getHeight()).reduced(0, 4);
+    const auto clipLight = area.removeFromTop(8).toFloat();
+    area.removeFromTop(3);
+    const auto bar = area.toFloat();
+    const auto yFor = [&bar](float db) { return juce::jmap(juce::jlimit(-60.0f, 6.0f, db), -60.0f, 6.0f, bar.getBottom(), bar.getY()); };
+    g.setColour(clipped_ ? theme::kApricot : theme::kPanelEdge);
+    g.fillRoundedRectangle(clipLight, 2.0f);
+    g.setColour(theme::kInk);
+    g.fillRoundedRectangle(bar, 2.0f);
+    g.setColour(theme::kLilac);
+    g.fillRect(bar.withTop(yFor(levelDb_)));
+    g.setColour(theme::kText);
+    g.fillRect(bar.getX(), yFor(holdDb_) - 1.0f, bar.getWidth(), 2.0f);
+    g.setColour(theme::kApricot);
+    g.fillRect(bar.getX() - 3.0f, yFor(ceilingDb_.load()) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
+}
+
 ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
                              presets::Section section, juce::Colour accent, bool lockable)
     : processor_(processor), title_(std::move(title)), section_(section), accent_(accent), lockable_(lockable) {
@@ -188,10 +274,9 @@ void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& db
     controls_.push_back(std::move(knob));
 }
 
-void ParameterCard::addLearn(const juce::String& id, const juce::String& title) {
-    auto learn = std::make_unique<LearnControl>(processor_, *processor_.parameters.getParameter(id), title);
-    addAndMakeVisible(*learn);
-    controls_.push_back(std::move(learn));
+void ParameterCard::addControl(std::unique_ptr<juce::Component> control) {
+    addAndMakeVisible(*control);
+    controls_.push_back(std::move(control));
 }
 
 void ParameterCard::setRows(std::vector<int> basic, std::vector<int> advanced) {
@@ -355,13 +440,14 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     const std::array<ControlSpec, 5> output{ {
         { kStereoWidth, "Stereo width", "Width of the output. 0% is mono." },
         { kOutputGain, "Gain", "Output level after the limiter." },
-        { kLimiterCeiling, "Ceiling", "Highest peak level the limiter lets through." },
-        { kLimiterRelease, "Release", "How fast the limiter recovers after it reduces a peak." },
         { kLimiterEnabled, "Limiter", "Turns the brickwall limiter on or off." },
+        { kLimiterRelease, "Release", "How fast the limiter recovers after it reduces a peak." },
+        { kLimiterCeiling, "Ceiling", "Highest peak level the limiter lets through." },
     } };
     std::ranges::for_each(output, [this](const ControlSpec& spec) { outputCard_.addParameter(spec.id, spec.label, spec.tip); });
-    outputCard_.setRows({ 8 });
-    outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f });
+    outputCard_.addControl(std::make_unique<PeakMeter>(processor.displayPeak, *processor.parameters.getRawParameterValue(kLimiterCeiling)));
+    outputCard_.setRows({ 9 });
+    outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f, 5.0f });
     addAndMakeVisible(outputCard_);
 
     addAndMakeVisible(detailCard_);
@@ -512,9 +598,9 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
         { kMidiCcTransient, "Strike CC", "Controller number that sets the strike level. Off ignores controllers." },
     } };
     std::ranges::for_each(roll, [this](const ControlSpec& spec) { rollCard_.addParameter(spec.id, spec.label, spec.tip); });
-    rollCard_.addLearn(kMidiCcBody, "Body CC");
-    rollCard_.addLearn(kMidiCcWire, "Wire CC");
-    rollCard_.addLearn(kMidiCcTransient, "Strike CC");
+    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcBody), "Body CC"));
+    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcWire), "Wire CC"));
+    rollCard_.addControl(std::make_unique<LearnControl>(processor, *processor.parameters.getParameter(kMidiCcTransient), "Strike CC"));
     rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 2, 3, 3 });
 
     addAndMakeVisible(zonesCard_);

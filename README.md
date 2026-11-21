@@ -12,7 +12,7 @@ openSmacker synthesizes pitched trance percussion. Play a short backbeat, tune a
 
 ## Find a sound
 
-Choose **Snare**, **Tom**, **Bell**, or **Rim** in the sidebar to set the voice. The **Preset** menu organizes all 84 factory presets into six dance styles: 24 Uplifting and 12 each of Rolling, Progressive, Psy, Tech, and Classic. It shows the name of the loaded preset, factory or your own, and adds * after you edit it. **Previous**, **Next**, and **Audition hit** work on every page.
+Choose **Snare**, **Tom**, **Bell**, or **Rim** in the sidebar to set the voice. The **Preset** menu organizes all 84 factory presets into six dance styles: 24 Uplifting and 12 each of Rolling, Progressive, Psy, Tech, and Classic. It shows the name of the loaded preset, factory or your own, and adds * after you edit it. **Previous**, **Next**, and **Audition hit** work on every page. **Audition hit** plays the selected voice, even with key zones on. The lamp beside **Drag WAV** flashes with each hit, brighter for harder hits, and names the last note and the voice that played it, or *no zone* when no key zone takes the note.
 
 Try *Backbeat* for a snare with a short pitched shell and tight wires, *Glass Pin* for a struck FM chime, *Floor Pocket* for a low tom, or *Rim Tick* for a short side accent. Snares and rim shots fall off into noise. Bells and toms keep a pitch. Harder strikes produce a brighter attack. Factory hits sit under the output limiter. The **Hit** page shows a preview of the dry one-shot at its root pitch. The illustrated drumhead in the sidebar pulses on the host beat, rests when playback stops, and runs on an internal clock in Standalone.
 
@@ -28,7 +28,7 @@ Select **Note tracking** under **MIDI pitch** on the MIDI page to play melodies.
 
 Enable **Advanced controls** for the transient filters and pan, wire attack and hold, and flam humanization. In this view the **Layers** page adds a **Body detail** card with shell resonance and FM, pitch decay, fine tune, lock pitch, and the body filters and pan. Each card's **Lock** keeps that card's values when you load a preset, and locked controls stay editable. Presets leave **MIDI pitch** as you set it.
 
-The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 dB gain and smooth frequency glide, stereo width, output gain, and brickwall limiter) alongside body tuning, transient strike, and amplitude envelope.
+The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 dB gain and smooth frequency glide, stereo width, output gain, brickwall limiter, and a peak meter in dBFS) alongside body tuning, transient strike, and amplitude envelope. The meter's line holds the highest peak for a second, and its top light stays on after a peak above 0 dBFS until you click it.
 
 On **Effects**, choose Tape, Tube, Hard Clip, or Wavefold saturation. Advanced controls include compression, gated reverb, a tempo-synced reverse swell, and **Lock WAV** to store a rendered hit in the project. **Drag WAV** pulls that locked hit out of the plugin as a WAV file. If nothing is locked, it renders a fresh hit instead. Three additional stereo output buses carry the dry body, wires, and transient.
 

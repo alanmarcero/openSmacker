@@ -116,11 +116,17 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     midiCcEvents_.clear();
     midiPressureEvents_.clear();
 
+    const auto settings = currentSettings();
+    const std::optional<opensmacker::core::VoiceMode> selectedVoice = settings.synth.voiceMode;
     for (const auto meta : midi) {
         const auto msg = meta.getMessage();
         if (msg.isNoteOn()) {
             const float vel = msg.getFloatVelocity();
             displayVelocity.store(vel, std::memory_order_relaxed);
+            const auto zoneVoice = opensmacker::core::resolveVoiceModeForNote(msg.getNoteNumber(), settings.voiceZones);
+            const auto voice = settings.keyZonesEnabled ? zoneVoice : selectedVoice;
+            displayLastNote.store(msg.getNoteNumber(), std::memory_order_relaxed);
+            displayLastVoice.store(voice ? static_cast<int>(*voice) : -1, std::memory_order_relaxed);
             midiTriggers_.push_back({
                 .sampleOffset = meta.samplePosition,
                 .noteNumber = msg.getNoteNumber(),
@@ -167,6 +173,8 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
     if (auditionPending_.exchange(false)) {
         displayVelocity.store(1.0f, std::memory_order_relaxed);
+        displayLastNote.store(kAuditionNote, std::memory_order_relaxed);
+        displayLastVoice.store(static_cast<int>(settings.synth.voiceMode), std::memory_order_relaxed);
         midiTriggers_.push_back({
             .sampleOffset = 0,
             .noteNumber = 69, // A4
@@ -176,7 +184,6 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         });
     }
 
-    const auto settings = currentSettings();
     auto mainOutput = getBusBuffer(buffer, false, 0);
     if (mainOutput.getNumChannels() < 2)
         return;
@@ -201,7 +208,11 @@ void OpenSmackerProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
     engine_.process(settings, transport, midiTriggers_, channelPointers, 2, numSamples,
         midiCcEvents_, midiPressureEvents_, layerOutputs, midiNoteOffs_);
 
-    displayPeak.store(engine_.currentPeak());
+    // Keeps the highest peak until the editor reads it with exchange.
+    const float peak = engine_.currentPeak();
+    float shownPeak = displayPeak.load(std::memory_order_relaxed);
+    while (peak > shownPeak && !displayPeak.compare_exchange_weak(shownPeak, peak, std::memory_order_relaxed)) {
+    }
     float beatPhase = -1.0f;
     if (hostTimeline) beatPhase = transport.isPlaying ? engine_.currentBeatPhase() : 1.0f;
     displayBeatPhase.store(beatPhase, std::memory_order_relaxed);

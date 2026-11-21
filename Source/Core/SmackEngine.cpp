@@ -607,11 +607,11 @@ void SmackEngine::triggerSmack(
     double beatsPerBar,
     float velocity,
     int semitoneOffset,
-    bool reverseCue,
+    bool audition,
     int noteNumber,
     int channel,
     bool oneShot) noexcept {
-    if (settings.keyZonesEnabled) {
+    if (settings.keyZonesEnabled && !audition) {
         const auto mode = resolveVoiceModeForNote(noteNumber, settings.voiceZones);
         if (!mode)
             return;
@@ -633,7 +633,7 @@ void SmackEngine::triggerSmack(
     triggerSettings.wirePerformanceGain = ccWireGain_;
     triggerSettings.transientPerformanceGain = ccTransientGain_;
 
-    const bool engageReverse = shouldTriggerReverse(settings.effects.reverseMode, reverseCue, samplePpq, beatsPerBar);
+    const bool engageReverse = shouldTriggerReverse(settings.effects.reverseMode, audition, samplePpq, beatsPerBar);
     if (engageReverse && settings.effects.reverseMode != ReverseSyncMode::Off) {
         reverseDuration_ = computeSyncedReverseSamples(settings.effects.reverseMode, samplePpq, bpm, beatsPerBar, sampleRate_);
             reverseDuration_ = std::min(reverseDuration_, static_cast<int>(reverseSource_.left.capacity()));
