@@ -289,6 +289,60 @@ TEST_CASE("Section locks preserve preset values and restore with the session", "
     REQUIRE_FALSE(restored.isSectionLocked(opensmacker::presets::Section::WiresAir));
 }
 
+TEST_CASE("Each card's Lock keeps only that card, and presets leave MIDI pitch alone", "[plugin][preset_lock]") {
+    using namespace opensmacker::params;
+    using opensmacker::presets::Section;
+    OpenSmackerProcessor processor;
+    const auto set = [&processor](const char* id, float value) {
+        auto* parameter = processor.parameters.getParameter(id);
+        parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
+    };
+    const auto value = [&processor](const char* id) { return processor.parameters.getRawParameterValue(id)->load(); };
+    set(kLimiterCeiling, -6.0f);
+    set(kLimiterRelease, 80.0f);
+    set(kLimiterEnabled, 0.0f);
+    set(kAmpAttack, 15.0f);
+    set(kMidiMode, 1.0f);
+    processor.setSectionLocked(Section::Output, true);
+    processor.setSectionLocked(Section::VoiceTuning, true);
+
+    processor.setCurrentProgram(5);
+
+    CHECK(value(kLimiterCeiling) == Catch::Approx(-6.0f));
+    CHECK(value(kLimiterRelease) == Catch::Approx(80.0f));
+    CHECK(value(kLimiterEnabled) < 0.5f);
+    CHECK(value(kAmpAttack) == Catch::Approx(0.2f));
+    CHECK(value(kMidiMode) > 0.5f);
+}
+
+TEST_CASE("Sessions from before per-card locks keep the locks their cards showed", "[plugin][preset_lock][state]") {
+    using opensmacker::presets::Section;
+    OpenSmackerProcessor source;
+    auto tree = source.parameters.copyState();
+    tree.setProperty("factoryBank", 2, nullptr);
+    tree.setProperty("section_lock_0", true, nullptr);
+    tree.setProperty("section_lock_5", true, nullptr);
+    juce::MemoryBlock oldSession;
+    juce::AudioProcessor::copyXmlToBinary(*tree.createXml(), oldSession);
+    OpenSmackerProcessor restored;
+    restored.setStateInformation(oldSession.getData(), static_cast<int>(oldSession.getSize()));
+    CHECK(restored.isSectionLocked(Section::Envelope));
+    CHECK(restored.isSectionLocked(Section::BodyDetail));
+    CHECK(restored.isSectionLocked(Section::Output));
+    CHECK(restored.isSectionLocked(Section::Space));
+    CHECK_FALSE(restored.isSectionLocked(Section::SaturationDynamics));
+
+    OpenSmackerProcessor modern;
+    modern.setSectionLocked(Section::VoiceTuning, true);
+    juce::MemoryBlock session;
+    modern.getStateInformation(session);
+    OpenSmackerProcessor reopened;
+    reopened.setStateInformation(session.getData(), static_cast<int>(session.getSize()));
+    CHECK(reopened.isSectionLocked(Section::VoiceTuning));
+    CHECK_FALSE(reopened.isSectionLocked(Section::Envelope));
+    CHECK_FALSE(reopened.isSectionLocked(Section::BodyDetail));
+}
+
 TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][gui]") {
     juce::ScopedJuceInitialiser_GUI guiInitialiser;
     OpenSmackerProcessor processor;

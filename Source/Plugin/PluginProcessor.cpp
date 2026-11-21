@@ -270,6 +270,8 @@ juce::ValueTree OpenSmackerProcessor::copySoundState(bool includeWav) {
     state.setProperty("factoryBank", 2, nullptr);
     state.setProperty("synthModel", synthModel_.load(std::memory_order_relaxed), nullptr);
     state.setProperty("presetEdited", presetEdited_.load(), nullptr);
+    for (size_t i = 0; i < sectionLocks_.size(); ++i)
+        state.setProperty("section_lock_" + juce::String(static_cast<int>(i)), sectionLocks_[i].load(std::memory_order_relaxed), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     state.removeProperty("abSlot0", nullptr);
@@ -323,9 +325,13 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
     parameters.replaceState(state);
     loadingSound_.store(false);
     presetEdited_.store(edited);
+    // Earlier saves had no Envelope, Output or Body detail lock. Those cards follow the lock that covered them.
+    constexpr std::array<int, 9> coveringLock{ 0, 1, 2, 3, 4, 5, 0, 5, 0 };
+    static_assert(coveringLock.size() == static_cast<size_t>(opensmacker::presets::Section::Count));
     for (size_t i = 0; i < sectionLocks_.size(); ++i) {
-        const auto key = "section_lock_" + juce::String(static_cast<int>(i));
-        sectionLocks_[i].store(state.getProperty(key, false), std::memory_order_relaxed);
+        const auto earlier = state.getProperty("section_lock_" + juce::String(coveringLock[i]), false);
+        sectionLocks_[i].store(state.getProperty("section_lock_" + juce::String(static_cast<int>(i)), earlier),
+                               std::memory_order_relaxed);
     }
     if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
         currentProgram_ = juce::jlimit(0, std::max(0, getNumPrograms() - 1), static_cast<int>(*preset));

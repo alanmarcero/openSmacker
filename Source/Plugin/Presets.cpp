@@ -189,7 +189,6 @@ FactoryPreset makePreset(const Patch& p) {
         { kEchoMix, 0 },
         { kReverseMode, 0 },
         { kReverseMix, 0 },
-        { kMidiMode, 0 },
         { kLockPitch, 0 },
         { kLockIn, 0 },
         { kEqLowFreq, 90 },
@@ -241,14 +240,19 @@ Section sectionFor(const juce::String& id) {
     if (id == kTransientHPF || id == kTransientLPF || id == kTransientPan)
         return Section::Transient;
     if (id == kDistType || id == kDistDrive || id == kDistTone || id == kDistMix || id == kCompThresh || id == kCompRatio
-        || id == kCompAttack || id == kCompRelease || id == kCompMakeup || id == kCompMix || id == kLimiterCeiling
-        || id == kLimiterRelease || id == kLimiterEnabled)
+        || id == kCompAttack || id == kCompRelease || id == kCompMakeup || id == kCompMix)
         return Section::SaturationDynamics;
     if (id == kReverbSize || id == kReverbDecay || id == kReverbDamp || id == kReverbGate || id == kReverbMix || id == kEchoMix
-        || id == kReverseMode || id == kReverseMix || id == kMidiMode || id == kLockIn
-        || id == kEqLowFreq || id == kEqLowDb || id == kEqMidFreq || id == kEqMidDb || id == kEqHighFreq || id == kEqHighDb
-        || id == kStereoWidth || id == kOutputGain)
-        return Section::SpaceOutput;
+        || id == kReverseMode || id == kReverseMix || id == kLockIn)
+        return Section::Space;
+    if (id == kEqLowFreq || id == kEqLowDb || id == kEqMidFreq || id == kEqMidDb || id == kEqHighFreq || id == kEqHighDb
+        || id == kStereoWidth || id == kOutputGain || id == kLimiterCeiling || id == kLimiterRelease || id == kLimiterEnabled)
+        return Section::Output;
+    if (id == kAmpEnabled || id == kAmpAttack || id == kAmpDecay || id == kAmpSustain || id == kAmpRelease)
+        return Section::Envelope;
+    if (id == kFmAmount || id == kToneFreq || id == kToneQ || id == kShellSpread || id == kTonePitchDecay || id == kToneFine
+        || id == kLockPitch || id == kBodyHPF || id == kBodyLPF || id == kBodyPan)
+        return Section::BodyDetail;
     return Section::VoiceTuning;
 }
 } // namespace

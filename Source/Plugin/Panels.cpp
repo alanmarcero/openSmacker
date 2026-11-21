@@ -92,7 +92,7 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
     lockButton_.setClickingTogglesState(false);
     lockButton_.setColour(juce::TextButton::buttonColourId, theme::kKnobBody);
     lockButton_.setColour(juce::TextButton::textColourOffId, theme::kTextDim);
-    lockButton_.setTooltip("Keep this section's values when loading a preset. Controls remain editable.");
+    lockButton_.setTooltip("Keep the " + title_ + " values when you load a preset. The controls stay editable.");
     lockButton_.onClick = [this] {
         processor_.setSectionLocked(section_, !processor_.isSectionLocked(section_));
         repaint();
@@ -200,10 +200,10 @@ void ParameterCard::resized() {
 
 SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     : voiceCard_(processor, "Body & tuning", presets::Section::VoiceTuning, theme::kApricot),
-      detailCard_(processor, "Body detail", presets::Section::VoiceTuning, theme::kApricot),
+      detailCard_(processor, "Body detail", presets::Section::BodyDetail, theme::kApricot),
       transientCard_(processor, "Transient strike", presets::Section::Transient, theme::kIce),
-      envelopeCard_(processor, "Amplitude envelope", presets::Section::VoiceTuning, theme::kLilac, false),
-      outputCard_(processor, "Output", presets::Section::SpaceOutput, theme::kLilac),
+      envelopeCard_(processor, "Amplitude envelope", presets::Section::Envelope, theme::kLilac),
+      outputCard_(processor, "Output", presets::Section::Output, theme::kLilac),
       preStrikeCard_(processor, "Flam", presets::Section::PreStrike, theme::kApricot),
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
@@ -326,7 +326,7 @@ void SmackSynthPanel::resized() {
 
 EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
     : dynamicsCard_(processor, "Saturation & dynamics", presets::Section::SaturationDynamics, theme::kApricot),
-      spaceCard_(processor, "Space & WAV lock", presets::Section::SpaceOutput, theme::kIce) {
+      spaceCard_(processor, "Space & WAV lock", presets::Section::Space, theme::kIce) {
     using namespace opensmacker::params;
     const std::array<std::pair<const char*, const char*>, 10> dynamics{
         std::pair{ kDistType, "Saturation" }, { kDistDrive, "Drive" }, { kDistTone, "Tone" }, { kDistMix, "Mix" },

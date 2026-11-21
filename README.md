@@ -26,7 +26,7 @@ Select **Note Tracking** under **MIDI pitch** on the MIDI page to play melodies.
 
 ## Shape and route the layers
 
-Enable **Advanced controls** for the transient filters and pan, wire attack and hold, and flam humanization. In this view the **Layers** page adds a **Body detail** card with shell resonance and FM, pitch decay, fine tune, lock pitch, and the body filters and pan. Lock a section to keep its values while browsing. Locked controls stay editable.
+Enable **Advanced controls** for the transient filters and pan, wire attack and hold, and flam humanization. In this view the **Layers** page adds a **Body detail** card with shell resonance and FM, pitch decay, fine tune, lock pitch, and the body filters and pan. Each card's **Lock** keeps that card's values when you load a preset, and locked controls stay editable. Presets leave **MIDI pitch** as you set it.
 
 The **Hit** page includes the **Output** strip (dual-layer 3-band EQ with ±12 dB gain and smooth frequency glide, stereo width, output gain, and brickwall limiter) alongside body tuning, transient strike, and amplitude envelope.
 
