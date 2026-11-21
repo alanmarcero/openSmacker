@@ -370,7 +370,7 @@ void OpenSmackerProcessor::setStateInformation(const void* data, int sizeInBytes
     if (!hadAb)
         ab_.arm(copySoundState(true));
     if (undo_ != nullptr)
-        undo_->resetHistory();
+        undo_->resetHistory(ab_.active());
     if (auto* editor = getActiveEditor())
         editor->setSize(editorWidth_.load(), editorHeight_.load());
 }
@@ -390,9 +390,9 @@ bool OpenSmackerProcessor::canRedo() const { return undo_ != nullptr && undo_->c
 void OpenSmackerProcessor::selectAbSlot(int slot) {
     ab_.select(slot,
                [this] { return copySoundState(true); },
-               [this](const juce::ValueTree& tree) {
+               [this, slot](const juce::ValueTree& tree) {
                    if (undo_ != nullptr)
-                       undo_->suppressDuring([this, &tree] { applySoundState(tree, true); });
+                       undo_->switchSlot(slot, [this, &tree] { applySoundState(tree, true); });
                    else
                        applySoundState(tree, true);
                });
@@ -407,6 +407,8 @@ void OpenSmackerProcessor::copyAbSlot(int from, int to) {
                  else
                      applySoundState(tree, true);
              });
+    if (undo_ != nullptr)
+        undo_->clearSlot(to);
 }
 
 void OpenSmackerProcessor::setEditorSize(int width, int height) noexcept {

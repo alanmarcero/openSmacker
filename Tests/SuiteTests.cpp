@@ -135,6 +135,34 @@ TEST_CASE("A/B slots keep two full sounds and copy either way", "[plugin][suite]
     CHECK(normalised(restored, opensmacker::params::kOutputGain) == Catch::Approx(onB));
 }
 
+TEST_CASE("Each A/B slot keeps its own undo history", "[plugin][suite][ab][undo]") {
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    const float initial = normalised(processor, opensmacker::params::kOutputGain);
+    gestureTo(processor, opensmacker::params::kOutputGain, 0.2f);
+    const float onA = normalised(processor, opensmacker::params::kOutputGain);
+
+    processor.selectAbSlot(1);
+    CHECK_FALSE(processor.canUndo());
+    gestureTo(processor, opensmacker::params::kOutputGain, 0.7f);
+    REQUIRE(processor.undo());
+    CHECK(normalised(processor, opensmacker::params::kOutputGain) == Catch::Approx(initial));
+    CHECK_FALSE(processor.canUndo());
+
+    processor.selectAbSlot(0);
+    CHECK(normalised(processor, opensmacker::params::kOutputGain) == Catch::Approx(onA));
+    REQUIRE(processor.undo());
+    CHECK(normalised(processor, opensmacker::params::kOutputGain) == Catch::Approx(initial));
+    CHECK_FALSE(processor.canUndo());
+    REQUIRE(processor.redo());
+
+    processor.copyAbSlot(0, 1);
+    processor.selectAbSlot(1);
+    CHECK(normalised(processor, opensmacker::params::kOutputGain) == Catch::Approx(onA));
+    CHECK_FALSE(processor.canUndo());
+    CHECK_FALSE(processor.canRedo());
+}
+
 TEST_CASE("Editor size is resizable, unlocked, and restored with the session", "[plugin][suite][editor]") {
     juce::ScopedJuceInitialiser_GUI gui;
     OpenSmackerProcessor processor;

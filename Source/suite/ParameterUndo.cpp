@@ -1,4 +1,5 @@
 #include "ParameterUndo.h"
+#include <algorithm>
 
 namespace suite {
 
@@ -43,26 +44,27 @@ bool ParameterUndo::undo() {
     if (!onMessageThread() || gestureDepth_ > 0)
         return false;
     flushPending();
-    return undo_.undo();
+    return histories_[activeSlot_].undo();
 }
 
 bool ParameterUndo::redo() {
     if (!onMessageThread() || gestureDepth_ > 0)
         return false;
     flushPending();
-    return undo_.redo();
+    return histories_[activeSlot_].redo();
 }
 
 bool ParameterUndo::canUndo() {
     flushPending();
-    return undo_.canUndo();
+    return histories_[activeSlot_].canUndo();
 }
 
-bool ParameterUndo::canRedo() const { return undo_.canRedo(); }
+bool ParameterUndo::canRedo() const { return histories_[activeSlot_].canRedo(); }
 
-void ParameterUndo::resetHistory() {
+void ParameterUndo::resetHistory(int activeSlot) {
     const juce::ScopedValueSetter<bool> guard(applying_, true);
-    undo_.clearUndoHistory();
+    std::ranges::for_each(histories_, [](juce::UndoManager& history) { history.clearUndoHistory(); });
+    activeSlot_ = activeSlot == 0 ? 0 : 1;
     gestureDepth_ = 0;
     pending_ = false;
     committed_ = capture_();
@@ -73,9 +75,23 @@ void ParameterUndo::suppressDuring(const std::function<void()>& fn) {
     pending_ = false;
     if (fn)
         fn();
-    undo_.clearUndoHistory();
+    histories_[activeSlot_].clearUndoHistory();
     gestureDepth_ = 0;
     committed_ = capture_();
+}
+
+void ParameterUndo::switchSlot(int slot, const std::function<void()>& applySound) {
+    flushPending();
+    activeSlot_ = slot == 0 ? 0 : 1;
+    const juce::ScopedValueSetter<bool> guard(applying_, true);
+    if (applySound)
+        applySound();
+    gestureDepth_ = 0;
+    committed_ = capture_();
+}
+
+void ParameterUndo::clearSlot(int slot) {
+    histories_[slot == 0 ? 0 : 1].clearUndoHistory();
 }
 
 void ParameterUndo::parameterValueChanged(int, float) {
@@ -113,8 +129,9 @@ void ParameterUndo::commit() {
     auto now = capture_();
     if (!committed_.isValid() || committed_.isEquivalentTo(now))
         return;
-    undo_.beginNewTransaction("Edit");
-    undo_.perform(new StateAction(*this, committed_.createCopy(), now.createCopy()));
+    auto& history = histories_[activeSlot_];
+    history.beginNewTransaction("Edit");
+    history.perform(new StateAction(*this, committed_.createCopy(), now.createCopy()));
 }
 
 void ParameterUndo::applySnapshot(const Snapshot& tree) {
