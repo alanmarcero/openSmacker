@@ -636,6 +636,7 @@ void SmackEngine::triggerSmack(
     int noteNumber,
     int channel,
     bool oneShot) noexcept {
+    lastTrigger_ = { std::clamp(noteNumber, 0, 127), -1, velocity, audition };
     if (settings.keyZonesEnabled && !audition) {
         const auto mode = resolveVoiceModeForNote(noteNumber, settings.voiceZones);
         if (!mode)
@@ -644,6 +645,7 @@ void SmackEngine::triggerSmack(
     } else {
         activeVoiceMode_ = settings.synth.voiceMode;
     }
+    lastTrigger_.voice = static_cast<int>(activeVoiceMode_);
 
     triggerSerial_++;
     currentSmackProgress_ = 0.0f;

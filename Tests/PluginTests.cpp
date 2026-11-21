@@ -467,6 +467,10 @@ TEST_CASE("The hit readout names the last note and the voice that played it", "[
     processor.processBlock(buffer, none);
     monitor->timerCallback();
     CHECK(monitor->readout() == "Audition -> Snare");
+    processor.parameters.getParameter(opensmacker::params::kRollEnabled)->setValueNotifyingHost(1.0f);
+    processor.processBlock(buffer, none);
+    monitor->timerCallback();
+    CHECK(monitor->readout() == "A4 -> Bell");
 }
 
 TEST_CASE("The peak meter shows the highest peak since its last read and latches clips", "[plugin][gui][meter]") {
