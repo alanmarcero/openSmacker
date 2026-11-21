@@ -239,7 +239,7 @@ void OpenSmackerEditor::timerCallback() {
     if (!artBounds_.isEmpty())
         content_.repaint(artBounds_);
     syncPresetBox();
-    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode);
+    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode, processor_.isSmackLockedIn());
     std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
         voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : 0.4f);
         voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());

@@ -72,25 +72,48 @@ private:
 } // namespace
 
 SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor) : processor_(processor) {
+    unfreeze_.setTitle("Unfreeze hit");
+    unfreeze_.setTooltip("Turn off Freeze hit so the synth plays live again.");
+    unfreeze_.onClick = [this] {
+        auto* freeze = processor_.parameters.getParameter(params::kLockIn);
+        freeze->beginChangeGesture();
+        freeze->setValueNotifyingHost(0.0f);
+        freeze->endChangeGesture();
+    };
+    addChildComponent(unfreeze_);
     startTimerHz(12);
 }
 
 void SmackerStagePanel::timerCallback() {
+    unfreeze_.setVisible(processor_.isSmackLockedIn());
     if (isShowing()) repaint();
 }
 
+void SmackerStagePanel::resized() {
+    unfreeze_.setBounds(getLocalBounds().removeFromRight(136).reduced(16, 0).withTrimmedTop(36).withHeight(36));
+}
+
 void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings) {
-    if (lastSettings_ && *lastSettings_ == settings) return;
+    const bool frozen = processor_.isSmackLockedIn();
+    if (frozen == showsFrozenHit_ && (frozen || (lastSettings_ && *lastSettings_ == settings))) return;
+    showsFrozenHit_ = frozen;
     lastSettings_ = settings;
-    auto dry = settings;
-    dry.fullAdsrEnabled = false;
-    dry.reverbMix = 0;
-    core::SmackSynth synth;
-    constexpr int rate = 24000;
-    synth.prepare(rate);
     std::vector<float> left, right;
-    const int samples = synth.renderPrefix(left, right, dry, rate / 2);
-    previewMs_ = juce::roundToInt(1000.0 * samples / rate);
+    double rate = 24000.0;
+    if (frozen) {
+        left = processor_.frozenHit().left();
+        right = processor_.frozenHit().right();
+        rate = processor_.frozenHit().sampleRate();
+    }
+    if (!frozen) {
+        auto dry = settings;
+        dry.fullAdsrEnabled = false;
+        dry.reverbMix = 0;
+        core::SmackSynth synth;
+        synth.prepare(rate);
+        synth.renderPrefix(left, right, dry, static_cast<int>(rate) / 2);
+    }
+    previewMs_ = juce::roundToInt(1000.0 * static_cast<double>(left.size()) / rate);
     waveform_.fill(0);
     for (size_t i = 0; i < left.size(); ++i) {
         auto& peak = waveform_[i * waveform_.size() / left.size()];
@@ -121,8 +144,16 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
                name, juce::Justification::topLeft);
     auto plot = area.reduced(16, ultraCompact ? 6 : 11);
     g.setColour(theme::kText);
+    if (showsFrozenHit_) {
+        auto badge = plot.removeFromRight(120);
+        g.setColour(theme::kApricot);
+        g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+        g.drawText("Hit frozen", badge.removeFromTop(22), juce::Justification::centred);
+        plot.removeFromRight(8);
+    }
+    g.setColour(theme::kText);
     g.setFont(juce::FontOptions(ultraCompact ? 14.5f : 17.0f, juce::Font::bold));
-    g.drawText("Dry one-shot waveform", plot.removeFromTop(ultraCompact ? 18 : 23), juce::Justification::centredLeft);
+    g.drawText(showsFrozenHit_ ? "Frozen hit" : "Dry one-shot waveform", plot.removeFromTop(ultraCompact ? 18 : 23), juce::Justification::centredLeft);
     auto axis = plot.removeFromBottom(ultraCompact ? 16 : 21);
     g.setColour(theme::kTextDim);
     g.setFont(juce::FontOptions(13.0f));
@@ -148,12 +179,22 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
-juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id) {
+juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool hitFrozen) {
     using namespace params;
     const auto isOn = [&state](const char* flag) { return state.getRawParameterValue(flag)->load() > 0.5f; };
     const auto isOneOf = [&id](std::initializer_list<const char*> ids) {
         return std::ranges::any_of(ids, [&id](const char* candidate) { return id == candidate; });
     };
+    if (hitFrozen && !isOn(kAmpEnabled)) {
+        // The frozen hit replaces every sound setting a preset makes, except the ones the engine applies on playback.
+        const auto& presetValues = presets::factoryPresets().front().values;
+        const bool presetSets = std::ranges::any_of(presetValues, [&id](const auto& value) { return value.first == id; });
+        const bool appliedOnPlayback = isOneOf({ kVoiceMode, kAmpEnabled, kLockPitch, kLockIn, kReverseMode, kReverseMix, kOutputGain });
+        if (id == kMidiMode || (presetSets && !appliedOnPlayback))
+            return "Freeze hit is on, so the frozen hit plays. Turn it off to hear this control.";
+    }
+    if (id == kLockIn && isOn(kAmpEnabled))
+        return "Hold notes play the live voice. Choose One-shot under MIDI gate to use it.";
     if (isOneOf({ kPreSpread, kPreDecay, kPreJitter, kFlamSpread, kPreLevel }) && state.getRawParameterValue(kPreBursts)->load() < 1.5f)
         return "Set Hits to 2 or more to use it.";
     if (isOneOf({ kSnareZoneLow, kSnareZoneHigh, kTomZoneLow, kTomZoneHigh, kBellZoneLow, kBellZoneHigh, kRimZoneLow, kRimZoneHigh })
@@ -289,7 +330,7 @@ void ParameterCard::refreshActivity() {
         auto& activity = activity_[i];
         if (activity.id.isEmpty())
             return;
-        const auto reason = inactiveReason(processor_.parameters, activity.id);
+        const auto reason = inactiveReason(processor_.parameters, activity.id, processor_.isSmackLockedIn());
         if (reason == activity.reason)
             return;
         activity.reason = reason;
@@ -555,7 +596,7 @@ void SmackSynthPanel::resized() {
 
 EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
     : dynamicsCard_(processor, "Saturation & dynamics", presets::Section::SaturationDynamics, theme::kApricot),
-      spaceCard_(processor, "Space & WAV lock", presets::Section::Space, theme::kIce) {
+      spaceCard_(processor, "Space & freeze", presets::Section::Space, theme::kIce) {
     using namespace opensmacker::params;
     const std::array<ControlSpec, 10> dynamics{ {
         { kDistType, "Saturation", "Saturation curve: tape, tube, hard clip or wavefold." },
@@ -581,7 +622,7 @@ EffectsPanel::EffectsPanel(OpenSmackerProcessor& processor)
         { kEchoMix, "Echo mix", "Amount of tempo-synced slapback echo." },
         { kReverseMix, "Reverse mix", "Level of the reversed swell before the hit." },
         { kReverseMode, "Reverse sync", "When the reversed swell plays, in time with the host." },
-        { kLockIn, "Lock WAV", "Renders the hit once and plays that recording in place of the synth." },
+        { kLockIn, "Freeze hit", "Records the hit once and plays that recording in place of the synth. Most sound controls do nothing while it is on." },
     } };
     std::ranges::for_each(space, [this](const ControlSpec& spec) { spaceCard_.addParameter(spec.id, spec.label, spec.tip); });
     spaceCard_.setRows({ 2, 2 }, { 3, 4, 2 });

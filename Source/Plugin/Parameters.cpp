@@ -255,7 +255,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kLockPitch, 1 }, "Lock pitch", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kLockIn, 1 }, "Lock In (WAV)", false));
+        juce::ParameterID{ kLockIn, 1 }, "Freeze hit", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kStereoWidth, 1 }, "Stereo width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(

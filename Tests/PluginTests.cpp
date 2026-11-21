@@ -509,12 +509,12 @@ TEST_CASE("Controls with no effect dim, stay editable, and say what turns them o
         auto* parameter = processor.parameters.getParameter(id);
         parameter->setValueNotifyingHost(parameter->convertTo0to1(value));
     };
-    CHECK(inactiveReason(processor.parameters, kPreSpread).contains("Hits"));
-    CHECK(inactiveReason(processor.parameters, kSnareZoneLow).contains("Key zones"));
-    CHECK(inactiveReason(processor.parameters, kRollProbability).contains("Roll"));
-    CHECK(inactiveReason(processor.parameters, kReverseMix).contains("Reverse sync"));
-    CHECK(inactiveReason(processor.parameters, kLimiterCeiling).isEmpty());
-    CHECK(inactiveReason(processor.parameters, kVoiceMode).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kPreSpread, false).contains("Hits"));
+    CHECK(inactiveReason(processor.parameters, kSnareZoneLow, false).contains("Key zones"));
+    CHECK(inactiveReason(processor.parameters, kRollProbability, false).contains("Roll"));
+    CHECK(inactiveReason(processor.parameters, kReverseMix, false).contains("Reverse sync"));
+    CHECK(inactiveReason(processor.parameters, kLimiterCeiling, false).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kVoiceMode, false).isEmpty());
 
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getButtonText() == "Layers"; })->onClick();
@@ -535,11 +535,66 @@ TEST_CASE("Controls with no effect dim, stay editable, and say what turns them o
     flamCard->refreshActivity();
     CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(1.0f));
     CHECK_FALSE(spacing->getTooltip().contains("Hits to 2"));
-    CHECK(inactiveReason(processor.parameters, kSnareZoneLow).isEmpty());
-    CHECK(inactiveReason(processor.parameters, kRollProbability).isEmpty());
-    CHECK(inactiveReason(processor.parameters, kReverseMix).isEmpty());
-    CHECK(inactiveReason(processor.parameters, kLimiterCeiling).contains("Limiter"));
-    CHECK(inactiveReason(processor.parameters, kVoiceMode).contains("Key zones"));
+    CHECK(inactiveReason(processor.parameters, kSnareZoneLow, false).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kRollProbability, false).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kReverseMix, false).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kLimiterCeiling, false).contains("Limiter"));
+    CHECK(inactiveReason(processor.parameters, kVoiceMode, false).contains("Key zones"));
+}
+
+TEST_CASE("A frozen hit shows on the stage with Unfreeze, and the controls it bypasses dim", "[plugin][gui][freeze]") {
+    using namespace opensmacker::params;
+    using opensmacker::ui::inactiveReason;
+    juce::ScopedJuceInitialiser_GUI gui;
+    OpenSmackerProcessor processor;
+    processor.prepareToPlay(48000.0, 512);
+    std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
+    auto* stage = findVisible<opensmacker::ui::SmackerStagePanel>(*editor, [](const auto&) { return true; });
+    REQUIRE(stage != nullptr);
+    const auto unfreezeButton = [&editor] {
+        return findVisible<juce::TextButton>(*editor, [](const auto& b) { return b.getTitle() == "Unfreeze hit"; });
+    };
+    stage->timerCallback();
+    CHECK(unfreezeButton() == nullptr);
+
+    processor.parameters.getParameter(kLockIn)->setValueNotifyingHost(1.0f);
+    juce::AudioBuffer<float> buffer(2, 512);
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 4000 && !processor.isSmackLockedIn(); ++block)
+        processor.processBlock(buffer, midi);
+    REQUIRE(processor.isSmackLockedIn());
+    stage->timerCallback();
+    REQUIRE(unfreezeButton() != nullptr);
+
+    const auto frozenStage = stage->createComponentSnapshot(stage->getLocalBounds());
+    auto* decay = processor.parameters.getParameter(kToneDecay);
+    decay->setValueNotifyingHost(decay->convertTo0to1(900.0f));
+    const auto afterEdit = stage->createComponentSnapshot(stage->getLocalBounds());
+    int changedPixels = 0;
+    for (int y = 0; y < frozenStage.getHeight(); ++y)
+        for (int x = 0; x < frozenStage.getWidth(); ++x)
+            changedPixels += frozenStage.getPixelAt(x, y) != afterEdit.getPixelAt(x, y) ? 1 : 0;
+    CHECK(changedPixels == 0);
+
+    CHECK(inactiveReason(processor.parameters, kToneDecay, true).contains("Freeze hit"));
+    CHECK(inactiveReason(processor.parameters, kEqLowDb, true).contains("Freeze hit"));
+    CHECK(inactiveReason(processor.parameters, kMidiMode, true).contains("Freeze hit"));
+    CHECK(inactiveReason(processor.parameters, kOutputGain, true).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kVoiceMode, true).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kReverseMode, true).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kRollEnabled, true).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kToneDecay, false).isEmpty());
+    processor.parameters.getParameter(kAmpEnabled)->setValueNotifyingHost(1.0f);
+    CHECK(inactiveReason(processor.parameters, kToneDecay, true).isEmpty());
+    CHECK(inactiveReason(processor.parameters, kLockIn, true).contains("One-shot"));
+    processor.parameters.getParameter(kAmpEnabled)->setValueNotifyingHost(0.0f);
+
+    unfreezeButton()->onClick();
+    CHECK(processor.parameters.getRawParameterValue(kLockIn)->load() < 0.5f);
+    processor.processBlock(buffer, midi);
+    CHECK_FALSE(processor.isSmackLockedIn());
+    stage->timerCallback();
+    CHECK(unfreezeButton() == nullptr);
 }
 
 TEST_CASE("The look and feel draws disabled buttons, dials and menus dimmed", "[plugin][gui][lookandfeel]") {

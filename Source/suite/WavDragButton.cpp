@@ -5,7 +5,7 @@ namespace suite {
 WavDragButton::WavDragButton(std::function<juce::File()> makeFile)
     : juce::TextButton("Drag WAV"), makeFile_(std::move(makeFile)) {
     setMouseCursor(juce::MouseCursor::DraggingHandCursor);
-    setTooltip("Drag the locked hit out as a WAV. If nothing is locked, a fresh hit is rendered.");
+    setTooltip("Drag the frozen hit out as a WAV. With no frozen hit, a fresh hit is rendered.");
 }
 
 void WavDragButton::mouseDown(const juce::MouseEvent& event) {

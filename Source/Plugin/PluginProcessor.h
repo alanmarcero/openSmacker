@@ -45,6 +45,8 @@ public:
     [[nodiscard]] bool isPresetEdited() const noexcept { return presetEdited_.load(); }
     void triggerAudition() noexcept { auditionPending_.store(true); }
     [[nodiscard]] bool isSmackLockedIn() const noexcept { return displayLockedIn.load(); }
+    // Read it only while isSmackLockedIn() is true. The audio thread leaves it alone until unfreeze.
+    [[nodiscard]] const opensmacker::core::SmackWavCache& frozenHit() const noexcept { return engine_.wavCache(); }
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
     void setSectionLocked(opensmacker::presets::Section section, bool locked);
 

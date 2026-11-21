@@ -18,18 +18,22 @@ class SmackerStagePanel : public juce::Component, private juce::Timer {
 public:
     explicit SmackerStagePanel(OpenSmackerProcessor& processor);
     void paint(juce::Graphics& g) override;
-private:
+    void resized() override;
     void timerCallback() override;
+private:
     void updateWaveform(const core::SmackSynthSettings& settings);
     OpenSmackerProcessor& processor_;
+    juce::TextButton unfreeze_{ "Unfreeze" };
     std::optional<core::SmackSynthSettings> lastSettings_;
+    bool showsFrozenHit_ = false;
     std::array<float, 400> waveform_{};
     int previewMs_ = 0;
 
 };
 
 // Why a control has no effect in the current state, or an empty string when it acts.
-[[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id);
+// hitFrozen is true while a frozen hit is stored.
+[[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool hitFrozen);
 
 // Lamp that flashes with each hit's velocity, beside the last note and the voice it played.
 class HitMonitor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
