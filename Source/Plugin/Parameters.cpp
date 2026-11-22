@@ -14,6 +14,45 @@ juce::String signedTenths(float value) {
 }
 } // namespace
 
+float eqNoteToHz(int midiNote) noexcept {
+    const int clamped = std::clamp(midiNote, 0, 144);
+    return 440.0f * std::exp2((static_cast<float>(clamped) - 69.0f) / 12.0f);
+}
+
+int eqHzToNearestMidi(float hz, int minMidi, int maxMidi) noexcept {
+    if (!std::isfinite(hz) || hz <= 0.0f) return minMidi;
+    const int midi = juce::roundToInt(69.0f + 12.0f * std::log2(hz / 440.0f));
+    return std::clamp(midi, minMidi, maxMidi);
+}
+
+juce::String formatEqNote(float hz, int minMidi, int maxMidi) {
+    static constexpr std::array<const char*, 12> kNames{
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    const int midi = eqHzToNearestMidi(hz, minMidi, maxMidi);
+    const int octave = midi / 12 - 1;
+    return juce::String(kNames[static_cast<size_t>(midi % 12)]) + juce::String(octave);
+}
+
+float parseEqNoteOrHz(const juce::String& text, int minMidi, int maxMidi) {
+    const auto trimmed = text.trim();
+    if (trimmed.isEmpty()) return eqNoteToHz(minMidi);
+    const int semitone = juce::String("C D EF G A B").indexOfIgnoreCase(trimmed.substring(0, 1));
+    if (semitone >= 0) {
+        const auto afterLetter = trimmed.substring(1);
+        const int sharp = afterLetter.startsWithChar('#') ? 1 : 0;
+        const int flat = afterLetter.startsWithChar('b') ? 1 : 0;
+        const auto octaveText = afterLetter.substring(sharp + flat).trim();
+        if (octaveText.isNotEmpty() && octaveText.containsOnly("-0123456789")) {
+            const int midi = (octaveText.getIntValue() + 1) * 12 + semitone + sharp - flat;
+            return eqNoteToHz(std::clamp(midi, minMidi, maxMidi));
+        }
+    }
+    const float number = trimmed.getFloatValue();
+    const float hz = trimmed.containsIgnoreCase("k") ? number * 1000.0f : number;
+    return eqNoteToHz(eqHzToNearestMidi(hz, minMidi, maxMidi));
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
@@ -260,21 +299,44 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kStereoWidth, 1 }, "Stereo width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kOutputGain, 1 }, "Output gain", juce::NormalisableRange<float>(-36.0f, 12.0f, 0.5f), 0.0f, decibels));
-    const auto makeFreqRange = [](float minHz, float maxHz, float midHz) {
-        juce::NormalisableRange<float> range(minHz, maxHz, 0.1f);
-        range.setSkewForCentre(midHz);
-        return range;
+    const auto makeNoteRange = [](int minMidi, int maxMidi) {
+        const float minHz = eqNoteToHz(minMidi);
+        const float maxHz = eqNoteToHz(maxMidi);
+        return juce::NormalisableRange<float>(
+            minHz,
+            maxHz,
+            [minMidi, maxMidi](float, float, float proportion) {
+                const float clamped = std::clamp(proportion, 0.0f, 1.0f);
+                const int midi = juce::roundToInt(static_cast<float>(minMidi)
+                    + clamped * static_cast<float>(maxMidi - minMidi));
+                return eqNoteToHz(std::clamp(midi, minMidi, maxMidi));
+            },
+            [minMidi, maxMidi](float, float, float value) {
+                const int midi = eqHzToNearestMidi(value, minMidi, maxMidi);
+                return static_cast<float>(midi - minMidi) / static_cast<float>(maxMidi - minMidi);
+            },
+            [minMidi, maxMidi](float, float, float value) {
+                return eqNoteToHz(eqHzToNearestMidi(value, minMidi, maxMidi));
+            });
+    };
+    const auto makeNoteText = [](int minMidi, int maxMidi) {
+        return Attributes()
+            .withStringFromValueFunction([minMidi, maxMidi](float hz, int) { return formatEqNote(hz, minMidi, maxMidi); })
+            .withValueFromStringFunction([minMidi, maxMidi](const juce::String& text) { return parseEqNoteOrHz(text, minMidi, maxMidi); });
     };
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqLowFreq, 1 }, "Low EQ frequency", makeFreqRange(25.0f, 400.0f, 100.0f), 80.0f, hertz));
+        juce::ParameterID{ kEqLowFreq, 1 }, "Low EQ frequency", makeNoteRange(kEqLowMinMidi, kEqLowMaxMidi), eqNoteToHz(40),
+        makeNoteText(kEqLowMinMidi, kEqLowMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kEqLowDb, 1 }, "Low EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqMidFreq, 1 }, "Mid EQ frequency", makeFreqRange(200.0f, 6000.0f, 1100.0f), 1000.0f, hertz));
+        juce::ParameterID{ kEqMidFreq, 1 }, "Mid EQ frequency", makeNoteRange(kEqMidMinMidi, kEqMidMaxMidi), eqNoteToHz(83),
+        makeNoteText(kEqMidMinMidi, kEqMidMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kEqMidDb, 1 }, "Mid EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqHighFreq, 1 }, "High EQ frequency", makeFreqRange(2000.0f, 18000.0f, 6000.0f), 7500.0f, hertz));
+        juce::ParameterID{ kEqHighFreq, 1 }, "High EQ frequency", makeNoteRange(kEqHighMinMidi, kEqHighMaxMidi), eqNoteToHz(118),
+        makeNoteText(kEqHighMinMidi, kEqHighMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kEqHighDb, 1 }, "High EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterInt>(

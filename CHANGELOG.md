@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.8.3
+
+- **Note-Snapped EQ:** Snap all three EQ bands to chromatic notes (A-G with sharps) across two-octave ranges (`E1` to `E3`, `B4` to `B6`, `A#7` to `A#9`), matching OpenKicker's EQ design and behavior.
+
 ## v2.8.2
 
 - **Parameter Locking:** Add per-parameter locking across every plugin parameter, persisted in session state and preserved across preset loads and randomization.
