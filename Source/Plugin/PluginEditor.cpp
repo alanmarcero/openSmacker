@@ -80,6 +80,10 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
         voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
         voiceButton.setTitle(voiceButton.getButtonText() + " voice");
         voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
+        voiceButton.onPopupMenu = [this](const juce::MouseEvent& event) {
+            opensmacker::ui::showParameterLockMenu(processor_, params::kVoiceMode, event.getScreenPosition(),
+                                                   [this] { content_.repaint(); });
+        };
         content_.addAndMakeVisible(voiceButton);
         pages_[i].setButtonText(pageNames[i]);
         pages_[i].setTitle(juce::String(pageNames[i]) + " page");
@@ -101,6 +105,10 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     };
     std::ranges::for_each(titles, [](const auto& entry) { entry.first->setTitle(entry.second); });
     presetBox_.onChange = [this] { chooseProgram(presetBox_.getSelectedId() - 1); };
+    presetBox_.onPopupMenu = [this](const juce::MouseEvent& event) {
+        opensmacker::ui::showParameterLockMenu(processor_, params::kPreset, event.getScreenPosition(),
+                                               [this] { content_.repaint(); });
+    };
     prevPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + processor_.getNumPrograms() - 1) % processor_.getNumPrograms()); };
     nextPresetBtn_.onClick = [this] { chooseProgram((processor_.getCurrentProgram() + 1) % processor_.getNumPrograms()); };
     auditionBtn_.onClick = [this] { processor_.triggerAudition(); };
@@ -282,6 +290,22 @@ void OpenSmackerEditor::paintContent(juce::Graphics& g) {
         juce::Graphics::ScopedSaveState saved(g);
         g.addTransform(juce::AffineTransform::scale(1.0f + pulse * 0.05f, 1.0f - pulse * 0.18f, centre.x, centre.y));
         membrane_->drawWithin(g, artBounds_.toFloat().reduced(6, 3), juce::RectanglePlacement::centred, 0.76f + pulse * 0.24f);
+    }
+}
+
+void OpenSmackerEditor::paintContentOverChildren(juce::Graphics& g) {
+    if (processor_.isParamLocked(params::kPreset)) {
+        const auto b = presetBox_.getBounds().toFloat();
+        opensmacker::ui::drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, opensmacker::theme::kApricot);
+    }
+    if (processor_.isParamLocked(params::kVoiceMode)) {
+        for (const auto& button : voices_) {
+            if (!button.getToggleState())
+                continue;
+            const auto b = button.getBounds().toFloat();
+            opensmacker::ui::drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, opensmacker::theme::kApricot);
+            break;
+        }
     }
 }
 

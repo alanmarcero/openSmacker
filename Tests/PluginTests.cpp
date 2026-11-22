@@ -1392,3 +1392,62 @@ TEST_CASE("A saved factoryBank 2 session keeps the pre-shaped voice until a new 
     CHECK(reopened.currentSettings().synth.shapedEngine);
     CHECK(reopened.currentSettings().synth.articulatedModes);
 }
+
+TEST_CASE("Every RangedAudioParameter can be locked, persists across state restore, and survives preset loads", "[plugin][param_lock]") {
+    OpenSmackerProcessor source;
+    std::vector<std::pair<juce::String, float>> lockedValues;
+    for (auto* param : source.getParameters()) {
+        auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param);
+        REQUIRE(ranged != nullptr);
+        const auto id = ranged->getParameterID();
+        INFO(id.toStdString());
+        REQUIRE_FALSE(source.isParamLocked(id));
+        const float targetNorm = ranged->getValue() < 0.5f ? 1.0f : 0.0f;
+        ranged->setValueNotifyingHost(targetNorm);
+        const float snappedNorm = ranged->convertTo0to1(ranged->convertFrom0to1(ranged->getValue()));
+        ranged->setValueNotifyingHost(snappedNorm);
+        lockedValues.emplace_back(id, snappedNorm);
+        source.setParamLocked(id, true);
+        CHECK(source.isParamLocked(id));
+    }
+    REQUIRE(source.hasLockedParams());
+
+    juce::MemoryBlock state;
+    source.getStateInformation(state);
+
+    OpenSmackerProcessor restored;
+    restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
+    REQUIRE(restored.hasLockedParams());
+    for (const auto& [id, expectedNorm] : lockedValues) {
+        INFO(id.toStdString());
+        CHECK(restored.isParamLocked(id));
+        auto* param = restored.parameters.getParameter(id);
+        REQUIRE(param != nullptr);
+        CHECK(param->getValue() == Catch::Approx(expectedNorm));
+    }
+
+    restored.setCurrentProgram(5);
+    for (const auto& [id, expectedNorm] : lockedValues) {
+        INFO(id.toStdString());
+        auto* param = restored.parameters.getParameter(id);
+        REQUIRE(param != nullptr);
+        CHECK(param->getValue() == Catch::Approx(expectedNorm));
+    }
+
+    restored.unlockAllParams();
+    CHECK_FALSE(restored.hasLockedParams());
+    for (const auto& [id, _] : lockedValues)
+        CHECK_FALSE(restored.isParamLocked(id));
+
+    OpenSmackerProcessor userPresetSource;
+    userPresetSource.setCurrentProgram(3);
+    const auto userXml = userPresetSource.currentPresetXml();
+    auto* gainParam = restored.parameters.getParameter(opensmacker::params::kOutputGain);
+    REQUIRE(gainParam != nullptr);
+    gainParam->setValueNotifyingHost(0.19f);
+    const float expectedGain = gainParam->getValue();
+    restored.setParamLocked(opensmacker::params::kOutputGain, true);
+    REQUIRE(restored.loadUserPresetXml("Locked User Test", userXml));
+    CHECK(restored.isParamLocked(opensmacker::params::kOutputGain));
+    CHECK(gainParam->getValue() == Catch::Approx(expectedGain));
+}

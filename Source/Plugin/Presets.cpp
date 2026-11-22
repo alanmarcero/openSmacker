@@ -258,10 +258,13 @@ Section sectionFor(const juce::String& id) {
 } // namespace
 
 void apply(const FactoryPreset& preset, juce::AudioProcessorValueTreeState& state,
-           const SectionLocks& locks, bool preservePitch) {
+           const SectionLocks& locks, bool preservePitch,
+           const std::function<bool(const juce::String&)>& isParamLocked) {
     for (const auto& [paramId, value] : preset.values) {
         const auto section = sectionFor(paramId);
         if (locks[static_cast<size_t>(section)])
+            continue;
+        if (isParamLocked && isParamLocked(paramId))
             continue;
         if (preservePitch && (paramId == kToneFreq || paramId == kToneNote || paramId == kToneOctave || paramId == kToneFine || paramId == kLockPitch))
             continue;

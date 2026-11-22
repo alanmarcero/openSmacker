@@ -9,6 +9,8 @@
 #include <atomic>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 class OpenSmackerProcessor : public juce::AudioProcessor, private juce::AudioProcessorParameter::Listener {
@@ -54,6 +56,10 @@ public:
     }
     [[nodiscard]] bool isSectionLocked(opensmacker::presets::Section section) const noexcept;
     void setSectionLocked(opensmacker::presets::Section section, bool locked);
+    [[nodiscard]] bool isParamLocked(const juce::String& paramId) const noexcept;
+    void setParamLocked(const juce::String& paramId, bool locked);
+    void unlockAllParams();
+    [[nodiscard]] bool hasLockedParams() const noexcept;
 
     bool undo();
     bool redo();
@@ -120,6 +126,7 @@ private:
     // 0 legacy ratios, 1 articulated voices, 2 shaped one-shots. Missing on old saves.
     std::atomic<int> synthModel_{ 2 };
     std::array<std::atomic<bool>, static_cast<size_t>(opensmacker::presets::Section::Count)> sectionLocks_{};
+    std::unordered_map<std::string, std::atomic<bool>> paramLocks_;
     std::vector<opensmacker::core::MidiTrigger> midiTriggers_;
     std::vector<opensmacker::core::MidiNoteOff> midiNoteOffs_;
     std::vector<opensmacker::core::MidiCcEvent> midiCcEvents_;

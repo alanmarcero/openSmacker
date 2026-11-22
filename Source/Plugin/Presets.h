@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -32,6 +33,7 @@ const std::vector<FactoryPreset>& factoryPresets();
 int firstPresetForFamily(size_t family) noexcept;
 size_t familyForProgram(int program) noexcept;
 void apply(const FactoryPreset& preset, juce::AudioProcessorValueTreeState& state,
-           const SectionLocks& locks = {}, bool preservePitch = false);
+           const SectionLocks& locks = {}, bool preservePitch = false,
+           const std::function<bool(const juce::String&)>& isParamLocked = {});
 
 } // namespace opensmacker::presets

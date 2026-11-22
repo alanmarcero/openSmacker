@@ -9,6 +9,34 @@
 
 namespace opensmacker::ui {
 
+void showParameterLockMenu(OpenSmackerProcessor& processor, const juce::String& paramId,
+                           juce::Point<int> screenPos, std::function<void()> onChanged) {
+    auto* param = processor.parameters.getParameter(paramId);
+    if (param == nullptr)
+        return;
+    const auto name = param->getName(64);
+    const bool locked = processor.isParamLocked(paramId);
+
+    juce::PopupMenu menu;
+    menu.addItem(1, (locked ? "Unlock " : "Lock ") + name);
+    if (processor.hasLockedParams()) {
+        menu.addSeparator();
+        menu.addItem(2, "Unlock all parameters");
+    }
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetScreenArea({ screenPos.x, screenPos.y, 1, 1 }),
+                       [&processor, paramId, locked, changedCallback = std::move(onChanged)](int result) {
+                           if (result == 1)
+                               processor.setParamLocked(paramId, !locked);
+                           else if (result == 2)
+                               processor.unlockAllParams();
+                           else
+                               return;
+                           if (changedCallback)
+                               changedCallback();
+                       });
+}
+
 namespace {
 // Slider text boxes and stepper buttons keep their own tooltips.
 void setTooltipDeep(juce::Component& component, const juce::String& text) {
@@ -108,6 +136,9 @@ SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor)
     unfreeze_.setTitle("Unfreeze hit");
     unfreeze_.setTooltip("Turn off Freeze hit so the synth plays live again.");
     unfreeze_.onClick = [this] { freeze_.setValueAsCompleteGesture(0.0f); };
+    unfreeze_.onPopupMenu = [this](const juce::MouseEvent& event) {
+        showParameterLockMenu(processor_, params::kLockIn, event.getScreenPosition(), [this] { repaint(); });
+    };
     addChildComponent(unfreeze_);
     startTimerHz(12);
 }
@@ -203,6 +234,13 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.setColour(theme::kApricot);
     g.fillPath(wave);
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
+}
+
+void SmackerStagePanel::paintOverChildren(juce::Graphics& g) {
+    if (unfreeze_.isVisible() && processor_.isParamLocked(params::kLockIn)) {
+        const auto b = unfreeze_.getBounds().toFloat();
+        drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, theme::kApricot);
+    }
 }
 
 juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool frozenHitPlays) {
@@ -359,8 +397,25 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
 }
 
 void ParameterCard::timerCallback() {
-    if (isShowing())
-        dimInactiveControls();
+    if (!isShowing())
+        return;
+    dimInactiveControls();
+    uint64_t mask = 0;
+    uint64_t bit = 1;
+    for (const auto& activity : activity_) {
+        if (processor_.isParamLocked(activity.id))
+            mask |= bit;
+        bit <<= 1;
+        if (activity.secondaryId.isNotEmpty()) {
+            if (processor_.isParamLocked(activity.secondaryId))
+                mask |= bit;
+            bit <<= 1;
+        }
+    }
+    if (mask != lastLockMask_) {
+        lastLockMask_ = mask;
+        repaint();
+    }
 }
 
 void ParameterCard::visibilityChanged() {
@@ -383,18 +438,27 @@ void ParameterCard::dimInactiveControls() {
 void ParameterCard::addParameter(const juce::String& id, const juce::String& title, const juce::String& tip) {
     std::unique_ptr<juce::Component> component;
     auto& state = processor_.parameters;
+    auto popup = [this, id](const juce::MouseEvent& event) {
+        showParameterLockMenu(processor_, id, event.getScreenPosition(), [this] { repaint(); });
+    };
     if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr || id == params::kAmpEnabled) {
-        component = std::make_unique<Choice>(state, id, title, accent_);
+        auto choice = std::make_unique<Choice>(state, id, title, accent_);
+        choice->setOnPopupMenu(popup);
+        component = std::move(choice);
     } else if (dynamic_cast<juce::AudioParameterBool*>(parameter) != nullptr) {
-        component = std::make_unique<Toggle>(state, id, title, accent_);
+        auto toggle = std::make_unique<Toggle>(state, id, title, accent_);
+        toggle->setOnPopupMenu(popup);
+        component = std::move(toggle);
     } else {
         const auto* integer = dynamic_cast<juce::AudioParameterInt*>(parameter);
-        component = std::make_unique<Knob>(state, id, title, accent_, integer != nullptr && integer->getRange().getLength() <= 16);
+        auto knob = std::make_unique<Knob>(state, id, title, accent_, integer != nullptr && integer->getRange().getLength() <= 16);
+        knob->setOnPopupMenu(popup);
+        component = std::move(knob);
     }
     setTooltipDeep(*component, tip);
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
-    activity_.push_back({ controls_.back().get(), id, tip, {} });
+    activity_.push_back({ controls_.back().get(), id, tip, {}, {} });
 }
 
 void ParameterCard::addParameters(std::initializer_list<ControlSpec> specs) {
@@ -404,16 +468,19 @@ void ParameterCard::addParameters(std::initializer_list<ControlSpec> specs) {
 void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& dbId,
                               const juce::String& title, juce::Colour freqAccent, const juce::String& tip) {
     auto knob = std::make_unique<DualEqKnob>(processor_.parameters, freqId, dbId, title, accent_, freqAccent);
+    knob->setOnPopupMenu([this](const juce::String& paramId, const juce::MouseEvent& event) {
+        showParameterLockMenu(processor_, paramId, event.getScreenPosition(), [this] { repaint(); });
+    });
     setTooltipDeep(*knob, tip);
     addAndMakeVisible(*knob);
     controls_.push_back(std::move(knob));
-    activity_.push_back({ controls_.back().get(), dbId, tip, {} });
+    activity_.push_back({ controls_.back().get(), dbId, tip, {}, freqId });
 }
 
 void ParameterCard::addControl(std::unique_ptr<juce::Component> control, const juce::String& id, const juce::String& tip) {
     addAndMakeVisible(*control);
     if (id.isNotEmpty())
-        activity_.push_back({ control.get(), id, tip, {} });
+        activity_.push_back({ control.get(), id, tip, {}, {} });
     controls_.push_back(std::move(control));
 }
 
@@ -446,6 +513,23 @@ void ParameterCard::paint(juce::Graphics& g) {
         lockButton_.setButtonText(locked ? "Locked" : "Lock");
         lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_ : theme::kKnobBody);
         lockButton_.setColour(juce::TextButton::textColourOffId, locked ? theme::kInk : theme::kTextDim);
+    }
+}
+
+void ParameterCard::paintOverChildren(juce::Graphics& g) {
+    for (const auto& activity : activity_) {
+        if (activity.control == nullptr || !activity.control->isVisible())
+            continue;
+        const auto b = activity.control->getBounds().toFloat();
+        if (activity.secondaryId.isNotEmpty()) {
+            if (processor_.isParamLocked(activity.id))
+                drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 1.0f, 12.0f, 13.0f }, accent_);
+            if (processor_.isParamLocked(activity.secondaryId))
+                drawPadlockIcon(g, { b.getRight() - 14.0f, b.getBottom() - 14.0f, 12.0f, 13.0f }, theme::kApricot);
+            continue;
+        }
+        if (processor_.isParamLocked(activity.id))
+            drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, accent_);
     }
 }
 

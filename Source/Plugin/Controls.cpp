@@ -5,6 +5,54 @@
 
 namespace opensmacker::ui {
 
+void drawPadlockIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour accent) {
+    const auto box = bounds.reduced(0.5f);
+    g.setColour(theme::kInk.withAlpha(0.88f));
+    g.fillRoundedRectangle(box.expanded(1.5f), 3.0f);
+
+    const float w = box.getWidth();
+    const float h = box.getHeight();
+    const float shackleW = w * 0.56f;
+    const float shackleH = h * 0.42f;
+    const float cx = box.getCentreX();
+
+    juce::Path shackle;
+    shackle.addArc(cx - shackleW * 0.5f, box.getY() + 0.5f, shackleW, shackleH * 1.4f,
+                   -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+    g.setColour(accent);
+    g.strokePath(shackle, juce::PathStrokeType(1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    const auto body = juce::Rectangle<float>(box.getX() + w * 0.14f, box.getY() + h * 0.42f, w * 0.72f, h * 0.54f);
+    g.fillRoundedRectangle(body, 1.8f);
+
+    g.setColour(theme::kInk);
+    g.fillEllipse(cx - 1.1f, body.getCentreY() - 1.1f, 2.2f, 2.2f);
+}
+
+void PopupSlider::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu) {
+        onPopupMenu(event);
+        return;
+    }
+    juce::Slider::mouseDown(event);
+}
+
+void PopupComboBox::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu) {
+        onPopupMenu(event);
+        return;
+    }
+    juce::ComboBox::mouseDown(event);
+}
+
+void PopupTextButton::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu) {
+        onPopupMenu(event);
+        return;
+    }
+    juce::TextButton::mouseDown(event);
+}
+
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper) {
     slider_.setSliderStyle(stepper ? juce::Slider::IncDecButtons : juce::Slider::RotaryHorizontalVerticalDrag);
     slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
@@ -19,9 +67,20 @@ Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& ti
     title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
     title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
 
     bind(state, parameterId);
+}
+
+void Knob::setOnPopupMenu(PopupCallback callback) {
+    onPopupMenu_ = std::move(callback);
+    slider_.onPopupMenu = onPopupMenu_;
+}
+
+void Knob::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu_)
+        onPopupMenu_(event);
 }
 
 void Knob::bind(Apvts& state, const juce::String& parameterId) {
@@ -57,9 +116,20 @@ Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String
     title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
     title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
 
     bind(state, parameterId);
+}
+
+void Choice::setOnPopupMenu(PopupCallback callback) {
+    onPopupMenu_ = std::move(callback);
+    box_.onPopupMenu = onPopupMenu_;
+}
+
+void Choice::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu_)
+        onPopupMenu_(event);
 }
 
 void Choice::bind(Apvts& state, const juce::String& parameterId) {
@@ -95,6 +165,16 @@ Toggle::Toggle(Apvts& state, const juce::String& parameterId, const juce::String
     addAndMakeVisible(button_);
 }
 
+void Toggle::setOnPopupMenu(PopupCallback callback) {
+    onPopupMenu_ = std::move(callback);
+    button_.onPopupMenu = onPopupMenu_;
+}
+
+void Toggle::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onPopupMenu_)
+        onPopupMenu_(event);
+}
+
 void Toggle::resized() {
     auto area = getLocalBounds().reduced(4);
     const int width = std::min(160, area.getWidth());
@@ -115,7 +195,13 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
     title_.setFont(juce::FontOptions(12.5f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
     title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
+
+    dbSlider_.onPopupMenu = [this](const juce::MouseEvent& event) {
+        if (onPopupMenu_)
+            onPopupMenu_(dbId_, event);
+    };
 
     dbSlider_.setName(title + " Gain");
     dbSlider_.setComponentID(dbId);
@@ -249,7 +335,12 @@ void DualEqKnob::mouseExit(const juce::MouseEvent&) {
 }
 
 void DualEqKnob::mouseDown(const juce::MouseEvent& event) {
-    if (event.mods.isPopupMenu() || !hitsOuterRing(event.position)) return;
+    if (event.mods.isPopupMenu()) {
+        if (onPopupMenu_)
+            onPopupMenu_(hitsOuterRing(event.position) ? freqId_ : dbId_, event);
+        return;
+    }
+    if (!hitsOuterRing(event.position)) return;
     auto* param = state_.getParameter(freqId_);
     if (param == nullptr || freqAttachment_ == nullptr) return;
     draggingFreq_ = true;

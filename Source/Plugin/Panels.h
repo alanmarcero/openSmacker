@@ -14,16 +14,20 @@ class OpenSmackerProcessor;
 
 namespace opensmacker::ui {
 
+void showParameterLockMenu(OpenSmackerProcessor& processor, const juce::String& paramId,
+                           juce::Point<int> screenPos, std::function<void()> onChanged = {});
+
 class SmackerStagePanel : public juce::Component, private juce::Timer {
 public:
     explicit SmackerStagePanel(OpenSmackerProcessor& processor);
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
     void timerCallback() override;
 private:
     void updateWaveform(const core::SmackSynthSettings& settings);
     OpenSmackerProcessor& processor_;
-    juce::TextButton unfreeze_{ "Unfreeze" };
+    PopupTextButton unfreeze_{ "Unfreeze" };
     juce::ParameterAttachment freeze_;
     std::optional<core::SmackSynthSettings> lastSettings_;
     bool showsFrozenHit_ = false;
@@ -89,6 +93,7 @@ public:
     void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
     // Also adds the reason to the tooltip.
     void dimInactiveControls();
@@ -98,6 +103,7 @@ private:
         juce::String id;
         juce::String tip;
         juce::String reason;
+        juce::String secondaryId;
     };
     void timerCallback() override;
     void visibilityChanged() override;
@@ -112,6 +118,7 @@ private:
     std::vector<int> basicRows_, advancedRows_;
     std::vector<float> weights_;
     bool advancedMode_ = false;
+    uint64_t lastLockMask_ = 0;
 };
 
 class SmackSynthPanel : public juce::Component {

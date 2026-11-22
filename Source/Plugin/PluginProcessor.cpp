@@ -13,6 +13,10 @@ OpenSmackerProcessor::OpenSmackerProcessor()
       parameters(*this, nullptr, "PARAMETERS", opensmacker::params::createParameterLayout()) {
     for (auto& locked : sectionLocks_)
         locked.store(false, std::memory_order_relaxed);
+    for (auto* param : getParameters()) {
+        if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*>(param))
+            paramLocks_.emplace(ranged->getParameterID().toStdString(), false);
+    }
     setCurrentProgram(0);
     ab_.arm(copySoundState(true));
     undo_ = std::make_unique<suite::ParameterUndo>(
@@ -53,6 +57,27 @@ void OpenSmackerProcessor::setSectionLocked(opensmacker::presets::Section sectio
         return;
     sectionLocks_[index].store(locked, std::memory_order_relaxed);
     parameters.state.setProperty("section_lock_" + juce::String(static_cast<int>(index)), locked, nullptr);
+}
+
+bool OpenSmackerProcessor::isParamLocked(const juce::String& paramId) const noexcept {
+    const auto it = paramLocks_.find(paramId.toStdString());
+    return it != paramLocks_.end() && it->second.load(std::memory_order_relaxed);
+}
+
+void OpenSmackerProcessor::setParamLocked(const juce::String& paramId, bool locked) {
+    if (const auto it = paramLocks_.find(paramId.toStdString()); it != paramLocks_.end())
+        it->second.store(locked, std::memory_order_relaxed);
+}
+
+void OpenSmackerProcessor::unlockAllParams() {
+    for (auto& [id, locked] : paramLocks_)
+        locked.store(false, std::memory_order_relaxed);
+}
+
+bool OpenSmackerProcessor::hasLockedParams() const noexcept {
+    return std::ranges::any_of(paramLocks_, [](const auto& entry) {
+        return entry.second.load(std::memory_order_relaxed);
+    });
 }
 
 void OpenSmackerProcessor::prepareToPlay(double sampleRate, int samplesPerBlock) {
@@ -269,9 +294,12 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
         opensmacker::presets::SectionLocks locks{};
         for (size_t i = 0; i < locks.size(); ++i)
             locks[i] = sectionLocks_[i].load(std::memory_order_relaxed);
-        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch);
-        if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {
-            param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(index)));
+        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch,
+                                    [this](const juce::String& id) { return isParamLocked(id); });
+        if (!isParamLocked(opensmacker::params::kPreset)) {
+            if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {
+                param->setValueNotifyingHost(param->convertTo0to1(static_cast<float>(index)));
+            }
         }
         parameters.state.setProperty("presetName", juce::String(presets[static_cast<size_t>(index)].name), nullptr);
         presetEdited_.store(false);
@@ -286,6 +314,15 @@ juce::ValueTree OpenSmackerProcessor::copySoundState(bool includeWav) {
     std::ranges::for_each(std::views::iota(size_t{ 0 }, sectionLocks_.size()), [this, &state](size_t i) {
         state.setProperty("section_lock_" + juce::String(static_cast<int>(i)), sectionLocks_[i].load(std::memory_order_relaxed), nullptr);
     });
+    juce::StringArray lockedParamIds;
+    for (const auto& [id, locked] : paramLocks_) {
+        if (locked.load(std::memory_order_relaxed))
+            lockedParamIds.add(juce::String(id));
+    }
+    if (lockedParamIds.isEmpty())
+        state.removeProperty("locked_params", nullptr);
+    else
+        state.setProperty("locked_params", lockedParamIds.joinIntoString(","), nullptr);
     state.removeProperty("locked_wav", nullptr);
     state.removeProperty("locked_wav_bank", nullptr);
     state.removeProperty("abSlot0", nullptr);
@@ -346,6 +383,12 @@ void OpenSmackerProcessor::applySoundState(const juce::ValueTree& incoming, bool
         sectionLocks_[i].store(state.getProperty("section_lock_" + juce::String(static_cast<int>(i)), earlier),
                                std::memory_order_relaxed);
     }
+    const auto lockedProp = state.getProperty("locked_params").toString();
+    juce::StringArray lockedIds;
+    if (lockedProp.isNotEmpty())
+        lockedIds.addTokens(lockedProp, ",", "");
+    for (auto& [id, locked] : paramLocks_)
+        locked.store(lockedIds.contains(juce::String(id)), std::memory_order_relaxed);
     if (const auto* preset = parameters.getRawParameterValue(opensmacker::params::kPreset))
         currentProgram_ = juce::jlimit(0, std::max(0, getNumPrograms() - 1), static_cast<int>(*preset));
     if (!legacySound && !state.hasProperty("presetName"))
@@ -482,7 +525,21 @@ bool OpenSmackerProcessor::loadUserPresetXml(const juce::String& name, const juc
         auto tree = juce::ValueTree::fromXml(*parsed);
         if (!tree.isValid())
             return false;
+        std::vector<std::pair<juce::String, float>> lockedValues;
+        for (const auto& [id, locked] : paramLocks_) {
+            if (!locked.load(std::memory_order_relaxed))
+                continue;
+            const juce::String paramId(id);
+            if (auto* param = parameters.getParameter(paramId))
+                lockedValues.emplace_back(paramId, param->getValue());
+        }
         applySoundState(tree, true);
+        unlockAllParams();
+        for (const auto& [paramId, normValue] : lockedValues) {
+            setParamLocked(paramId, true);
+            if (auto* param = parameters.getParameter(paramId))
+                param->setValueNotifyingHost(normValue);
+        }
         parameters.state.setProperty("presetName", name, nullptr);
         presetEdited_.store(false);
         return true;

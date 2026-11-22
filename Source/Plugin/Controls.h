@@ -1,23 +1,51 @@
 #pragma once
 
+#include <functional>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace opensmacker::ui {
 
 using Apvts = juce::AudioProcessorValueTreeState;
+using PopupCallback = std::function<void(const juce::MouseEvent&)>;
+
+void drawPadlockIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour accent);
+
+class PopupSlider : public juce::Slider {
+public:
+    using juce::Slider::Slider;
+    PopupCallback onPopupMenu;
+    void mouseDown(const juce::MouseEvent& event) override;
+};
+
+class PopupComboBox : public juce::ComboBox {
+public:
+    using juce::ComboBox::ComboBox;
+    PopupCallback onPopupMenu;
+    void mouseDown(const juce::MouseEvent& event) override;
+};
+
+class PopupTextButton : public juce::TextButton {
+public:
+    using juce::TextButton::TextButton;
+    PopupCallback onPopupMenu;
+    void mouseDown(const juce::MouseEvent& event) override;
+};
 
 class Knob : public juce::Component {
 public:
     Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper = false);
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
     void bind(Apvts& state, const juce::String& parameterId);
+    void setOnPopupMenu(PopupCallback callback);
     [[nodiscard]] juce::Slider& slider() noexcept { return slider_; }
 
 private:
-    juce::Slider slider_;
+    PopupSlider slider_;
     juce::Label title_;
     std::unique_ptr<Apvts::SliderAttachment> attachment_;
+    PopupCallback onPopupMenu_;
 };
 
 /** Dual concentric rotary EQ control: inner cap sets -12..+12 dB, outer collar glides Hz smoothly. */
@@ -34,12 +62,15 @@ public:
     void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void mouseExit(const juce::MouseEvent& event) override;
+    void setOnPopupMenu(std::function<void(const juce::String& paramId, const juce::MouseEvent&)> callback) {
+        onPopupMenu_ = std::move(callback);
+    }
     [[nodiscard]] juce::Slider& slider() noexcept { return dbSlider_; }
 
 private:
-    class GainSlider final : public juce::Slider {
+    class GainSlider final : public PopupSlider {
     public:
-        using juce::Slider::Slider;
+        using PopupSlider::PopupSlider;
         bool hitTest(int x, int y) override;
     };
 
@@ -63,30 +94,37 @@ private:
     float dragStartY_ = 0.0f;
     bool draggingFreq_ = false;
     bool hoveringFreq_ = false;
+    std::function<void(const juce::String& paramId, const juce::MouseEvent&)> onPopupMenu_;
 };
 
 class Choice : public juce::Component {
 public:
     Choice(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent);
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
     void bind(Apvts& state, const juce::String& parameterId);
+    void setOnPopupMenu(PopupCallback callback);
     [[nodiscard]] juce::ComboBox& box() noexcept { return box_; }
 
 private:
-    juce::ComboBox box_;
+    PopupComboBox box_;
     juce::Label title_;
     std::unique_ptr<Apvts::ComboBoxAttachment> attachment_;
+    PopupCallback onPopupMenu_;
 };
 
 class Toggle : public juce::Component {
 public:
     Toggle(Apvts& state, const juce::String& parameterId, const juce::String& text, juce::Colour accent);
     void resized() override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    void setOnPopupMenu(PopupCallback callback);
     [[nodiscard]] juce::TextButton& button() noexcept { return button_; }
 
 private:
-    juce::TextButton button_;
+    PopupTextButton button_;
     Apvts::ButtonAttachment attachment_;
+    PopupCallback onPopupMenu_;
 };
 
 } // namespace opensmacker::ui
