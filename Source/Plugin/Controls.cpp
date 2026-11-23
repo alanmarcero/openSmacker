@@ -29,6 +29,26 @@ void drawPadlockIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Col
     g.fillEllipse(cx - 1.1f, body.getCentreY() - 1.1f, 2.2f, 2.2f);
 }
 
+PadlockBadge::PadlockBadge(juce::Colour accent, std::function<void(const juce::MouseEvent&)> onAction)
+    : accent_(accent), onAction_(std::move(onAction)) {
+    setMouseCursor(juce::MouseCursor::PointingHandCursor);
+    setTooltip("Click to unlock parameter, or right-click for lock options.");
+}
+
+void PadlockBadge::paint(juce::Graphics& g) {
+    drawPadlockIcon(g, getLocalBounds().toFloat(), accent_);
+}
+
+void PadlockBadge::mouseDown(const juce::MouseEvent& event) {
+    if (event.mods.isPopupMenu() && onAction_)
+        onAction_(event);
+}
+
+void PadlockBadge::mouseUp(const juce::MouseEvent& event) {
+    if (!event.mods.isPopupMenu() && event.mouseWasClicked() && onAction_)
+        onAction_(event);
+}
+
 void PopupSlider::mouseDown(const juce::MouseEvent& event) {
     if (event.mods.isPopupMenu() && onPopupMenu) {
         onPopupMenu(event);
@@ -45,6 +65,28 @@ void PopupComboBox::mouseDown(const juce::MouseEvent& event) {
     juce::ComboBox::mouseDown(event);
 }
 
+void PopupComboBox::showPopup() {
+    if (activeItemId_ <= 0 || getSelectedId() != 0) {
+        juce::ComboBox::showPopup();
+        return;
+    }
+    auto menu = *getRootMenu();
+    juce::PopupMenu::MenuItemIterator it(menu, true);
+    while (it.next())
+        it.getItem().setTicked(it.getItem().itemID == activeItemId_);
+    auto options = juce::PopupMenu::Options()
+                       .withTargetComponent(this)
+                       .withItemThatMustBeVisible(activeItemId_)
+                       .withMinimumWidth(getWidth())
+                       .withMaximumNumColumns(1)
+                       .withStandardItemHeight(juce::jlimit(12, 24, getHeight()));
+    menu.showMenuAsync(options, [safe = juce::Component::SafePointer<PopupComboBox>(this)](int result) {
+        if (safe == nullptr || result <= 0)
+            return;
+        safe->setSelectedId(result, juce::sendNotificationSync);
+    });
+}
+
 void PopupTextButton::mouseDown(const juce::MouseEvent& event) {
     if (event.mods.isPopupMenu() && onPopupMenu) {
         onPopupMenu(event);
@@ -54,13 +96,13 @@ void PopupTextButton::mouseDown(const juce::MouseEvent& event) {
 }
 
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper) {
-    slider_.setSliderStyle(stepper ? juce::Slider::IncDecButtons : juce::Slider::RotaryHorizontalVerticalDrag);
-    slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
-    slider_.setWantsKeyboardFocus(true);
     slider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     slider_.setColour(juce::Slider::textBoxBackgroundColourId, theme::kInk);
     slider_.setColour(juce::Slider::textBoxTextColourId, theme::kText);
     slider_.setColour(juce::Slider::rotarySliderFillColourId, accent);
+    slider_.setSliderStyle(stepper ? juce::Slider::IncDecButtons : juce::Slider::RotaryHorizontalVerticalDrag);
+    slider_.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 88, 17);
+    slider_.setWantsKeyboardFocus(true);
     addAndMakeVisible(slider_);
 
     title_.setText(title, juce::dontSendNotification);
@@ -94,7 +136,8 @@ void Knob::resized() {
     if (slider_.getSliderStyle() == juce::Slider::IncDecButtons) {
         area = area.withSizeKeepingCentre(std::min(area.getWidth(), 168), std::min(area.getHeight(), 62));
         title_.setBounds(area.removeFromTop(20));
-        slider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, area.getWidth() - 96, area.getHeight());
+        const int buttonSpace = std::min(96, area.getWidth() * 56 / 100);
+        slider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, std::max(30, area.getWidth() - buttonSpace), area.getHeight());
         slider_.setBounds(area);
         return;
     }
@@ -148,7 +191,7 @@ void Choice::bind(Apvts& state, const juce::String& parameterId) {
 
 void Choice::resized() {
     auto area = getLocalBounds();
-    area = area.withSizeKeepingCentre(area.getWidth(), std::min(64, area.getHeight()));
+    area = area.withSizeKeepingCentre(std::min(180, area.getWidth()), std::min(64, area.getHeight()));
     title_.setBounds(area.removeFromTop(19));
     box_.setBounds(area.reduced(3, 3));
 }
@@ -231,15 +274,54 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
     };
     addAndMakeVisible(dbReadout_);
 
+    freqReadout_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    freqReadout_.setJustificationType(juce::Justification::centred);
+    freqReadout_.setColour(juce::Label::textColourId, theme::kText);
+    freqReadout_.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+    freqReadout_.setEditable(false, true, false);
+    freqReadout_.addMouseListener(this, false);
+    freqReadout_.onTextChange = [this] {
+        auto* freqParam = state_.getParameter(freqId_);
+        if (freqParam == nullptr || freqAttachment_ == nullptr) return;
+        const float nextHz = freqParam->convertFrom0to1(freqParam->getValueForText(freqReadout_.getText()));
+        freqHz_ = nextHz;
+        freqAttachment_->setValueAsCompleteGesture(nextHz);
+        updateFreqReadout();
+        repaint();
+    };
+    addAndMakeVisible(freqReadout_);
+
+    setWantsKeyboardFocus(true);
+
     if (auto* freqParam = state.getParameter(freqId)) {
         freqHz_ = freqParam->convertFrom0to1(freqParam->getValue());
         freqAttachment_ = std::make_unique<juce::ParameterAttachment>(*freqParam, [this](float value) {
             freqHz_ = value;
+            updateFreqReadout();
             repaint();
         });
         freqAttachment_->sendInitialUpdate();
     }
     dbSlider_.onValueChange();
+}
+
+void DualEqKnob::updateFreqReadout() {
+    auto* freqParam = state_.getParameter(freqId_);
+    if (freqParam == nullptr) return;
+    freqReadout_.setText(freqParam->getText(freqParam->convertTo0to1(freqHz_), 0), juce::dontSendNotification);
+}
+
+void DualEqKnob::stepSemitones(float deltaSemitones) {
+    if (freqAttachment_ == nullptr) return;
+    auto* param = state_.getParameter(freqId_);
+    if (param == nullptr) return;
+    constexpr float kSemitoneStep = 1.0f / 24.0f;
+    const float nextNorm = std::clamp(param->convertTo0to1(freqHz_) + deltaSemitones * kSemitoneStep, 0.0f, 1.0f);
+    const float nextHz = param->convertFrom0to1(nextNorm);
+    freqHz_ = nextHz;
+    freqAttachment_->setValueAsCompleteGesture(nextHz);
+    updateFreqReadout();
+    repaint();
 }
 
 juce::Rectangle<float> DualEqKnob::dialBounds() const {
@@ -271,7 +353,7 @@ bool DualEqKnob::hitsOuterRing(juce::Point<float> pos) const {
     const float dist = pos.getDistanceFrom(dial.getCentre());
     const float outerR = dial.getWidth() * 0.5f + 3.0f;
     const float innerR = dial.getWidth() * 0.28f;
-    return (dist >= innerR && dist <= outerR) || freqPillBounds().toFloat().contains(pos);
+    return dist >= innerR && dist <= outerR;
 }
 
 void DualEqKnob::paint(juce::Graphics& g) {
@@ -316,10 +398,10 @@ void DualEqKnob::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(freqPill, 3.5f);
     g.setColour(ringColour.withAlpha(hoveringFreq_ || draggingFreq_ ? 0.9f : 0.45f));
     g.drawRoundedRectangle(freqPill.reduced(0.5f), 3.5f, 1.0f);
-    g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
-    if (freqParam != nullptr)
-        g.drawFittedText(freqParam->getText(freqParam->convertTo0to1(freqHz_), 0), freqPill.toNearestInt(), juce::Justification::centred, 1);
+    if (hasKeyboardFocus(false)) {
+        g.setColour(theme::kLilac.withAlpha(0.8f));
+        g.drawRoundedRectangle(dial.expanded(2.0f), 5.0f, 1.2f);
+    }
 }
 
 void DualEqKnob::resized() {
@@ -328,6 +410,7 @@ void DualEqKnob::resized() {
     const auto dial = dialBounds();
     dbSlider_.setBounds(juce::Rectangle<float>(44.0f, 38.0f).withCentre(dial.getCentre()).toNearestInt());
     dbReadout_.setBounds(dbPillBounds());
+    freqReadout_.setBounds(freqPillBounds());
 }
 
 void DualEqKnob::mouseMove(const juce::MouseEvent& event) {
@@ -345,17 +428,23 @@ void DualEqKnob::mouseExit(const juce::MouseEvent&) {
 }
 
 void DualEqKnob::mouseDown(const juce::MouseEvent& event) {
+    if (event.eventComponent == &freqReadout_) {
+        if (event.mods.isPopupMenu() && onPopupMenu_)
+            onPopupMenu_(freqId_, event);
+        return;
+    }
     if (event.mods.isPopupMenu()) {
         if (onPopupMenu_)
             onPopupMenu_(hitsOuterRing(event.position) ? freqId_ : dbId_, event);
         return;
     }
     if (!hitsOuterRing(event.position)) return;
+    grabKeyboardFocus();
     auto* param = state_.getParameter(freqId_);
     if (param == nullptr || freqAttachment_ == nullptr) return;
     draggingFreq_ = true;
-    dragStartNorm_ = param->convertTo0to1(freqHz_);
-    dragStartY_ = event.position.y;
+    dragNorm_ = param->convertTo0to1(freqHz_);
+    lastDragY_ = event.position.y;
     freqAttachment_->beginGesture();
     repaint();
 }
@@ -364,10 +453,13 @@ void DualEqKnob::mouseDrag(const juce::MouseEvent& event) {
     if (!draggingFreq_ || freqAttachment_ == nullptr) return;
     auto* param = state_.getParameter(freqId_);
     if (param == nullptr) return;
-    const float norm = std::clamp(dragStartNorm_ + (dragStartY_ - event.position.y) / 140.0f, 0.0f, 1.0f);
-    const float nextHz = param->convertFrom0to1(norm);
+    const float scale = event.mods.isShiftDown() ? 560.0f : 140.0f;
+    dragNorm_ = std::clamp(dragNorm_ + (lastDragY_ - event.position.y) / scale, 0.0f, 1.0f);
+    lastDragY_ = event.position.y;
+    const float nextHz = param->convertFrom0to1(dragNorm_);
     freqHz_ = nextHz;
     freqAttachment_->setValueAsPartOfGesture(nextHz);
+    updateFreqReadout();
     repaint();
 }
 
@@ -379,26 +471,31 @@ void DualEqKnob::mouseUp(const juce::MouseEvent&) {
 }
 
 void DualEqKnob::mouseDoubleClick(const juce::MouseEvent& event) {
-    if (!hitsOuterRing(event.position) || freqAttachment_ == nullptr) return;
+    if (event.eventComponent == &freqReadout_ || !hitsOuterRing(event.position) || freqAttachment_ == nullptr) return;
     auto* param = state_.getParameter(freqId_);
     if (param == nullptr) return;
     const float defaultHz = param->convertFrom0to1(param->getDefaultValue());
     freqHz_ = defaultHz;
     freqAttachment_->setValueAsCompleteGesture(defaultHz);
+    updateFreqReadout();
     repaint();
 }
 
 void DualEqKnob::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) {
-    if (!hitsOuterRing(event.position) || freqAttachment_ == nullptr) return;
-    auto* param = state_.getParameter(freqId_);
-    if (param == nullptr || wheel.deltaY == 0.0f) return;
-    constexpr float kSemitoneStep = 1.0f / 24.0f;
-    const float direction = wheel.deltaY > 0.0f ? 1.0f : -1.0f;
-    const float nextNorm = std::clamp(param->convertTo0to1(freqHz_) + direction * kSemitoneStep, 0.0f, 1.0f);
-    const float nextHz = param->convertFrom0to1(nextNorm);
-    freqHz_ = nextHz;
-    freqAttachment_->setValueAsCompleteGesture(nextHz);
-    repaint();
+    if (!hitsOuterRing(event.position) || wheel.deltaY == 0.0f) return;
+    stepSemitones(wheel.deltaY > 0.0f ? 1.0f : -1.0f);
+}
+
+bool DualEqKnob::keyPressed(const juce::KeyPress& key) {
+    if (key == juce::KeyPress::upKey || key == juce::KeyPress::rightKey) {
+        stepSemitones(1.0f);
+        return true;
+    }
+    if (key == juce::KeyPress::downKey || key == juce::KeyPress::leftKey) {
+        stepSemitones(-1.0f);
+        return true;
+    }
+    return false;
 }
 
 } // namespace opensmacker::ui

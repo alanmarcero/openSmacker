@@ -21,13 +21,14 @@ class SmackerStagePanel : public juce::Component, private juce::Timer {
 public:
     explicit SmackerStagePanel(OpenSmackerProcessor& processor);
     void paint(juce::Graphics& g) override;
-    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
     void timerCallback() override;
 private:
     void updateWaveform(const core::SmackSynthSettings& settings);
+    void syncLockBadge();
     OpenSmackerProcessor& processor_;
     PopupTextButton unfreeze_{ "Unfreeze" };
+    std::unique_ptr<PadlockBadge> unfreezeLockBadge_;
     juce::ParameterAttachment freeze_;
     std::optional<core::SmackSynthSettings> lastSettings_;
     bool showsFrozenHit_ = false;
@@ -56,7 +57,9 @@ private:
 
 class PeakMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
-    PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb);
+    PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb,
+              const std::atomic<float>* limiterEnabled = nullptr,
+              const std::atomic<float>* outputGainDb = nullptr);
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void timerCallback() override;
@@ -66,9 +69,12 @@ private:
     static constexpr float kFloorDb = -60.0f;
     std::atomic<float>& peak_;
     const std::atomic<float>& ceilingDb_;
+    const std::atomic<float>* limiterEnabled_ = nullptr;
+    const std::atomic<float>* outputGainDb_ = nullptr;
     float levelDb_ = kFloorDb;
     float holdDb_ = kFloorDb;
     float shownCeilingDb_ = 0.0f;
+    bool shownCeiling_ = true;
     double holdStartMs_ = 0.0;
     bool clipped_ = false;
 };
@@ -93,7 +99,6 @@ public:
     void setWeights(std::vector<float> weights);
     void setAdvancedMode(bool advanced);
     void paint(juce::Graphics& g) override;
-    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
     // Also adds the reason to the tooltip.
     void dimInactiveControls();
@@ -104,9 +109,14 @@ private:
         juce::String tip;
         juce::String reason;
         juce::String secondaryId;
+        std::unique_ptr<PadlockBadge> primaryBadge;
+        std::unique_ptr<PadlockBadge> secondaryBadge;
     };
     void timerCallback() override;
     void visibilityChanged() override;
+    void syncLockButton();
+    void syncLockBadges();
+    std::unique_ptr<PadlockBadge> makeLockBadge(const juce::String& paramId, juce::Colour accent);
     OpenSmackerProcessor& processor_;
     juce::String title_;
     presets::Section section_;

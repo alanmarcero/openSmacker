@@ -35,6 +35,7 @@ PresetBrowser::PresetBrowser(PresetStore store,
     favoritesBtn_.setColour(juce::TextButton::buttonOnColourId, style_.accent);
     favoritesBtn_.setColour(juce::TextButton::textColourOnId, style_.ink);
     favoritesBtn_.onClick = [this] {
+        disarm();
         favoritesOnly_ = favoritesBtn_.getToggleState();
         rebuild();
     };
@@ -56,14 +57,18 @@ PresetBrowser::PresetBrowser(PresetStore store,
         rebuild();
     };
     renameBtn_.onClick = [this] {
+        disarm();
         const auto* selected = entry(list_.getSelectedRow());
         if (selected == nullptr || selected->factory)
             return;
         const auto presetName = PresetStore::cleanName(name_.getText());
         if (presetName.isEmpty())
             return;
-        if (store_.renameUserPreset(selected->name, presetName)) {
+        const auto oldName = selected->name;
+        if (store_.renameUserPreset(oldName, presetName)) {
             name_.setText(presetName, juce::dontSendNotification);
+            if (onRename_)
+                onRename_(oldName, presetName);
             rebuild();
         }
     };
@@ -165,8 +170,18 @@ void PresetBrowser::listBoxItemClicked(int row, const juce::MouseEvent& event) {
     loadRow(row);
 }
 
-void PresetBrowser::selectedRowsChanged(int) {
+void PresetBrowser::listBoxItemDoubleClicked(int row, const juce::MouseEvent&) {
+    loadRow(row);
+}
+
+void PresetBrowser::returnKeyPressed(int lastRowSelected) {
+    loadRow(lastRowSelected);
+}
+
+void PresetBrowser::selectedRowsChanged(int lastRowSelected) {
     disarm();
+    if (const auto* item = entry(lastRowSelected))
+        name_.setText(item->name, juce::dontSendNotification);
     updateButtons();
 }
 
@@ -228,8 +243,15 @@ void PresetBrowser::toggleFavorite(int row) {
     const auto* item = entry(row);
     if (item == nullptr)
         return;
-    store_.setFavorite(item->key, !item->favorite);
+    const auto key = item->key;
+    store_.setFavorite(key, !item->favorite);
     rebuild();
+    for (int i = 0; i < static_cast<int>(visible_.size()); ++i) {
+        if (visible_[static_cast<size_t>(i)].key == key) {
+            list_.selectRow(i, false, true);
+            break;
+        }
+    }
 }
 
 const PresetBrowser::Entry* PresetBrowser::entry(int row) const {

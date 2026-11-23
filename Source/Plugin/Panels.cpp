@@ -69,6 +69,9 @@ public:
                 stop();
                 return;
             }
+            if (activeLearn_ != nullptr && activeLearn_ != this)
+                activeLearn_->stop();
+            activeLearn_ = this;
             nextTarget_ = 0;
             seenCount_ = count_.load();
             ticksLeft_ = kTimeoutTicks;
@@ -77,6 +80,16 @@ public:
             startTimerHz(kTicksPerSecond);
         };
         addAndMakeVisible(button_);
+    }
+
+    ~LearnControl() override {
+        if (activeLearn_ == this)
+            activeLearn_ = nullptr;
+    }
+
+    void visibilityChanged() override {
+        if (!isVisible() && isTimerRunning())
+            stop();
     }
 
     void resized() override {
@@ -91,6 +104,12 @@ public:
     }
 
     void timerCallback() override {
+        for (const juce::Component* c = this; c != nullptr && c->getParentComponent() != nullptr; c = c->getParentComponent()) {
+            if (!c->isVisible()) {
+                stop();
+                return;
+            }
+        }
         const auto count = count_.load();
         if (count == seenCount_) {
             if (--ticksLeft_ <= 0)
@@ -117,9 +136,13 @@ private:
 
     void stop() {
         stopTimer();
+        if (activeLearn_ == this)
+            activeLearn_ = nullptr;
         button_.setToggleState(false, juce::dontSendNotification);
         button_.setButtonText("Learn");
     }
+
+    inline static LearnControl* activeLearn_ = nullptr;
 
     const std::atomic<int>& value_;
     const std::atomic<uint32_t>& count_;
@@ -137,19 +160,30 @@ SmackerStagePanel::SmackerStagePanel(OpenSmackerProcessor& processor)
     unfreeze_.setTooltip("Turn off Freeze hit so the synth plays live again.");
     unfreeze_.onClick = [this] { freeze_.setValueAsCompleteGesture(0.0f); };
     unfreeze_.onPopupMenu = [this](const juce::MouseEvent& event) {
-        showParameterLockMenu(processor_, params::kLockIn, event.getScreenPosition(), [this] { repaint(); });
+        showParameterLockMenu(processor_, params::kLockIn, event.getScreenPosition(), [this] { syncLockBadge(); });
     };
     addChildComponent(unfreeze_);
+    unfreezeLockBadge_ = std::make_unique<PadlockBadge>(theme::kApricot, [this](const juce::MouseEvent& event) {
+        if (event.mods.isPopupMenu()) {
+            showParameterLockMenu(processor_, params::kLockIn, event.getScreenPosition(), [this] { syncLockBadge(); });
+            return;
+        }
+        processor_.setParamLocked(params::kLockIn, false);
+        syncLockBadge();
+    });
+    addChildComponent(*unfreezeLockBadge_);
     startTimerHz(12);
 }
 
 void SmackerStagePanel::timerCallback() {
     unfreeze_.setVisible(processor_.frozenHitPlays());
+    syncLockBadge();
     if (isShowing()) repaint();
 }
 
 void SmackerStagePanel::resized() {
     unfreeze_.setBounds(getLocalBounds().removeFromRight(136).reduced(16, 0).withTrimmedTop(36).withHeight(36));
+    syncLockBadge();
 }
 
 void SmackerStagePanel::updateWaveform(const core::SmackSynthSettings& settings) {
@@ -202,7 +236,7 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
                name, juce::Justification::topLeft);
     auto plot = area.reduced(16, ultraCompact ? 6 : 11);
     if (showsFrozenHit_) {
-        auto badge = plot.removeFromRight(120);
+        auto badge = plot.removeFromRight(104);
         g.setColour(theme::kApricot);
         g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
         g.drawText("Hit frozen", badge.removeFromTop(22), juce::Justification::centred);
@@ -236,10 +270,15 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.drawHorizontalLine(juce::roundToInt(middle), bounds.getX(), bounds.getRight());
 }
 
-void SmackerStagePanel::paintOverChildren(juce::Graphics& g) {
-    if (unfreeze_.isVisible() && processor_.isParamLocked(params::kLockIn)) {
-        const auto b = unfreeze_.getBounds().toFloat();
-        drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, theme::kApricot);
+void SmackerStagePanel::syncLockBadge() {
+    if (unfreezeLockBadge_ == nullptr)
+        return;
+    const bool show = unfreeze_.isVisible() && processor_.isParamLocked(params::kLockIn);
+    unfreezeLockBadge_->setVisible(show);
+    if (show) {
+        const auto b = unfreeze_.getBounds();
+        unfreezeLockBadge_->setBounds(b.getRight() - 14, b.getY() + 2, 12, 13);
+        unfreezeLockBadge_->toFront(false);
     }
 }
 
@@ -254,7 +293,10 @@ juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, con
         const auto& presetValues = presets::factoryPresets().front().values;
         const bool presetSets = std::ranges::any_of(presetValues, [&id](const auto& value) { return value.first == id; });
         const bool appliedOnPlayback = isOneOf({ kVoiceMode, kAmpEnabled, kLockPitch, kLockIn, kReverseMode, kReverseMix, kOutputGain });
-        if (id == kMidiMode || (presetSets && !appliedOnPlayback))
+        const bool midiModulation = isOneOf({ kMidiMode, kBodyVelocityDepth, kWireVelocityDepth, kTransientVelocityDepth,
+                                              kBodyAftertouchDepth, kWireAftertouchDepth, kTransientAftertouchDepth,
+                                              kMidiCcBody, kMidiCcWire, kMidiCcTransient });
+        if (midiModulation || (presetSets && !appliedOnPlayback))
             return "Freeze hit is on, so the frozen hit plays. Turn it off to hear this control.";
     }
     if (id == kLockIn && isOn(kAmpEnabled))
@@ -273,6 +315,12 @@ juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, con
         return "Turn on Limiter to use it.";
     if (id == kReverseMix && state.getRawParameterValue(kReverseMode)->load() < 0.5f)
         return "Choose a Reverse sync mode to use it.";
+    if (isOneOf({ kReverbGate, kReverbSize, kReverbDecay, kReverbDamp }) && state.getRawParameterValue(kReverbMix)->load() <= 0.001f)
+        return "Raise Room mix above 0% to use it.";
+    if (isOneOf({ kDistType, kDistDrive, kDistTone }) && state.getRawParameterValue(kDistMix)->load() <= 0.001f)
+        return "Raise Mix above 0% to use it.";
+    if (isOneOf({ kCompThresh, kCompRatio, kCompAttack, kCompRelease, kCompMakeup }) && state.getRawParameterValue(kCompMix)->load() <= 0.001f)
+        return "Raise Comp mix above 0% to use it.";
     return {};
 }
 
@@ -326,8 +374,13 @@ void HitMonitor::paint(juce::Graphics& g) {
     g.drawText(readout(), area, juce::Justification::centredLeft, true);
 }
 
-PeakMeter::PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb) : peak_(peak), ceilingDb_(ceilingDb) {
+PeakMeter::PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb,
+                     const std::atomic<float>* limiterEnabled, const std::atomic<float>* outputGainDb)
+    : peak_(peak), ceilingDb_(ceilingDb), limiterEnabled_(limiterEnabled), outputGainDb_(outputGainDb) {
+    setTitle("Peak meter");
     setTooltip("Output peak in dBFS. The line holds the highest peak for 1 s. The top light stays on after a peak above 0 dBFS; click to clear it.");
+    shownCeiling_ = limiterEnabled_ == nullptr || limiterEnabled_->load() > 0.5f;
+    shownCeilingDb_ = ceilingDb_.load() + (outputGainDb_ != nullptr ? outputGainDb_->load() : 0.0f);
     startTimerHz(30);
 }
 
@@ -341,19 +394,24 @@ void PeakMeter::timerCallback() {
         holdStartMs_ = now;
     const float holdDb = newHold ? peakDb : holdDb_;
     const bool clipped = clipped_ || peak > 1.0f;
-    const float ceilingDb = ceilingDb_.load();
+    const bool showCeiling = limiterEnabled_ == nullptr || limiterEnabled_->load() > 0.5f;
+    const float ceilingDb = ceilingDb_.load() + (outputGainDb_ != nullptr ? outputGainDb_->load() : 0.0f);
     if (juce::exactlyEqual(levelDb, levelDb_) && juce::exactlyEqual(holdDb, holdDb_) && clipped == clipped_
-        && juce::exactlyEqual(ceilingDb, shownCeilingDb_))
+        && showCeiling == shownCeiling_ && (!showCeiling || juce::exactlyEqual(ceilingDb, shownCeilingDb_)))
         return;
+    if (clipped != clipped_)
+        setMouseCursor(clipped ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     levelDb_ = levelDb;
     holdDb_ = holdDb;
     clipped_ = clipped;
+    shownCeiling_ = showCeiling;
     shownCeilingDb_ = ceilingDb;
     repaint();
 }
 
 void PeakMeter::mouseDown(const juce::MouseEvent&) {
     clipped_ = false;
+    setMouseCursor(juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -375,8 +433,10 @@ void PeakMeter::paint(juce::Graphics& g) {
     g.fillRect(bar.withTop(yFor(levelDb_)));
     g.setColour(theme::kText);
     g.fillRect(bar.getX(), yFor(holdDb_) - 1.0f, bar.getWidth(), 2.0f);
-    g.setColour(theme::kApricot);
-    g.fillRect(bar.getX() - 3.0f, yFor(shownCeilingDb_) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
+    if (shownCeiling_) {
+        g.setColour(theme::kApricot);
+        g.fillRect(bar.getX() - 3.0f, yFor(shownCeilingDb_) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
+    }
 }
 
 ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title,
@@ -389,16 +449,18 @@ ParameterCard::ParameterCard(OpenSmackerProcessor& processor, juce::String title
     lockButton_.setTooltip("Keep the " + title_ + " values when you load a preset. The controls stay editable.");
     lockButton_.onClick = [this] {
         processor_.setSectionLocked(section_, !processor_.isSectionLocked(section_));
-        repaint();
+        syncLockButton();
     };
     addAndMakeVisible(lockButton_);
     lockButton_.setVisible(lockable_);
+    syncLockButton();
     startTimerHz(10);
 }
 
 void ParameterCard::timerCallback() {
     if (!isShowing())
         return;
+    syncLockButton();
     dimInactiveControls();
     uint64_t mask = 0;
     uint64_t bit = 1;
@@ -414,13 +476,78 @@ void ParameterCard::timerCallback() {
     }
     if (mask != lastLockMask_) {
         lastLockMask_ = mask;
-        repaint();
+        syncLockBadges();
     }
 }
 
 void ParameterCard::visibilityChanged() {
-    if (isVisible())
+    if (isVisible()) {
+        syncLockButton();
         dimInactiveControls();
+        syncLockBadges();
+    }
+}
+
+void ParameterCard::syncLockButton() {
+    if (!lockable_)
+        return;
+    const bool locked = processor_.isSectionLocked(section_);
+    const auto text = locked ? "Locked" : "Lock";
+    const auto bg = locked ? accent_ : theme::kKnobBody;
+    const auto fg = locked ? theme::kInk : theme::kTextDim;
+    if (lockButton_.getButtonText() != text)
+        lockButton_.setButtonText(text);
+    if (lockButton_.findColour(juce::TextButton::buttonColourId) != bg)
+        lockButton_.setColour(juce::TextButton::buttonColourId, bg);
+    if (lockButton_.findColour(juce::TextButton::textColourOffId) != fg)
+        lockButton_.setColour(juce::TextButton::textColourOffId, fg);
+}
+
+std::unique_ptr<PadlockBadge> ParameterCard::makeLockBadge(const juce::String& paramId, juce::Colour accent) {
+    auto badge = std::make_unique<PadlockBadge>(accent, [this, paramId](const juce::MouseEvent& event) {
+        if (event.mods.isPopupMenu()) {
+            showParameterLockMenu(processor_, paramId, event.getScreenPosition(), [this] { syncLockBadges(); });
+            return;
+        }
+        processor_.setParamLocked(paramId, false);
+        syncLockBadges();
+    });
+    addChildComponent(*badge);
+    return badge;
+}
+
+void ParameterCard::syncLockBadges() {
+    for (auto& activity : activity_) {
+        const bool visible = activity.control != nullptr && activity.control->isVisible();
+        const auto b = visible ? activity.control->getBounds() : juce::Rectangle<int>{};
+        if (activity.secondaryId.isNotEmpty()) {
+            const bool showPrimary = visible && processor_.isParamLocked(activity.id);
+            if (activity.primaryBadge != nullptr) {
+                activity.primaryBadge->setVisible(showPrimary);
+                if (showPrimary) {
+                    activity.primaryBadge->setBounds(b.getX() + 1, b.getY() + 1, 12, 13);
+                    activity.primaryBadge->toFront(false);
+                }
+            }
+            const bool showSecondary = visible && processor_.isParamLocked(activity.secondaryId);
+            if (activity.secondaryBadge != nullptr) {
+                activity.secondaryBadge->setVisible(showSecondary);
+                if (showSecondary) {
+                    activity.secondaryBadge->setBounds(b.getX() + 1, b.getBottom() - 14, 12, 13);
+                    activity.secondaryBadge->toFront(false);
+                }
+            }
+            continue;
+        }
+        const bool showPrimary = visible && processor_.isParamLocked(activity.id);
+        if (activity.primaryBadge != nullptr) {
+            activity.primaryBadge->setVisible(showPrimary);
+            if (showPrimary) {
+                activity.primaryBadge->setBounds(b.getRight() - 14, b.getY() + 2, 12, 13);
+                activity.primaryBadge->toFront(false);
+            }
+        }
+    }
 }
 
 void ParameterCard::dimInactiveControls() {
@@ -439,7 +566,7 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     std::unique_ptr<juce::Component> component;
     auto& state = processor_.parameters;
     auto popup = [this, id](const juce::MouseEvent& event) {
-        showParameterLockMenu(processor_, id, event.getScreenPosition(), [this] { repaint(); });
+        showParameterLockMenu(processor_, id, event.getScreenPosition(), [this] { syncLockBadges(); });
     };
     if (auto* parameter = state.getParameter(id); dynamic_cast<juce::AudioParameterChoice*>(parameter) != nullptr || id == params::kAmpEnabled) {
         auto choice = std::make_unique<Choice>(state, id, title, accent_);
@@ -458,7 +585,7 @@ void ParameterCard::addParameter(const juce::String& id, const juce::String& tit
     setTooltipDeep(*component, tip);
     addAndMakeVisible(*component);
     controls_.push_back(std::move(component));
-    activity_.push_back({ controls_.back().get(), id, tip, {}, {} });
+    activity_.push_back({ controls_.back().get(), id, tip, {}, {}, makeLockBadge(id, accent_), {} });
 }
 
 void ParameterCard::addParameters(std::initializer_list<ControlSpec> specs) {
@@ -469,18 +596,19 @@ void ParameterCard::addDualEq(const juce::String& freqId, const juce::String& db
                               const juce::String& title, juce::Colour freqAccent, const juce::String& tip) {
     auto knob = std::make_unique<DualEqKnob>(processor_.parameters, freqId, dbId, title, accent_, freqAccent);
     knob->setOnPopupMenu([this](const juce::String& paramId, const juce::MouseEvent& event) {
-        showParameterLockMenu(processor_, paramId, event.getScreenPosition(), [this] { repaint(); });
+        showParameterLockMenu(processor_, paramId, event.getScreenPosition(), [this] { syncLockBadges(); });
     });
     setTooltipDeep(*knob, tip);
     addAndMakeVisible(*knob);
     controls_.push_back(std::move(knob));
-    activity_.push_back({ controls_.back().get(), dbId, tip, {}, freqId });
+    activity_.push_back({ controls_.back().get(), dbId, tip, {}, freqId,
+                          makeLockBadge(dbId, accent_), makeLockBadge(freqId, theme::kApricot) });
 }
 
 void ParameterCard::addControl(std::unique_ptr<juce::Component> control, const juce::String& id, const juce::String& tip) {
     addAndMakeVisible(*control);
     if (id.isNotEmpty())
-        activity_.push_back({ control.get(), id, tip, {}, {} });
+        activity_.push_back({ control.get(), id, tip, {}, {}, makeLockBadge(id, accent_), {} });
     controls_.push_back(std::move(control));
 }
 
@@ -508,29 +636,6 @@ void ParameterCard::paint(juce::Graphics& g) {
     g.setColour(theme::kText);
     g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
     g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 90 : 8), juce::Justification::centredLeft, true);
-    const bool locked = processor_.isSectionLocked(section_);
-    if (lockable_) {
-        lockButton_.setButtonText(locked ? "Locked" : "Lock");
-        lockButton_.setColour(juce::TextButton::buttonColourId, locked ? accent_ : theme::kKnobBody);
-        lockButton_.setColour(juce::TextButton::textColourOffId, locked ? theme::kInk : theme::kTextDim);
-    }
-}
-
-void ParameterCard::paintOverChildren(juce::Graphics& g) {
-    for (const auto& activity : activity_) {
-        if (activity.control == nullptr || !activity.control->isVisible())
-            continue;
-        const auto b = activity.control->getBounds().toFloat();
-        if (activity.secondaryId.isNotEmpty()) {
-            if (processor_.isParamLocked(activity.id))
-                drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 1.0f, 12.0f, 13.0f }, accent_);
-            if (processor_.isParamLocked(activity.secondaryId))
-                drawPadlockIcon(g, { b.getRight() - 14.0f, b.getBottom() - 14.0f, 12.0f, 13.0f }, theme::kApricot);
-            continue;
-        }
-        if (processor_.isParamLocked(activity.id))
-            drawPadlockIcon(g, { b.getRight() - 14.0f, b.getY() + 2.0f, 12.0f, 13.0f }, accent_);
-    }
 }
 
 void ParameterCard::resized() {
@@ -553,6 +658,7 @@ void ParameterCard::resized() {
             controls_[i]->setBounds(x, area.getY(), w, area.getHeight());
             x += w + gap;
         });
+        syncLockBadges();
         return;
     }
     const int rowCount = static_cast<int>(rows.size());
@@ -568,6 +674,7 @@ void ParameterCard::resized() {
     }
     for (; controlIndex < controls_.size(); ++controlIndex)
         controls_[controlIndex]->setVisible(false);
+    syncLockBadges();
 }
 
 SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
@@ -660,7 +767,11 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         { kLimiterRelease, "Release", "How fast the limiter recovers after it reduces a peak." },
         { kLimiterCeiling, "Ceiling", "Highest peak level the limiter lets through." },
     });
-    outputCard_.addControl(std::make_unique<PeakMeter>(processor.displayPeak, *processor.parameters.getRawParameterValue(kLimiterCeiling)));
+    outputCard_.addControl(std::make_unique<PeakMeter>(
+        processor.displayPeak,
+        *processor.parameters.getRawParameterValue(kLimiterCeiling),
+        processor.parameters.getRawParameterValue(kLimiterEnabled),
+        processor.parameters.getRawParameterValue(kOutputGain)));
     outputCard_.setRows({ 9 });
     outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f, 5.0f });
     addAndMakeVisible(outputCard_);
@@ -832,7 +943,7 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
     addControllerLearn(kMidiCcBody);
     addControllerLearn(kMidiCcWire);
     addControllerLearn(kMidiCcTransient);
-    rollCard_.setRows({ 2, 2, 2 }, { 2, 3, 1, 4, 4 });
+    rollCard_.setRows({ 2, 2, 2 }, { 2, 4, 4, 4 });
 
     addAndMakeVisible(zonesCard_);
     addAndMakeVisible(responseCard_);

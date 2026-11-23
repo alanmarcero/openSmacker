@@ -23,19 +23,18 @@ private:
     public:
         explicit Content(OpenSmackerEditor& editor) : editor_(editor) {}
         void paint(juce::Graphics& g) override { editor_.paintContent(g); }
-        void paintOverChildren(juce::Graphics& g) override { editor_.paintContentOverChildren(g); }
         void resized() override { editor_.layoutContent(); }
     private:
         OpenSmackerEditor& editor_;
     };
 
     void paintContent(juce::Graphics& g);
-    void paintContentOverChildren(juce::Graphics& g);
     void layoutContent();
     void timerCallback() override;
     bool handleShortcut(const juce::KeyPress& key);
     void syncPresetBox();
     void syncSuiteButtons();
+    void syncLockBadges();
     void chooseProgram(int program);
     void openPresets();
 
@@ -48,6 +47,8 @@ private:
     std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
     std::optional<juce::String> voiceReason_;
     opensmacker::ui::PopupComboBox presetBox_;
+    std::unique_ptr<opensmacker::ui::PadlockBadge> presetLockBadge_;
+    std::unique_ptr<opensmacker::ui::PadlockBadge> voiceLockBadge_;
     juce::TextButton prevPresetBtn_{ "<" }, nextPresetBtn_{ ">" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
     juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };

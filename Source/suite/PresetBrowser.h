@@ -26,6 +26,9 @@ public:
     void resized() override;
     [[nodiscard]] int visiblePresetCount() const { return static_cast<int>(visible_.size()); }
     void setSearchText(const juce::String& query);
+    void setOnRename(std::function<void(const juce::String& oldName, const juce::String& newName)> callback) {
+        onRename_ = std::move(callback);
+    }
 
 private:
     struct Entry {
@@ -39,6 +42,8 @@ private:
     int getNumRows() override;
     void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override;
     void listBoxItemClicked(int row, const juce::MouseEvent& event) override;
+    void listBoxItemDoubleClicked(int row, const juce::MouseEvent& event) override;
+    void returnKeyPressed(int lastRowSelected) override;
     void selectedRowsChanged(int lastRowSelected) override;
     void timerCallback() override;
 
@@ -54,6 +59,7 @@ private:
     std::function<void(int)> loadFactory_;
     std::function<void(const juce::String&, const juce::String&)> loadUser_;
     std::function<bool(const juce::String&)> saveUser_;
+    std::function<void(const juce::String&, const juce::String&)> onRename_;
     Style style_;
     std::vector<Entry> visible_;
 

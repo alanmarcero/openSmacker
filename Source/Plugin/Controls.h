@@ -11,6 +11,19 @@ using PopupCallback = std::function<void(const juce::MouseEvent&)>;
 
 void drawPadlockIcon(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour accent);
 
+class PadlockBadge final : public juce::Component, public juce::SettableTooltipClient {
+public:
+    PadlockBadge(juce::Colour accent, std::function<void(const juce::MouseEvent&)> onAction);
+    void setAccent(juce::Colour accent) noexcept { accent_ = accent; }
+    void paint(juce::Graphics& g) override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+
+private:
+    juce::Colour accent_;
+    std::function<void(const juce::MouseEvent&)> onAction_;
+};
+
 class PopupSlider : public juce::Slider {
 public:
     using juce::Slider::Slider;
@@ -22,7 +35,12 @@ class PopupComboBox : public juce::ComboBox {
 public:
     using juce::ComboBox::ComboBox;
     PopupCallback onPopupMenu;
+    void setActiveItemId(int itemId) noexcept { activeItemId_ = itemId; }
     void mouseDown(const juce::MouseEvent& event) override;
+    void showPopup() override;
+
+private:
+    int activeItemId_ = 0;
 };
 
 class PopupTextButton : public juce::TextButton {
@@ -62,6 +80,7 @@ public:
     void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
     void mouseMove(const juce::MouseEvent& event) override;
     void mouseExit(const juce::MouseEvent& event) override;
+    bool keyPressed(const juce::KeyPress& key) override;
     void setOnPopupMenu(std::function<void(const juce::String& paramId, const juce::MouseEvent&)> callback) {
         onPopupMenu_ = std::move(callback);
     }
@@ -78,6 +97,8 @@ private:
     [[nodiscard]] juce::Rectangle<int> dbPillBounds() const;
     [[nodiscard]] juce::Rectangle<int> freqPillBounds() const;
     [[nodiscard]] bool hitsOuterRing(juce::Point<float> pos) const;
+    void updateFreqReadout();
+    void stepSemitones(float deltaSemitones);
 
     Apvts& state_;
     juce::String freqId_;
@@ -86,12 +107,13 @@ private:
     juce::Colour freqAccent_;
     juce::Label title_;
     juce::Label dbReadout_;
+    juce::Label freqReadout_;
     GainSlider dbSlider_;
     std::unique_ptr<Apvts::SliderAttachment> dbAttachment_;
     std::unique_ptr<juce::ParameterAttachment> freqAttachment_;
     float freqHz_ = 1000.0f;
-    float dragStartNorm_ = 0.5f;
-    float dragStartY_ = 0.0f;
+    float dragNorm_ = 0.5f;
+    float lastDragY_ = 0.0f;
     bool draggingFreq_ = false;
     bool hoveringFreq_ = false;
     std::function<void(const juce::String& paramId, const juce::MouseEvent&)> onPopupMenu_;

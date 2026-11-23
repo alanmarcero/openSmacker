@@ -50,8 +50,10 @@ void EdmLookAndFeel::drawRotarySlider(
     const auto centre = bounds.getCentre();
     const float arcRadius = radius - kArcThickness;
     const float valueAngle = startAngle + sliderPos * (endAngle - startAngle);
-    const bool isBipolar = juce::approximatelyEqual(slider.getMinimum(), -slider.getMaximum());
-    const float originAngle = isBipolar ? (startAngle + endAngle) / 2.0f : startAngle;
+    const bool isBipolar = slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0;
+    const float originAngle = isBipolar
+        ? startAngle + static_cast<float>(slider.valueToProportionOfLength(0.0)) * (endAngle - startAngle)
+        : startAngle;
     const auto stroke = juce::PathStrokeType(kArcThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 
     juce::Path track;
@@ -59,10 +61,12 @@ void EdmLookAndFeel::drawRotarySlider(
     g.setColour(theme::kTrack.withMultipliedAlpha(opacity));
     g.strokePath(track, stroke);
 
-    juce::Path value;
-    value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, originAngle, valueAngle, true);
-    g.setColour(accent.withMultipliedAlpha(opacity));
-    g.strokePath(value, stroke);
+    if (std::abs(valueAngle - originAngle) > 1e-3f) {
+        juce::Path value;
+        value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, originAngle, valueAngle, true);
+        g.setColour(accent.withMultipliedAlpha(opacity));
+        g.strokePath(value, stroke);
+    }
 
     const float bodyRadius = arcRadius - kArcThickness - 1.5f;
     const auto body = juce::Rectangle<float>(bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre(centre);
@@ -160,7 +164,7 @@ void EdmLookAndFeel::drawButtonText(
     const float opacity = button.isEnabled() ? 1.0f : theme::kInactiveOpacity;
     auto area = button.getLocalBounds().reduced(4, 2);
     if (button.getClickingTogglesState())
-        area.removeFromLeft(static_cast<int>(kToggleLightSize));
+        area.removeFromLeft(18);
     g.setColour(button.findColour(colourId).withMultipliedAlpha(opacity));
     g.setFont(juce::FontOptions(kControlFontSize, juce::Font::bold));
     g.drawText(button.getButtonText(), area, juce::Justification::centred, true);
@@ -178,8 +182,8 @@ juce::Label* EdmLookAndFeel::createSliderTextBox(juce::Slider& slider) {
     auto* l = LookAndFeel_V4::createSliderTextBox(slider);
     l->setFont(juce::FontOptions(13.0f, juce::Font::bold));
     l->setJustificationType(juce::Justification::centred);
-    l->setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
-    l->setColour(juce::Label::outlineColourId, juce::Colours::transparentBlack);
+    l->setColour(juce::Label::backgroundColourId, slider.findColour(juce::Slider::textBoxBackgroundColourId));
+    l->setColour(juce::Label::outlineColourId, slider.findColour(juce::Slider::textBoxOutlineColourId));
     return l;
 }
 
