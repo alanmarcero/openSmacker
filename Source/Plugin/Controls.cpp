@@ -97,7 +97,7 @@ void PopupTextButton::mouseDown(const juce::MouseEvent& event) {
 
 Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper) {
     slider_.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    slider_.setColour(juce::Slider::textBoxBackgroundColourId, theme::kInk);
+    slider_.setColour(juce::Slider::textBoxBackgroundColourId, stepper ? juce::Colours::transparentBlack : theme::kInk);
     slider_.setColour(juce::Slider::textBoxTextColourId, theme::kText);
     slider_.setColour(juce::Slider::rotarySliderFillColourId, accent);
     slider_.setSliderStyle(stepper ? juce::Slider::IncDecButtons : juce::Slider::RotaryHorizontalVerticalDrag);
@@ -108,11 +108,21 @@ Knob::Knob(Apvts& state, const juce::String& parameterId, const juce::String& ti
     title_.setText(title, juce::dontSendNotification);
     title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
-    title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setColour(juce::Label::textColourId, theme::kCaption);
     title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
 
     bind(state, parameterId);
+}
+
+void Knob::paint(juce::Graphics& g) {
+    if (slider_.getSliderStyle() != juce::Slider::IncDecButtons || stepperFrame_.isEmpty())
+        return;
+    const auto frame = stepperFrame_.toFloat().reduced(0.5f);
+    g.setColour(theme::kInk);
+    g.fillRoundedRectangle(frame, 5.0f);
+    g.setColour(theme::kPanelEdge);
+    g.drawRoundedRectangle(frame, 5.0f, 1.2f);
 }
 
 void Knob::setOnPopupMenu(PopupCallback callback) {
@@ -134,14 +144,17 @@ void Knob::bind(Apvts& state, const juce::String& parameterId) {
 void Knob::resized() {
     auto area = getLocalBounds();
     if (slider_.getSliderStyle() == juce::Slider::IncDecButtons) {
-        area = area.withSizeKeepingCentre(std::min(area.getWidth(), 168), std::min(area.getHeight(), 62));
-        title_.setBounds(area.removeFromTop(20));
-        const int buttonSpace = std::min(96, area.getWidth() * 56 / 100);
-        slider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, std::max(30, area.getWidth() - buttonSpace), area.getHeight());
-        slider_.setBounds(area);
+        area = area.withSizeKeepingCentre(std::min(area.getWidth(), 168), std::min(area.getHeight(), 64));
+        title_.setBounds(area.removeFromTop(19));
+        stepperFrame_ = area.reduced(2, 2);
+        auto inner = stepperFrame_.reduced(2, 2);
+        const int textW = std::clamp(inner.getWidth() * 42 / 100, 26, 56);
+        slider_.setTextBoxStyle(juce::Slider::TextBoxLeft, false, textW, inner.getHeight());
+        slider_.setBounds(inner);
         return;
     }
-    area = area.withSizeKeepingCentre(area.getWidth(), std::min(106, area.getHeight()));
+    stepperFrame_ = {};
+    area = area.withSizeKeepingCentre(area.getWidth(), std::min(120, area.getHeight()));
     const int labelHeight = area.getHeight() < 86 ? 15 : 18;
     const int boxHeight = area.getHeight() < 86 ? 15 : 17;
     title_.setBounds(area.removeFromTop(labelHeight));
@@ -158,7 +171,7 @@ Choice::Choice(Apvts& state, const juce::String& parameterId, const juce::String
     title_.setText(title, juce::dontSendNotification);
     title_.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
-    title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setColour(juce::Label::textColourId, theme::kCaption);
     title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
 
@@ -237,7 +250,7 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
     title_.setText(title, juce::dontSendNotification);
     title_.setFont(juce::FontOptions(12.5f, juce::Font::bold));
     title_.setJustificationType(juce::Justification::centred);
-    title_.setColour(juce::Label::textColourId, theme::kTextDim);
+    title_.setColour(juce::Label::textColourId, theme::kCaption);
     title_.setInterceptsMouseClicks(false, false);
     addAndMakeVisible(title_);
 
@@ -337,7 +350,7 @@ juce::Rectangle<int> DualEqKnob::dbPillBounds() const {
     const int left = juce::roundToInt(dialBounds().getRight()) + 3;
     const int width = std::max(0, middle.getRight() - left - 1);
     const int cy = middle.getCentreY();
-    return { left, cy - 19, width, 17 };
+    return { left, cy - 17, width, 16 };
 }
 
 juce::Rectangle<int> DualEqKnob::freqPillBounds() const {
@@ -345,7 +358,7 @@ juce::Rectangle<int> DualEqKnob::freqPillBounds() const {
     const int left = juce::roundToInt(dialBounds().getRight()) + 3;
     const int width = std::max(0, middle.getRight() - left - 1);
     const int cy = middle.getCentreY();
-    return { left, cy + 2, width, 17 };
+    return { left, cy + 11, width, 16 };
 }
 
 bool DualEqKnob::hitsOuterRing(juce::Point<float> pos) const {
@@ -393,7 +406,12 @@ void DualEqKnob::paint(juce::Graphics& g) {
     g.setColour(theme::kText);
     g.fillEllipse(dotX - 2.0f, dotY - 2.0f, 4.0f, 4.0f);
 
+    const auto dbPill = dbPillBounds();
     const auto freqPill = freqPillBounds().toFloat();
+    g.setColour(theme::kCaption);
+    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+    g.drawText("dB", dbPill.translated(0, -11).withHeight(11), juce::Justification::centredLeft, false);
+    g.drawText("Note", freqPill.toNearestInt().translated(0, -11).withHeight(11), juce::Justification::centredLeft, false);
     g.setColour(theme::kInk.brighter(hoveringFreq_ || draggingFreq_ ? 0.1f : 0.0f));
     g.fillRoundedRectangle(freqPill, 3.5f);
     g.setColour(ringColour.withAlpha(hoveringFreq_ || draggingFreq_ ? 0.9f : 0.45f));

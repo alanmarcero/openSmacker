@@ -417,13 +417,15 @@ void PeakMeter::mouseDown(const juce::MouseEvent&) {
 
 void PeakMeter::paint(juce::Graphics& g) {
     auto area = getLocalBounds();
-    g.setColour(theme::kTextDim);
+    g.setColour(theme::kCaption);
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("Peak", area.removeFromTop(18), juce::Justification::centred);
-    area = area.withSizeKeepingCentre(std::min(16, area.getWidth()), area.getHeight()).reduced(0, 4);
-    const auto clipLight = area.removeFromTop(8).toFloat();
-    area.removeFromTop(3);
-    const auto bar = area.toFloat();
+    area = area.reduced(2, 3);
+    const int barW = std::min(22, std::max(14, area.getWidth() - 22));
+    auto barCol = area.withWidth(barW).withX(area.getX() + std::max(0, (area.getWidth() - barW - 18) / 2));
+    const auto clipLight = barCol.removeFromTop(8).toFloat();
+    barCol.removeFromTop(3);
+    const auto bar = barCol.toFloat();
     const auto yFor = [&bar](float db) { return juce::jmap(juce::jlimit(kFloorDb, 6.0f, db), kFloorDb, 6.0f, bar.getBottom(), bar.getY()); };
     g.setColour(clipped_ ? theme::kApricot : theme::kPanelEdge);
     g.fillRoundedRectangle(clipLight, 2.0f);
@@ -433,6 +435,17 @@ void PeakMeter::paint(juce::Graphics& g) {
     g.fillRect(bar.withTop(yFor(levelDb_)));
     g.setColour(theme::kText);
     g.fillRect(bar.getX(), yFor(holdDb_) - 1.0f, bar.getWidth(), 2.0f);
+    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    for (const float db : { 0.0f, -12.0f, -24.0f }) {
+        const float y = yFor(db);
+        g.setColour(theme::kTextDim.withAlpha(0.75f));
+        g.drawHorizontalLine(juce::roundToInt(y), bar.getRight() + 2.0f, bar.getRight() + 5.0f);
+        if (db != -12.0f) {
+            g.drawText(juce::String(static_cast<int>(db)),
+                       juce::roundToInt(bar.getRight()) + 6, juce::roundToInt(y) - 5,
+                       18, 10, juce::Justification::centredLeft, false);
+        }
+    }
     if (shownCeiling_) {
         g.setColour(theme::kApricot);
         g.fillRect(bar.getX() - 3.0f, yFor(shownCeilingDb_) - 0.5f, bar.getWidth() + 6.0f, 1.0f);
@@ -634,17 +647,16 @@ void ParameterCard::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(juce::Rectangle<float>(static_cast<float>(heading.getX()), static_cast<float>(heading.getY()) + 2.0f, 3.0f,
         static_cast<float>(heading.getHeight() - 4)), 1.5f);
     g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(17.0f, juce::Font::bold));
-    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 90 : 8), juce::Justification::centredLeft, true);
+    g.setFont(juce::FontOptions(17.5f, juce::Font::bold));
+    g.drawText(title_, heading.withTrimmedLeft(10).withTrimmedRight(lockable_ ? 82 : 8), juce::Justification::centredLeft, true);
 }
 
 void ParameterCard::resized() {
     auto area = getLocalBounds();
     auto header = area.removeFromTop(42).reduced(8, 2);
-    lockButton_.setBounds(lockable_ ? header.removeFromRight(70) : juce::Rectangle<int>{});
+    lockButton_.setBounds(lockable_ ? header.removeFromRight(76) : juce::Rectangle<int>{});
     area = area.reduced(8, 4);
     const int gap = 4;
-    int y = area.getY();
     size_t controlIndex = 0;
     const auto& rows = advancedMode_ ? advancedRows_ : basicRows_;
     if (rows.empty()) return;
@@ -661,16 +673,72 @@ void ParameterCard::resized() {
         syncLockBadges();
         return;
     }
+
     const int rowCount = static_cast<int>(rows.size());
-    const int rowHeight = std::max(1, (area.getHeight() - gap * (rowCount - 1)) / rowCount);
+    std::vector<int> rowHeights(static_cast<size_t>(rowCount), 120);
+    std::vector<bool> rowIsCompact(static_cast<size_t>(rowCount), false);
+    size_t probe = 0;
+    for (int r = 0; r < rowCount; ++r) {
+        const int columns = std::max(1, rows[static_cast<size_t>(r)]);
+        bool hasRotary = false;
+        bool hasCompact = false;
+        bool allLearn = true;
+        for (int c = 0; c < columns && probe < controls_.size(); ++c, ++probe) {
+            auto* ctrl = controls_[probe].get();
+            if (dynamic_cast<LearnControl*>(ctrl) == nullptr)
+                allLearn = false;
+            if (auto* knob = dynamic_cast<Knob*>(ctrl); knob != nullptr && knob->slider().isRotary()) {
+                hasRotary = true;
+            } else {
+                hasCompact = true;
+            }
+        }
+        if (allLearn) {
+            rowHeights[static_cast<size_t>(r)] = 46;
+            rowIsCompact[static_cast<size_t>(r)] = true;
+        } else if (!hasRotary && hasCompact) {
+            rowHeights[static_cast<size_t>(r)] = 66;
+            rowIsCompact[static_cast<size_t>(r)] = true;
+        }
+    }
+
+    const int availableHeight = area.getHeight() - gap * (rowCount - 1);
+    const int preferredTotal = std::accumulate(rowHeights.begin(), rowHeights.end(), 0);
+    if (preferredTotal > availableHeight && availableHeight > 0) {
+        int compactTotal = 0;
+        int flexTotal = 0;
+        for (int r = 0; r < rowCount; ++r) {
+            if (rowIsCompact[static_cast<size_t>(r)])
+                compactTotal += rowHeights[static_cast<size_t>(r)];
+            else
+                flexTotal += rowHeights[static_cast<size_t>(r)];
+        }
+        if (flexTotal > 0 && compactTotal < availableHeight) {
+            const int remaining = availableHeight - compactTotal;
+            for (int r = 0; r < rowCount; ++r) {
+                if (!rowIsCompact[static_cast<size_t>(r)])
+                    rowHeights[static_cast<size_t>(r)] = std::max(1, remaining * rowHeights[static_cast<size_t>(r)] / flexTotal);
+            }
+        } else {
+            for (int r = 0; r < rowCount; ++r)
+                rowHeights[static_cast<size_t>(r)] = std::max(1, availableHeight / rowCount);
+        }
+    }
+
+    const int extra = std::max(0, availableHeight - std::accumulate(rowHeights.begin(), rowHeights.end(), 0));
+    const int rowGap = rowCount > 1 ? gap + std::min(16, extra / (rowCount + 1)) : gap;
+    const int usedHeight = std::accumulate(rowHeights.begin(), rowHeights.end(), 0) + rowGap * (rowCount - 1);
+    int y = area.getY() + std::max(0, (area.getHeight() - usedHeight) / 2);
+
     for (int row = 0; row < rowCount; ++row) {
         const int columns = std::max(1, rows[static_cast<size_t>(row)]);
         const int cellWidth = std::max(1, (area.getWidth() - gap * (columns - 1)) / columns);
+        const int rowHeight = rowHeights[static_cast<size_t>(row)];
         for (int column = 0; column < columns && controlIndex < controls_.size(); ++column, ++controlIndex) {
             controls_[controlIndex]->setVisible(true);
             controls_[controlIndex]->setBounds(area.getX() + column * (cellWidth + gap), y, cellWidth, rowHeight);
         }
-        y += rowHeight + gap;
+        y += rowHeight + rowGap;
     }
     for (; controlIndex < controls_.size(); ++controlIndex)
         controls_[controlIndex]->setVisible(false);
@@ -773,7 +841,7 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         processor.parameters.getRawParameterValue(kLimiterEnabled),
         processor.parameters.getRawParameterValue(kOutputGain)));
     outputCard_.setRows({ 9 });
-    outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.5f, 9.5f, 9.5f, 9.5f, 9.5f, 5.0f });
+    outputCard_.setWeights({ 13.5f, 13.5f, 13.5f, 9.2f, 9.2f, 9.2f, 9.2f, 9.2f, 6.5f });
     addAndMakeVisible(outputCard_);
 
     addAndMakeVisible(detailCard_);
@@ -811,7 +879,7 @@ void SmackSynthPanel::resized() {
     if (page_ == 0) {
         outputCard_.setBounds(area.removeFromBottom(123));
         area.removeFromBottom(gap);
-        envelopeCard_.setBounds(area.removeFromBottom(120));
+        envelopeCard_.setBounds(area.removeFromBottom(138));
         area.removeFromBottom(gap);
         voiceCard_.setBounds(area.removeFromLeft((area.getWidth() - 8) / 2));
         area.removeFromLeft(8);
@@ -822,7 +890,7 @@ void SmackSynthPanel::resized() {
         detailCard_.setBounds(area.removeFromLeft((area.getWidth() - 10) / 2));
         area.removeFromLeft(10);
     }
-    preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * 4 / 10));
+    preStrikeCard_.setBounds(area.removeFromTop(area.getHeight() * (advancedMode_ ? 40 : 34) / 100));
     area.removeFromTop(10);
     wiresCard_.setBounds(area);
 }
@@ -963,7 +1031,7 @@ void PerformancePanel::resized() {
     const int gap = 8;
     rollCard_.setBounds(area.removeFromRight(area.getWidth() * 42 / 100));
     area.removeFromRight(gap);
-    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 62 / 100));
+    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 64 / 100));
     area.removeFromTop(gap);
     responseCard_.setBounds(area);
 }

@@ -53,6 +53,7 @@ public:
 class Knob : public juce::Component {
 public:
     Knob(Apvts& state, const juce::String& parameterId, const juce::String& title, juce::Colour accent, bool stepper = false);
+    void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
     void bind(Apvts& state, const juce::String& parameterId);
@@ -62,6 +63,7 @@ public:
 private:
     PopupSlider slider_;
     juce::Label title_;
+    juce::Rectangle<int> stepperFrame_;
     std::unique_ptr<Apvts::SliderAttachment> attachment_;
     PopupCallback onPopupMenu_;
 };

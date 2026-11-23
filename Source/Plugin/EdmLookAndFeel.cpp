@@ -45,7 +45,7 @@ void EdmLookAndFeel::drawRotarySlider(
     const auto accent = slider.findColour(juce::Slider::rotarySliderFillColourId);
     const float opacity = slider.isEnabled() ? 1.0f : theme::kInactiveOpacity;
     const auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat().reduced(1.5f);
-    const float radius = std::min(30.0f, 0.5f * std::min(bounds.getWidth(), bounds.getHeight()));
+    const float radius = std::min(34.0f, 0.5f * std::min(bounds.getWidth(), bounds.getHeight()));
     if (radius < 5.0f) return;
     const auto centre = bounds.getCentre();
     const float arcRadius = radius - kArcThickness;

@@ -339,7 +339,11 @@ void OpenSmackerEditor::paintContent(juce::Graphics& g) {
     g.setFont(juce::FontOptions(13.0f));
     g.setColour(theme::kTextDim);
     g.drawText("Trance percussion synth", 20, 32, 190, 16, juce::Justification::centredLeft);
-    g.drawText("Preset", 220, 6, 200, 18, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.setColour(theme::kText);
+    g.drawText("Preset", 220, 5, 200, 19, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(13.0f));
+    g.setColour(theme::kTextDim);
     if (!editLabelBounds_.isEmpty())
         g.drawText("Edit", editLabelBounds_, juce::Justification::centredLeft);
     if (!voicesLabelBounds_.isEmpty())

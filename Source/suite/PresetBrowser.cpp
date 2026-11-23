@@ -151,11 +151,11 @@ void PresetBrowser::paintListBoxItem(int row, juce::Graphics& g, int width, int 
     g.drawText(item->favorite ? "Star" : "Mark", width - 52, 0, 46, height, juce::Justification::centred);
     g.setColour(style_.text);
     g.setFont(juce::FontOptions(14.0f));
-    const auto prefix = item->factory ? "Factory  " : "User  ";
+    const auto prefix = item->factory ? "Factory" : "User";
     g.setColour(style_.dim);
-    g.drawText(prefix, 8, 0, 62, height, juce::Justification::centredLeft);
+    g.drawText(prefix, 10, 0, 56, height, juce::Justification::centredLeft);
     g.setColour(style_.text);
-    g.drawText(item->name, 72, 0, width - 130, height, juce::Justification::centredLeft, true);
+    g.drawText(item->name, 72, 0, width - 132, height, juce::Justification::centredLeft, true);
 }
 
 void PresetBrowser::listBoxItemClicked(int row, const juce::MouseEvent& event) {
