@@ -17,6 +17,6 @@ inline const juce::Colour kApricot{ 0xffffbe3b };
 inline const juce::Colour kLilac{ 0xff48f0c8 };
 inline const juce::Colour kIce{ 0xff5ce1ff };
 // Controls that have no effect, and disabled controls, draw at this opacity.
-inline constexpr float kInactiveOpacity = 0.4f;
+inline constexpr float kInactiveOpacity = 0.55f;
 
 } // namespace opensmacker::theme

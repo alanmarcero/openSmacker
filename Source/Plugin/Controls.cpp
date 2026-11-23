@@ -274,7 +274,7 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
     };
     addAndMakeVisible(dbSlider_);
 
-    dbReadout_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    dbReadout_.setFont(juce::FontOptions(12.0f, juce::Font::bold));
     dbReadout_.setJustificationType(juce::Justification::centred);
     dbReadout_.setColour(juce::Label::textColourId, theme::kText);
     dbReadout_.setColour(juce::Label::backgroundColourId, theme::kInk);
@@ -287,7 +287,7 @@ DualEqKnob::DualEqKnob(Apvts& state, const juce::String& freqId, const juce::Str
     };
     addAndMakeVisible(dbReadout_);
 
-    freqReadout_.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+    freqReadout_.setFont(juce::FontOptions(12.0f, juce::Font::bold));
     freqReadout_.setJustificationType(juce::Justification::centred);
     freqReadout_.setColour(juce::Label::textColourId, theme::kText);
     freqReadout_.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
@@ -350,7 +350,7 @@ juce::Rectangle<int> DualEqKnob::dbPillBounds() const {
     const int left = juce::roundToInt(dialBounds().getRight()) + 3;
     const int width = std::max(0, middle.getRight() - left - 1);
     const int cy = middle.getCentreY();
-    return { left, cy - 17, width, 16 };
+    return { left, cy - 16, width, 16 };
 }
 
 juce::Rectangle<int> DualEqKnob::freqPillBounds() const {
@@ -358,7 +358,7 @@ juce::Rectangle<int> DualEqKnob::freqPillBounds() const {
     const int left = juce::roundToInt(dialBounds().getRight()) + 3;
     const int width = std::max(0, middle.getRight() - left - 1);
     const int cy = middle.getCentreY();
-    return { left, cy + 11, width, 16 };
+    return { left, cy + 13, width, 16 };
 }
 
 bool DualEqKnob::hitsOuterRing(juce::Point<float> pos) const {
@@ -409,9 +409,9 @@ void DualEqKnob::paint(juce::Graphics& g) {
     const auto dbPill = dbPillBounds();
     const auto freqPill = freqPillBounds().toFloat();
     g.setColour(theme::kCaption);
-    g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
-    g.drawText("dB", dbPill.translated(0, -11).withHeight(11), juce::Justification::centredLeft, false);
-    g.drawText("Note", freqPill.toNearestInt().translated(0, -11).withHeight(11), juce::Justification::centredLeft, false);
+    g.setFont(juce::FontOptions(11.5f, juce::Font::bold));
+    g.drawText("dB", dbPill.translated(0, -13).withHeight(13), juce::Justification::centredLeft, false);
+    g.drawText("Note", freqPill.toNearestInt().translated(0, -13).withHeight(13), juce::Justification::centredLeft, false);
     g.setColour(theme::kInk.brighter(hoveringFreq_ || draggingFreq_ ? 0.1f : 0.0f));
     g.fillRoundedRectangle(freqPill, 3.5f);
     g.setColour(ringColour.withAlpha(hoveringFreq_ || draggingFreq_ ? 0.9f : 0.45f));

@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "PresetBrowser.h"
 #include "Presets.h"
+#include "Theme.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
@@ -440,7 +441,7 @@ TEST_CASE("Learn sets a zone from two notes and the roll note from one, and canc
     auto* snareTimer = dynamic_cast<juce::Timer*>(snare->getParentComponent());
     REQUIRE(snareTimer != nullptr);
     snare->findParentComponentOfClass<opensmacker::ui::ParameterCard>()->dimInactiveControls();
-    CHECK(snare->getParentComponent()->getAlpha() < 0.5f);
+    CHECK(snare->getParentComponent()->getAlpha() < 0.6f);
     snare->onClick();
     CHECK(snare->getButtonText() == "Play low");
     playNote(40);
@@ -618,7 +619,7 @@ TEST_CASE("Controls with no effect dim, stay editable, and say what turns them o
     auto* flamCard = spacing->findParentComponentOfClass<opensmacker::ui::ParameterCard>();
     REQUIRE(flamCard != nullptr);
     flamCard->dimInactiveControls();
-    CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(0.4f).margin(0.01f));
+    CHECK(spacing->getParentComponent()->getAlpha() == Catch::Approx(opensmacker::theme::kInactiveOpacity).margin(0.01f));
     CHECK(spacing->getTooltip().contains("Set Hits to 2 or more"));
     CHECK(spacing->isEnabled());
 

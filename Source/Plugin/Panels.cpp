@@ -246,8 +246,8 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(ultraCompact ? 14.5f : 17.0f, juce::Font::bold));
     g.drawText(showsFrozenHit_ ? "Frozen hit" : "Dry one-shot waveform", plot.removeFromTop(ultraCompact ? 18 : 23), juce::Justification::centredLeft);
     auto axis = plot.removeFromBottom(ultraCompact ? 16 : 21);
-    g.setColour(theme::kTextDim);
-    g.setFont(juce::FontOptions(13.0f));
+    g.setColour(theme::kCaption);
+    g.setFont(juce::FontOptions(14.0f));
     g.drawText("0 ms", axis, juce::Justification::bottomLeft);
     g.drawText(juce::String(previewMs_) + " ms", axis, juce::Justification::bottomRight);
     const auto bounds = plot.toFloat().reduced(1, 2);
@@ -366,9 +366,9 @@ void HitMonitor::paint(juce::Graphics& g) {
     g.setColour(theme::kApricot.withAlpha(glow_));
     g.fillEllipse(lamp);
     area.removeFromLeft(4);
-    g.setColour(theme::kTextDim);
-    g.setFont(juce::FontOptions(13.0f));
-    g.drawText("Last hit", area.removeFromLeft(58), juce::Justification::centredLeft);
+    g.setColour(theme::kCaption);
+    g.setFont(juce::FontOptions(14.0f));
+    g.drawText("Last hit", area.removeFromLeft(62), juce::Justification::centredLeft);
     g.setColour(theme::kText);
     g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
     g.drawText(readout(), area, juce::Justification::centredLeft, true);
@@ -421,8 +421,8 @@ void PeakMeter::paint(juce::Graphics& g) {
     g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
     g.drawText("Peak", area.removeFromTop(18), juce::Justification::centred);
     area = area.reduced(2, 3);
-    const int barW = std::min(22, std::max(14, area.getWidth() - 22));
-    auto barCol = area.withWidth(barW).withX(area.getX() + std::max(0, (area.getWidth() - barW - 18) / 2));
+    const int barW = std::min(18, std::max(12, area.getWidth() - 32));
+    auto barCol = area.withWidth(barW).withX(area.getX() + std::max(0, (area.getWidth() - barW - 30) / 2));
     const auto clipLight = barCol.removeFromTop(8).toFloat();
     barCol.removeFromTop(3);
     const auto bar = barCol.toFloat();
@@ -435,15 +435,15 @@ void PeakMeter::paint(juce::Graphics& g) {
     g.fillRect(bar.withTop(yFor(levelDb_)));
     g.setColour(theme::kText);
     g.fillRect(bar.getX(), yFor(holdDb_) - 1.0f, bar.getWidth(), 2.0f);
-    g.setFont(juce::FontOptions(8.5f, juce::Font::bold));
+    g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
     for (const float db : { 0.0f, -12.0f, -24.0f }) {
         const float y = yFor(db);
         g.setColour(theme::kTextDim.withAlpha(0.75f));
         g.drawHorizontalLine(juce::roundToInt(y), bar.getRight() + 2.0f, bar.getRight() + 5.0f);
         if (db != -12.0f) {
             g.drawText(juce::String(static_cast<int>(db)),
-                       juce::roundToInt(bar.getRight()) + 6, juce::roundToInt(y) - 5,
-                       18, 10, juce::Justification::centredLeft, false);
+                       juce::roundToInt(bar.getRight()) + 8, juce::roundToInt(y) - 6,
+                       24, 12, juce::Justification::centredLeft, false);
         }
     }
     if (shownCeiling_) {
@@ -726,7 +726,7 @@ void ParameterCard::resized() {
     }
 
     const int extra = std::max(0, availableHeight - std::accumulate(rowHeights.begin(), rowHeights.end(), 0));
-    const int rowGap = rowCount > 1 ? gap + std::min(16, extra / (rowCount + 1)) : gap;
+    const int rowGap = rowCount > 1 ? gap + std::min(44, extra / (rowCount + 1)) : gap;
     const int usedHeight = std::accumulate(rowHeights.begin(), rowHeights.end(), 0) + rowGap * (rowCount - 1);
     int y = area.getY() + std::max(0, (area.getHeight() - usedHeight) / 2);
 

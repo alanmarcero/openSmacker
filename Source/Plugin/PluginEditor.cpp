@@ -339,15 +339,16 @@ void OpenSmackerEditor::paintContent(juce::Graphics& g) {
     g.setFont(juce::FontOptions(13.0f));
     g.setColour(theme::kTextDim);
     g.drawText("Trance percussion synth", 20, 32, 190, 16, juce::Justification::centredLeft);
-    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.setFont(juce::FontOptions(14.5f, juce::Font::bold));
     g.setColour(theme::kText);
-    g.drawText("Preset", 220, 5, 200, 19, juce::Justification::centredLeft);
-    g.setFont(juce::FontOptions(13.0f));
-    g.setColour(theme::kTextDim);
+    g.drawText("Preset", 220, 7, 200, 19, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
+    g.setColour(theme::kCaption);
     if (!editLabelBounds_.isEmpty())
         g.drawText("Edit", editLabelBounds_, juce::Justification::centredLeft);
     if (!voicesLabelBounds_.isEmpty())
         g.drawText("Voice", voicesLabelBounds_, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(13.5f));
     if (!versionBounds_.isEmpty())
         g.drawText("v" JucePlugin_VersionString, versionBounds_, juce::Justification::centredLeft);
     if (membrane_ && !artBounds_.isEmpty() && g.clipRegionIntersects(artBounds_)) {
@@ -375,7 +376,7 @@ void OpenSmackerEditor::resized() {
 }
 
 void OpenSmackerEditor::layoutContent() {
-    auto top = content_.getLocalBounds().withTrimmedLeft(220).withTrimmedRight(18).withY(26).withHeight(39);
+    auto top = content_.getLocalBounds().withTrimmedLeft(220).withTrimmedRight(18).withY(29).withHeight(38);
     auditionBtn_.setBounds(top.removeFromRight(159));
     top.removeFromRight(12);
     nextPresetBtn_.setBounds(top.removeFromRight(40).withHeight(40));
