@@ -200,7 +200,8 @@ TEST_CASE("Editor size is resizable, scales its layout evenly, and restores with
     CHECK(area.getWidth() == Catch::Approx(static_cast<float>(presets->getWidth()) * scale).margin(1.0f));
     CHECK(area.getHeight() == Catch::Approx(static_cast<float>(presets->getHeight()) * scale).margin(1.0f));
     const float leftMargin = (1600.0f - static_cast<float>(suite::kDefaultEditorWidth) * scale) * 0.5f;
-    CHECK(area.getX() == Catch::Approx(leftMargin + static_cast<float>(presets->getX()) * scale).margin(1.0f));
+    const float designX = static_cast<float>(presets->getX() + presets->getParentComponent()->getX());
+    CHECK(area.getX() == Catch::Approx(leftMargin + designX * scale).margin(1.0f));
 
     std::vector<juce::Rectangle<int>> targets;
     for (auto* child : editor->getChildren())

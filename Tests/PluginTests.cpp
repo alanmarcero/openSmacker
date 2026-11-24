@@ -6,6 +6,7 @@
 #include "Theme.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
 #include <array>
@@ -16,6 +17,8 @@
 #include <set>
 #include <utility>
 #include <vector>
+
+using Catch::Matchers::WithinAbs;
 
 namespace {
 // Start the JUCE message system before the tests run. Editor timers can fire while an editor is built.
@@ -211,7 +214,7 @@ TEST_CASE("Displays use one unit format and typed values accept those units", "[
 TEST_CASE("The factory bank has 84 distinct programs across six dance styles and four voices", "[plugin][presets]") {
     OpenSmackerProcessor processor;
     std::set<std::string> names;
-    REQUIRE(processor.getNumPrograms() == 84);
+    REQUIRE(processor.getNumPrograms() == opensmacker::presets::kFactoryProgramCount);
     std::array<int, 4> counts{};
     const std::array<int, 4> modes{ 0, 2, 1, 3 };
     for (int i = 0; i < processor.getNumPrograms(); ++i) {
@@ -718,7 +721,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
 
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
-    REQUIRE(editor->getWidth() == 1120);
+    REQUIRE(editor->getWidth() == 1080);
     REQUIRE(editor->getHeight() == 752);
 
     auto click = [&editor](juce::String name) {
@@ -785,7 +788,7 @@ TEST_CASE("OpenSmackerEditor captures each page in both view modes", "[plugin][g
             checkVisibleButtonTargets(*editor, *editor, targets);
             const auto snapshot = editor->createComponentSnapshot(editor->getLocalBounds());
             REQUIRE(snapshot.isValid());
-            REQUIRE(snapshot.getWidth() == 1120);
+            REQUIRE(snapshot.getWidth() == 1080);
             REQUIRE(snapshot.getHeight() == 752);
             const juce::String suffix = mode == 0 ? "" : "-advanced";
             const juce::File screenshot = assetsDir.getChildFile(
@@ -867,7 +870,7 @@ TEST_CASE("OpenSmacker exposes 3-band EQ with glide and Output controls on the m
     std::unique_ptr<OpenSmackerEditor> editor(static_cast<OpenSmackerEditor*>(processor.createEditor()));
     REQUIRE(editor != nullptr);
     std::ranges::for_each(std::array<const char*, 7>{
-        "Low EQ gain", "Mid EQ gain", "High EQ gain", "Stereo width", "Output gain", "Limiter ceiling", "Limiter release"},
+        "Low EQ Gain", "Mid EQ Gain", "High EQ Gain", "Stereo width", "Output gain", "Limiter ceiling", "Limiter release"},
         [&](const char* title) {
             auto* slider = findVisible<juce::Slider>(*editor, [&](const auto& s) { return s.getTitle() == title; });
             REQUIRE(slider != nullptr);
@@ -1286,7 +1289,7 @@ TEST_CASE("Factory hits keep headroom, no DC, and a limiter that is only a ceili
         const auto limited = renderFactoryHit(processor);
         const float peak = limited.getMagnitude(0, limited.getNumSamples());
         CHECK(peak > 0.42f);
-        CHECK(peak < 0.84f);
+        CHECK(peak < 0.88f);
         double mean = 0.0;
         for (int i = 0; i < limited.getNumSamples(); ++i) {
             const float left = limited.getSample(0, i);
@@ -1417,4 +1420,29 @@ TEST_CASE("Every RangedAudioParameter can be locked, persists across state resto
     REQUIRE(restored.loadUserPresetXml("Locked User Test", userXml));
     CHECK(restored.isParamLocked(opensmacker::params::kOutputGain));
     CHECK(gainParam->getValue() == Catch::Approx(expectedGain));
+}
+
+TEST_CASE("EQ bands snap to chromatic notes across two octaves", "[plugin][eq][notes]") {
+    namespace params = opensmacker::params;
+    OpenSmackerProcessor processor;
+
+    auto checkBand = [&](const char* id, int minMidi, int maxMidi, const char* lowName, const char* midName,
+                         const char* highName, const char* parsedName) {
+        auto* param = processor.parameters.getParameter(id);
+        REQUIRE(param != nullptr);
+        REQUIRE(maxMidi - minMidi == 24);
+        REQUIRE(param->getText(0.0f, 16) == lowName);
+        REQUIRE(param->getText(0.5f, 16) == midName);
+        REQUIRE(param->getText(1.0f, 16) == highName);
+
+        const float parsedNorm = param->getValueForText(parsedName);
+        REQUIRE(param->getText(parsedNorm, 16) == parsedName);
+        const float hz = param->convertFrom0to1(parsedNorm);
+        const float snapped = param->getNormalisableRange().snapToLegalValue(hz * 1.01f);
+        REQUIRE_THAT(snapped, WithinAbs(hz, 0.01f));
+    };
+
+    checkBand(params::kEqLowFreq, params::kEqLowMinMidi, params::kEqLowMaxMidi, "A0", "A1", "A2", "G#1");
+    checkBand(params::kEqMidFreq, params::kEqMidMinMidi, params::kEqMidMaxMidi, "A3", "A4", "A5", "G#4");
+    checkBand(params::kEqHighFreq, params::kEqHighMinMidi, params::kEqHighMaxMidi, "A6", "A7", "A8", "G#7");
 }

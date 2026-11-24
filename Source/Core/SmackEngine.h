@@ -101,6 +101,7 @@ struct EngineSettings {
     SmackSynthSettings synth{};
     SmackEffectSettings effects{};
     bool noteTracking = false;     // false = Fixed (audition root), true = Note tracking
+    float keyTracking = 1.0f;      // 0 = root pitch, 1 = follow the MIDI note
     bool lockIn = false;           // Lock in rendered WAV buffer
     bool bypass = false;
     bool keyZonesEnabled = false;

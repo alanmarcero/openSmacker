@@ -753,8 +753,9 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         { kToneDecay, "Body decay", "How long the drum body rings." },
         { kTonePitchEnv, "Pitch sweep", "Pitch offset at the start of the hit, in semitones. The pitch glides back to the preset pitch." },
         { kToneLevel, "Body level", "Volume of the drum body." },
+        { kKeyTracking, "Key tracking", ::suite::eq::kKeyTrackingTip },
     });
-    voiceCard_.setRows({ 3 });
+    voiceCard_.setRows({ 4 });
     detailCard_.addParameters({
         { kFmAmount, "FM depth", "Amount of FM overtones in the body." },
         { kToneFreq, "Shell frequency", "Center of the shell resonance." },
@@ -817,9 +818,9 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     addAndMakeVisible(envelopeCard_);
     addAndMakeVisible(transientCard_);
 
-    outputCard_.addDualEq(kEqLowFreq, kEqLowDb, "Low EQ", theme::kApricot, "Low shelf. The inner dial sets gain and the outer ring snaps to notes (E1 to E3).");
-    outputCard_.addDualEq(kEqMidFreq, kEqMidDb, "Mid EQ", theme::kApricot, "Mid bell. The inner dial sets gain and the outer ring snaps to notes (B4 to B6).");
-    outputCard_.addDualEq(kEqHighFreq, kEqHighDb, "High EQ", theme::kApricot, "High shelf. The inner dial sets gain and the outer ring snaps to notes (A#7 to A#9).");
+    outputCard_.addDualEq(kEqLowFreq, kEqLowDb, "Low EQ", theme::kApricot, ::suite::eq::kLowTip);
+    outputCard_.addDualEq(kEqMidFreq, kEqMidDb, "Mid EQ", theme::kApricot, ::suite::eq::kMidTip);
+    outputCard_.addDualEq(kEqHighFreq, kEqHighDb, "High EQ", theme::kApricot, ::suite::eq::kHighTip);
     outputCard_.addParameters({
         { kStereoWidth, "Stereo width", "Width of the output. 0% is mono." },
         { kOutputGain, "Gain", "Output level after the limiter." },

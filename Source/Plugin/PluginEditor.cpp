@@ -47,7 +47,7 @@ private:
 
 OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     : AudioProcessorEditor(&processorToEdit), processor_(processorToEdit),
-      dragBtn_([this] { return processor_.createHitWavFile(); }), hitMonitor_(processorToEdit),
+      suiteBar_([this] { return processor_.createHitWavFile(); }), hitMonitor_(processorToEdit),
       stagePanel_(processorToEdit), synthPanel_(processorToEdit),
       effectsPanel_(processorToEdit), performancePanel_(processorToEdit),
       tooltipWindow_(this, 500) {
@@ -84,9 +84,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     viewToggleBtn_.setTooltip("Show every control, including the Body detail card on the Layers page.");
     const std::initializer_list<std::pair<juce::Button*, const char*>> titles{
         { &prevPresetBtn_, "Previous preset" }, { &nextPresetBtn_, "Next preset" }, { &auditionBtn_, "Audition hit" },
-        { &viewToggleBtn_, "Advanced controls" }, { &undoBtn_, "Undo" }, { &redoBtn_, "Redo" },
-        { &abABtn_, "Slot A" }, { &abBBtn_, "Slot B" }, { &copyAtoBBtn_, "Copy A to B" }, { &copyBtoABtn_, "Copy B to A" },
-        { &presetsBtn_, "Presets" }, { &dragBtn_, "Drag hit as WAV" }
+        { &viewToggleBtn_, "Advanced controls" }
     };
     std::ranges::for_each(titles, [](const auto& entry) { entry.first->setTitle(entry.second); });
     presetBox_.onChange = [this] { chooseProgram(presetBox_.getSelectedId() - 1); };
@@ -100,25 +98,16 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     auditionBtn_.setColour(juce::TextButton::buttonColourId, theme::kApricot);
     auditionBtn_.setColour(juce::TextButton::textColourOffId, theme::kInk);
     viewToggleBtn_.onClick = [this] { setAdvancedView(!synthPanel_.isAdvancedMode()); };
-    undoBtn_.onClick = [this] { processor_.undo(); syncSuiteButtons(); };
-    redoBtn_.onClick = [this] { processor_.redo(); syncSuiteButtons(); };
-    undoBtn_.setTooltip("Undo the last parameter edit (Cmd/Ctrl+Z).");
-    redoBtn_.setTooltip("Redo the last undone edit (Shift+Cmd/Ctrl+Z).");
-    abABtn_.onClick = [this] { processor_.selectAbSlot(0); syncSuiteButtons(); };
-    abBBtn_.onClick = [this] { processor_.selectAbSlot(1); syncSuiteButtons(); };
-    abABtn_.setTooltip("Hear slot A.");
-    abBBtn_.setTooltip("Hear slot B.");
-    copyAtoBBtn_.onClick = [this] { processor_.copyAbSlot(0, 1); syncSuiteButtons(); };
-    copyBtoABtn_.onClick = [this] { processor_.copyAbSlot(1, 0); syncSuiteButtons(); };
-    copyAtoBBtn_.setTooltip("Copy slot A onto slot B.");
-    copyBtoABtn_.setTooltip("Copy slot B onto slot A.");
-    presetsBtn_.onClick = [this] { openPresets(); };
-    presetsBtn_.setTooltip("Factory and user presets. Search, star favorites, and save your own.");
-    dragBtn_.setColour(juce::TextButton::buttonColourId, theme::kIce);
-    dragBtn_.setColour(juce::TextButton::textColourOffId, theme::kInk);
+    suiteBar_.onUndo = [this] { processor_.undo(); syncSuiteButtons(); };
+    suiteBar_.onRedo = [this] { processor_.redo(); syncSuiteButtons(); };
+    suiteBar_.onShowA = [this] { processor_.selectAbSlot(0); syncSuiteButtons(); };
+    suiteBar_.onShowB = [this] { processor_.selectAbSlot(1); syncSuiteButtons(); };
+    suiteBar_.onCopyAToB = [this] { processor_.copyAbSlot(0, 1); syncSuiteButtons(); };
+    suiteBar_.onCopyBToA = [this] { processor_.copyAbSlot(1, 0); syncSuiteButtons(); };
+    suiteBar_.onPresets = [this] { openPresets(); };
     for (auto* child : std::initializer_list<juce::Component*>{
              &presetBox_, &prevPresetBtn_, &nextPresetBtn_, &auditionBtn_, &viewToggleBtn_,
-             &undoBtn_, &redoBtn_, &abABtn_, &abBBtn_, &copyAtoBBtn_, &copyBtoABtn_, &presetsBtn_, &dragBtn_, &hitMonitor_,
+             &suiteBar_, &hitMonitor_,
              &stagePanel_, &synthPanel_, &effectsPanel_, &performancePanel_ })
         content_.addAndMakeVisible(child);
     auto makeLockBadge = [this](const char* paramId) {
@@ -209,7 +198,7 @@ void OpenSmackerEditor::openPresets() {
             syncPresetBox();
         }
     });
-    juce::CallOutBox::launchAsynchronously(std::move(browser), presetsBtn_.getBounds(), &content_);
+    juce::CallOutBox::launchAsynchronously(std::move(browser), suiteBar_.getBounds(), &content_);
 }
 
 void OpenSmackerEditor::setAdvancedView(bool advanced) {
@@ -250,10 +239,8 @@ void OpenSmackerEditor::syncPresetBox() {
 }
 
 void OpenSmackerEditor::syncSuiteButtons() {
-    undoBtn_.setEnabled(processor_.canUndo());
-    redoBtn_.setEnabled(processor_.canRedo());
-    markSelected(abABtn_, processor_.abSlot() == 0);
-    markSelected(abBBtn_, processor_.abSlot() == 1);
+    suiteBar_.setUndoEnabled(processor_.canUndo(), processor_.canRedo());
+    suiteBar_.setAbSlotB(processor_.abSlot() == 1);
 }
 
 void OpenSmackerEditor::syncLockBadges() {
@@ -273,9 +260,7 @@ void OpenSmackerEditor::timerCallback() {
         content_.repaint(artBounds_);
     syncPresetBox();
     syncLockBadges();
-    if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
-        || abABtn_.getToggleState() != (processor_.abSlot() == 0))
-        syncSuiteButtons();
+    syncSuiteButtons();
 }
 
 void OpenSmackerEditor::paint(juce::Graphics& g) {
@@ -340,23 +325,9 @@ void OpenSmackerEditor::layoutContent() {
     presetBox_.setBounds(top);
 
     auto suite = content_.getLocalBounds().withTrimmedLeft(16).withTrimmedRight(18).withY(82).withHeight(36);
-    auto take = [&suite](juce::Component& component, int slotWidth) {
-        component.setBounds(suite.removeFromLeft(slotWidth));
-        suite.removeFromLeft(6);
-    };
-    take(undoBtn_, 64);
-    take(redoBtn_, 64);
-    suite.removeFromLeft(8);
-    take(abABtn_, 44);
-    take(abBBtn_, 44);
-    take(copyAtoBBtn_, 56);
-    take(copyBtoABtn_, 56);
-    suite.removeFromLeft(8);
-    take(presetsBtn_, 88);
-    suite.removeFromLeft(8);
-    dragBtn_.setBounds(suite.removeFromLeft(108));
-    suite.removeFromLeft(24);
-    hitMonitor_.setBounds(suite);
+    hitMonitor_.setBounds(suite.removeFromRight(240));
+    suite.removeFromRight(12);
+    suiteBar_.setBounds(suite);
 
     auto rail = content_.getLocalBounds().withTrimmedTop(headerHeight).withWidth(railWidth).reduced(16, 8);
     versionBounds_ = rail.removeFromBottom(20);

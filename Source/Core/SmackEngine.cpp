@@ -783,7 +783,8 @@ void SmackEngine::process(
             int semitoneOffset = 0;
             if (!trig.audition) {
                 const int rootMidi = 12 * (settings.synth.octave + 1) + settings.synth.note;
-                semitoneOffset = std::clamp(trig.noteNumber, 0, 127) - rootMidi;
+                const float track = std::clamp(settings.keyTracking, 0.0f, 1.0f);
+                semitoneOffset = static_cast<int>(std::lround(static_cast<float>(std::clamp(trig.noteNumber, 0, 127) - rootMidi) * track));
             }
             triggerSmack(settings, ppq, bpm, beatsPerBar,
                 std::clamp(std::isfinite(trig.velocity) ? trig.velocity : 1.0f, 0.0f, 1.0f), semitoneOffset,

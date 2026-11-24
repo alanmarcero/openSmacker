@@ -61,7 +61,8 @@ if(OS_BUILD_PLUGIN)
         Source/suite/AbCompare.cpp
         Source/suite/PresetStore.cpp
         Source/suite/PresetBrowser.cpp
-        Source/suite/WavDragButton.cpp)
+        Source/suite/WavDragButton.cpp
+        Source/suite/SuiteBar.cpp)
 
     target_include_directories(OpenSmacker PRIVATE
         Source/Core

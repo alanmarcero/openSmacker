@@ -1,5 +1,6 @@
 #include "Parameters.h"
 #include <cmath>
+#include <optional>
 #include <vector>
 
 namespace opensmacker::params {
@@ -14,43 +15,25 @@ juce::String signedTenths(float value) {
 }
 } // namespace
 
-float eqNoteToHz(int midiNote) noexcept {
-    const int clamped = std::clamp(midiNote, 0, 144);
-    return 440.0f * std::exp2((static_cast<float>(clamped) - 69.0f) / 12.0f);
-}
+float eqNoteToHz(int midiNote) noexcept { return suite::eq::noteToHz(midiNote); }
 
 int eqHzToNearestMidi(float hz, int minMidi, int maxMidi) noexcept {
-    if (!std::isfinite(hz) || hz <= 0.0f) return minMidi;
-    const int midi = juce::roundToInt(69.0f + 12.0f * std::log2(hz / 440.0f));
-    return std::clamp(midi, minMidi, maxMidi);
+    return suite::eq::nearestMidi(hz, minMidi, maxMidi);
 }
 
 juce::String formatEqNote(float hz, int minMidi, int maxMidi) {
-    static constexpr std::array<const char*, 12> kNames{
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
-    };
-    const int midi = eqHzToNearestMidi(hz, minMidi, maxMidi);
-    const int octave = midi / 12 - 1;
-    return juce::String(kNames[static_cast<size_t>(midi % 12)]) + juce::String(octave);
+    return suite::eq::formatNote(hz, minMidi, maxMidi);
+}
+
+std::pair<int, int> eqBandMidiLimits(const juce::String& freqParamId) noexcept {
+    return suite::eq::bandLimits(freqParamId);
 }
 
 float parseEqNoteOrHz(const juce::String& text, int minMidi, int maxMidi) {
-    const auto trimmed = text.trim();
-    if (trimmed.isEmpty()) return eqNoteToHz(minMidi);
-    const int semitone = juce::String("C D EF G A B").indexOfIgnoreCase(trimmed.substring(0, 1));
-    if (semitone >= 0) {
-        const auto afterLetter = trimmed.substring(1);
-        const int sharp = afterLetter.startsWithChar('#') ? 1 : 0;
-        const int flat = afterLetter.startsWithChar('b') ? 1 : 0;
-        const auto octaveText = afterLetter.substring(sharp + flat).trim();
-        if (octaveText.isNotEmpty() && octaveText.containsOnly("-0123456789")) {
-            const int midi = (octaveText.getIntValue() + 1) * 12 + semitone + sharp - flat;
-            return eqNoteToHz(std::clamp(midi, minMidi, maxMidi));
-        }
-    }
-    const float number = trimmed.getFloatValue();
-    const float hz = trimmed.containsIgnoreCase("k") ? number * 1000.0f : number;
-    return eqNoteToHz(eqHzToNearestMidi(hz, minMidi, maxMidi));
+    return suite::eq::parseNoteOrHz(text, minMidi, maxMidi, [](const juce::String& trimmed) {
+        const float number = trimmed.getFloatValue();
+        return trimmed.containsIgnoreCase("k") ? number * 1000.0f : number;
+    });
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
@@ -163,6 +146,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kToneDecay, 1 }, "Body decay", juce::NormalisableRange<float>(15.0f, 1200.0f, 1.0f, 0.35f), 180.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kTonePitchEnv, 1 }, "Pitch sweep", juce::NormalisableRange<float>(-24.0f, 36.0f, 0.5f), 12.0f, semitones));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{ kKeyTracking, 1 }, "Key Tracking", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kTonePitchDecay, 1 }, "Pitch decay", juce::NormalisableRange<float>(3.0f, 150.0f, 0.5f), 22.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -325,20 +310,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
             .withValueFromStringFunction([minMidi, maxMidi](const juce::String& text) { return parseEqNoteOrHz(text, minMidi, maxMidi); });
     };
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqLowFreq, 1 }, "Low EQ frequency", makeNoteRange(kEqLowMinMidi, kEqLowMaxMidi), eqNoteToHz(40),
+        juce::ParameterID{ kEqLowFreq, 1 }, "Low EQ Freq", makeNoteRange(kEqLowMinMidi, kEqLowMaxMidi), eqNoteToHz(40),
         makeNoteText(kEqLowMinMidi, kEqLowMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqLowDb, 1 }, "Low EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqLowDb, 1 }, "Low EQ Gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqMidFreq, 1 }, "Mid EQ frequency", makeNoteRange(kEqMidMinMidi, kEqMidMaxMidi), eqNoteToHz(83),
+        juce::ParameterID{ kEqMidFreq, 1 }, "Mid EQ Freq", makeNoteRange(kEqMidMinMidi, kEqMidMaxMidi), eqNoteToHz(83),
         makeNoteText(kEqMidMinMidi, kEqMidMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqMidDb, 1 }, "Mid EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqMidDb, 1 }, "Mid EQ Gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqHighFreq, 1 }, "High EQ frequency", makeNoteRange(kEqHighMinMidi, kEqHighMaxMidi), eqNoteToHz(118),
+        juce::ParameterID{ kEqHighFreq, 1 }, "High EQ Freq", makeNoteRange(kEqHighMinMidi, kEqHighMaxMidi), eqNoteToHz(118),
         makeNoteText(kEqHighMinMidi, kEqHighMaxMidi)));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kEqHighDb, 1 }, "High EQ gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
+        juce::ParameterID{ kEqHighDb, 1 }, "High EQ Gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 83, 0));
 
@@ -509,7 +494,8 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     s.effects.stereoWidth = *apvts.getRawParameterValue(kStereoWidth);
     s.effects.outputGainDb = *apvts.getRawParameterValue(kOutputGain);
 
-    s.noteTracking = true;
+    s.keyTracking = *apvts.getRawParameterValue(kKeyTracking);
+    s.noteTracking = s.keyTracking >= 0.5f;
     s.lockIn = *apvts.getRawParameterValue(kLockIn) > 0.5f;
 
     s.keyZonesEnabled = *apvts.getRawParameterValue(kKeyZonesEnabled) > 0.5f;

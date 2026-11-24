@@ -3,7 +3,7 @@
 #include "EdmLookAndFeel.h"
 #include "Panels.h"
 #include "PluginProcessor.h"
-#include "WavDragButton.h"
+#include "SuiteBar.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
 class OpenSmackerEditor : public juce::AudioProcessorEditor, private juce::Timer {
@@ -47,11 +47,7 @@ private:
     std::unique_ptr<opensmacker::ui::PadlockBadge> presetLockBadge_;
     juce::TextButton prevPresetBtn_{ "<" }, nextPresetBtn_{ ">" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
-    juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };
-    juce::TextButton abABtn_{ "A" }, abBBtn_{ "B" };
-    juce::TextButton copyAtoBBtn_{ "A to B" }, copyBtoABtn_{ "B to A" };
-    juce::TextButton presetsBtn_{ "Presets" };
-    suite::WavDragButton dragBtn_;
+    suite::SuiteBar suiteBar_;
     opensmacker::ui::HitMonitor hitMonitor_;
     int currentPage_ = 0;
     juce::Rectangle<int> artBounds_;

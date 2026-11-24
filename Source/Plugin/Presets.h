@@ -8,6 +8,9 @@
 
 namespace opensmacker::presets {
 
+// Clap, hat, and kick banks are 56 programs. The snare bank is 84.
+inline constexpr int kFactoryProgramCount = 84;
+
 struct FactoryPreset {
     const char* name;
     std::vector<std::pair<juce::String, float>> values;
