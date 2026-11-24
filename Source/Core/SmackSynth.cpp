@@ -838,8 +838,10 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     float bodyR = 0.0f;
     if (bodyActive) {
         const double sr4Double = sampleRate_ * 4.0;
-        shellFilterL_.updateCoefficients(settings.toneFreqHz, settings.toneQ, sr4Double, filterSmoothAlpha_);
-        shellFilterR_.updateCoefficients(settings.toneFreqHz, settings.toneQ, sr4Double, filterSmoothAlpha_);
+        const float shellHz = std::clamp(settings.toneFreqHz * std::exp2(static_cast<float>(semitoneOffset_) / 12.0f),
+            25.0f, static_cast<float>(sr4Double) * 0.45f);
+        shellFilterL_.updateCoefficients(shellHz, settings.toneQ, sr4Double, filterSmoothAlpha_);
+        shellFilterR_.updateCoefficients(shellHz, settings.toneQ, sr4Double, filterSmoothAlpha_);
         const float drive = settings.shapedEngine ? 1.02f : 1.35f;
         const float shellMix = settings.shapedEngine ? 2.4f : 4.0f;
         const float bodyFollow = settings.shapedEngine ? 1.0f : bodyEnv;

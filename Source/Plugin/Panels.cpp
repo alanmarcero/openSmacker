@@ -303,11 +303,6 @@ juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, con
         return "Hold notes play the live voice. Choose One-shot under MIDI gate to use it.";
     if (isOneOf({ kPreSpread, kPreDecay, kPreJitter, kFlamSpread, kPreLevel }) && state.getRawParameterValue(kPreBursts)->load() < 1.5f)
         return "Set Hits to 2 or more to use it.";
-    if (isOneOf({ kSnareZoneLow, kSnareZoneHigh, kTomZoneLow, kTomZoneHigh, kBellZoneLow, kBellZoneHigh, kRimZoneLow, kRimZoneHigh })
-        && !isOn(kKeyZonesEnabled))
-        return "Turn on Key zones to use it.";
-    if (id == kVoiceMode && isOn(kKeyZonesEnabled))
-        return "Key zones pick the voice for MIDI notes, so only Audition hit uses it. Turn off Key zones to use it.";
     if (isOneOf({ kRollSubdivision, kRollProbability, kRollVelocity, kRollAccentVelocity, kRollAccentEvery, kRollNote })
         && !isOn(kRollEnabled))
         return "Turn on Roll to use it.";
@@ -352,7 +347,7 @@ juce::String HitMonitor::readout() const {
     auto source = juce::MidiMessage::getMidiNoteName(shownNote_, true, true, 4);
     if (shownNote_ == OpenSmackerProcessor::kAuditionNote)
         source = "Audition";
-    auto target = juce::String("no zone");
+    juce::String target = "Snare";
     if (shownVoice_ >= 0)
         target = voiceParameter->getText(voiceParameter->convertTo0to1(static_cast<float>(shownVoice_)), 0);
     return source + " -> " + target;
@@ -755,14 +750,11 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
       wiresCard_(processor, "Wires & air", presets::Section::WiresAir, theme::kIce) {
     using namespace opensmacker::params;
     voiceCard_.addParameters({
-        { kVoiceMode, "Voice", "Drum model: snare, tom, bell or rim." },
-        { kToneNote, "Root note", "Pitch of the hit. With MIDI pitch on Fixed, every note plays this pitch." },
-        { kToneOctave, "Octave", "Octave of the root note." },
         { kToneDecay, "Body decay", "How long the drum body rings." },
-        { kTonePitchEnv, "Pitch sweep", "Pitch offset at the start of the hit, in semitones. The pitch glides back to the root." },
+        { kTonePitchEnv, "Pitch sweep", "Pitch offset at the start of the hit, in semitones. The pitch glides back to the preset pitch." },
         { kToneLevel, "Body level", "Volume of the drum body." },
     });
-    voiceCard_.setRows({ 3, 3 });
+    voiceCard_.setRows({ 3 });
     detailCard_.addParameters({
         { kFmAmount, "FM depth", "Amount of FM overtones in the body." },
         { kToneFreq, "Shell frequency", "Center of the shell resonance." },
@@ -946,35 +938,10 @@ void EffectsPanel::resized() {
 }
 
 PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
-    : zonesCard_(processor, "MIDI pitch & key zones", presets::Section::VoiceTuning, theme::kLilac, false),
-      responseCard_(processor, "Velocity & aftertouch", presets::Section::Transient, theme::kApricot, false),
+    : responseCard_(processor, "Velocity & aftertouch", presets::Section::Transient, theme::kApricot, false),
       rollCard_(processor, "Host roll & controllers", presets::Section::PreStrike, theme::kIce, false) {
     using namespace opensmacker::params;
-    zonesCard_.addParameters({
-        { kMidiMode, "MIDI pitch", "Fixed plays the root note. Note tracking plays the pitch of each MIDI note." },
-        { kKeyZonesEnabled, "Key zones", "Each note range plays its own voice in place of the Voice setting." },
-        { kSnareZoneLow, "Snare low", "Lowest note that plays the snare." },
-        { kTomZoneLow, "Tom low", "Lowest note that plays the tom." },
-        { kBellZoneLow, "Bell low", "Lowest note that plays the bell." },
-        { kRimZoneLow, "Rim low", "Lowest note that plays the rim." },
-        { kSnareZoneHigh, "Snare high", "Highest note that plays the snare." },
-        { kTomZoneHigh, "Tom high", "Highest note that plays the tom." },
-        { kBellZoneHigh, "Bell high", "Highest note that plays the bell." },
-        { kRimZoneHigh, "Rim high", "Highest note that plays the rim." },
-    });
     const juce::String cancelHint = " Click again or press Escape to cancel.";
-    const auto addZoneLearn = [this, &processor, &cancelHint](const char* voice, const char* lowId, const char* highId) {
-        const auto tip = juce::String("Click, then play the lowest and the highest note of the ") + voice + " zone." + cancelHint;
-        zonesCard_.addControl(std::make_unique<LearnControl>(processor.displayLastNoteOn, processor.displayNoteOnCount,
-            std::initializer_list<LearnControl::Step>{ { *processor.parameters.getParameter(lowId), "Play low" },
-                                                       { *processor.parameters.getParameter(highId), "Play high" } },
-            juce::String("Learn ") + voice + " zone", tip), lowId, tip);
-    };
-    addZoneLearn("snare", kSnareZoneLow, kSnareZoneHigh);
-    addZoneLearn("tom", kTomZoneLow, kTomZoneHigh);
-    addZoneLearn("bell", kBellZoneLow, kBellZoneHigh);
-    addZoneLearn("rim", kRimZoneLow, kRimZoneHigh);
-    zonesCard_.setRows({ 2, 4, 4, 4 });
 
     responseCard_.addParameters({
         { kBodyVelocityDepth, "Body velocity", "How much note velocity changes the body level." },
@@ -993,7 +960,7 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
         { kRollVelocity, "Velocity", "Velocity of the roll hits without an accent." },
         { kRollAccentVelocity, "Accent", "Velocity of the accented roll hits." },
         { kRollAccentEvery, "Accent every", "Number of roll steps from one accent to the next." },
-        { kRollNote, "Roll note", "MIDI note the roll plays. With Key zones on, this note picks the voice." },
+        { kRollNote, "Roll note", "MIDI note the roll plays." },
         { kMidiCcBody, "Body CC", "Controller number that sets the body level. Off ignores controllers." },
         { kMidiCcWire, "Wire CC", "Controller number that sets the wire level. Off ignores controllers." },
         { kMidiCcTransient, "Strike CC", "Controller number that sets the strike level. Off ignores controllers." },
@@ -1013,14 +980,12 @@ PerformancePanel::PerformancePanel(OpenSmackerProcessor& processor)
     addControllerLearn(kMidiCcTransient);
     rollCard_.setRows({ 2, 2, 2 }, { 2, 4, 4, 4 });
 
-    addAndMakeVisible(zonesCard_);
     addAndMakeVisible(responseCard_);
     addAndMakeVisible(rollCard_);
 }
 
 void PerformancePanel::setAdvancedMode(bool advanced) {
     advancedMode_ = advanced;
-    zonesCard_.setAdvancedMode(advanced);
     responseCard_.setAdvancedMode(advanced);
     rollCard_.setAdvancedMode(advanced);
     resized();
@@ -1028,11 +993,9 @@ void PerformancePanel::setAdvancedMode(bool advanced) {
 
 void PerformancePanel::resized() {
     auto area = getLocalBounds();
-    const int gap = 8;
-    rollCard_.setBounds(area.removeFromRight(area.getWidth() * 42 / 100));
+    const int gap = 10;
+    rollCard_.setBounds(area.removeFromRight(area.getWidth() * 46 / 100));
     area.removeFromRight(gap);
-    zonesCard_.setBounds(area.removeFromTop(area.getHeight() * 64 / 100));
-    area.removeFromTop(gap);
     responseCard_.setBounds(area);
 }
 

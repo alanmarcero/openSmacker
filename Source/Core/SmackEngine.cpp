@@ -781,7 +781,7 @@ void SmackEngine::process(
         while (triggerIdx < static_cast<int>(midiTriggers.size()) && midiTriggers[triggerIdx].sampleOffset <= sample) {
             const auto& trig = midiTriggers[triggerIdx++];
             int semitoneOffset = 0;
-            if (settings.noteTracking && !trig.audition) {
+            if (!trig.audition) {
                 const int rootMidi = 12 * (settings.synth.octave + 1) + settings.synth.note;
                 semitoneOffset = std::clamp(trig.noteNumber, 0, 127) - rootMidi;
             }

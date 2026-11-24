@@ -42,13 +42,9 @@ private:
     opensmacker::ui::EdmLookAndFeel lookAndFeel_;
     Content content_{ *this };
     std::unique_ptr<juce::Drawable> membrane_;
-    std::array<opensmacker::ui::PopupTextButton, 4> voices_;
     std::array<juce::TextButton, 4> pages_;
-    std::unique_ptr<juce::ParameterAttachment> voiceAttachment_;
-    std::optional<juce::String> voiceReason_;
     opensmacker::ui::PopupComboBox presetBox_;
     std::unique_ptr<opensmacker::ui::PadlockBadge> presetLockBadge_;
-    std::unique_ptr<opensmacker::ui::PadlockBadge> voiceLockBadge_;
     juce::TextButton prevPresetBtn_{ "<" }, nextPresetBtn_{ ">" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
     juce::TextButton undoBtn_{ "Undo" }, redoBtn_{ "Redo" };
@@ -61,7 +57,6 @@ private:
     juce::Rectangle<int> artBounds_;
     juce::Rectangle<int> versionBounds_;
     juce::Rectangle<int> editLabelBounds_;
-    juce::Rectangle<int> voicesLabelBounds_;
     bool persistEditorSize_ = false;
     opensmacker::ui::SmackerStagePanel stagePanel_;
     opensmacker::ui::SmackSynthPanel synthPanel_;

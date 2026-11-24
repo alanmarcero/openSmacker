@@ -168,7 +168,6 @@ public:
     void resized() override;
 private:
     bool advancedMode_ = false;
-    ParameterCard zonesCard_;
     ParameterCard responseCard_;
     ParameterCard rollCard_;
 };

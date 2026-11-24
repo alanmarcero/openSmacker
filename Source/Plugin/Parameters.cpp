@@ -290,7 +290,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     // Global / Master
     juce::StringArray midiModes{ "Fixed (root)", "Note tracking" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kMidiMode, 1 }, "MIDI pitch", midiModes, 0));
+        juce::ParameterID{ kMidiMode, 1 }, "MIDI pitch", midiModes, 1));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kLockPitch, 1 }, "Lock pitch", false));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
@@ -509,7 +509,7 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     s.effects.stereoWidth = *apvts.getRawParameterValue(kStereoWidth);
     s.effects.outputGainDb = *apvts.getRawParameterValue(kOutputGain);
 
-    s.noteTracking = *apvts.getRawParameterValue(kMidiMode) > 0.5f;
+    s.noteTracking = true;
     s.lockIn = *apvts.getRawParameterValue(kLockIn) > 0.5f;
 
     s.keyZonesEnabled = *apvts.getRawParameterValue(kKeyZonesEnabled) > 0.5f;

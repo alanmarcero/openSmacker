@@ -69,23 +69,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     });
     if (sounds.getNumItems() > 0)
         presetBox_.getRootMenu()->addSubMenu(style, sounds);
-    auto* voice = processor_.parameters.getParameter(params::kVoiceMode);
-    voiceAttachment_ = std::make_unique<juce::ParameterAttachment>(*voice, [this](float value) {
-        std::ranges::for_each(std::views::iota(size_t{ 0 }, voices_.size()), [this, value](size_t i) {
-            markSelected(voices_[i], static_cast<int>(i) == juce::roundToInt(value));
-        });
-        syncLockBadges();
-    });
-    for (size_t i = 0; i < voices_.size(); ++i) {
-        auto& voiceButton = voices_[i];
-        voiceButton.setButtonText(voice->getText(voice->convertTo0to1(static_cast<float>(i)), 0));
-        voiceButton.setTitle(voiceButton.getButtonText() + " voice");
-        voiceButton.onClick = [this, i] { voiceAttachment_->setValueAsCompleteGesture(static_cast<float>(i)); };
-        voiceButton.onPopupMenu = [this](const juce::MouseEvent& event) {
-            opensmacker::ui::showParameterLockMenu(processor_, params::kVoiceMode, event.getScreenPosition(),
-                                                   [this] { syncLockBadges(); });
-        };
-        content_.addAndMakeVisible(voiceButton);
+    for (size_t i = 0; i < pages_.size(); ++i) {
         pages_[i].setButtonText(pageNames[i]);
         pages_[i].setTitle(juce::String(pageNames[i]) + " page");
         pages_[i].onClick = [this, i] { setPage(static_cast<int>(i)); };
@@ -96,7 +80,7 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     presetBox_.setTooltip("Choose a factory preset across six dance styles.");
     prevPresetBtn_.setTooltip("Previous preset");
     nextPresetBtn_.setTooltip("Next preset");
-    auditionBtn_.setTooltip("Play the selected voice once.");
+    auditionBtn_.setTooltip("Play the current preset once.");
     viewToggleBtn_.setTooltip("Show every control, including the Body detail card on the Layers page.");
     const std::initializer_list<std::pair<juce::Button*, const char*>> titles{
         { &prevPresetBtn_, "Previous preset" }, { &nextPresetBtn_, "Next preset" }, { &auditionBtn_, "Audition hit" },
@@ -152,7 +136,6 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
         return badge;
     };
     presetLockBadge_ = makeLockBadge(params::kPreset);
-    voiceLockBadge_ = makeLockBadge(params::kVoiceMode);
     addAndMakeVisible(content_);
     content_.setBounds(0, 0, suite::kDefaultEditorWidth, suite::kDefaultEditorHeight);
     setWantsKeyboardFocus(true);
@@ -170,7 +153,6 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     processor_.setEditorSize(getWidth(), getHeight());
     setAdvancedView(false);
     setPage(0);
-    voiceAttachment_->sendInitialUpdate();
     syncPresetBox();
     syncSuiteButtons();
     startTimerHz(30);
@@ -284,24 +266,6 @@ void OpenSmackerEditor::syncLockBadges() {
             presetLockBadge_->toFront(false);
         }
     }
-    if (voiceLockBadge_ != nullptr) {
-        const bool locked = processor_.isParamLocked(params::kVoiceMode);
-        bool placed = false;
-        if (locked) {
-            for (const auto& button : voices_) {
-                if (!button.getToggleState())
-                    continue;
-                const auto b = button.getBounds();
-                voiceLockBadge_->setBounds(b.getRight() - 14, b.getY() + 2, 12, 13);
-                voiceLockBadge_->setVisible(true);
-                voiceLockBadge_->toFront(false);
-                placed = true;
-                break;
-            }
-        }
-        if (!placed)
-            voiceLockBadge_->setVisible(false);
-    }
 }
 
 void OpenSmackerEditor::timerCallback() {
@@ -309,14 +273,6 @@ void OpenSmackerEditor::timerCallback() {
         content_.repaint(artBounds_);
     syncPresetBox();
     syncLockBadges();
-    const auto voiceReason = ui::inactiveReason(processor_.parameters, params::kVoiceMode, processor_.frozenHitPlays());
-    if (voiceReason_ != voiceReason) {
-        voiceReason_ = voiceReason;
-        std::ranges::for_each(voices_, [&voiceReason](juce::TextButton& voiceButton) {
-            voiceButton.setAlpha(voiceReason.isEmpty() ? 1.0f : theme::kInactiveOpacity);
-            voiceButton.setTooltip(("Set the voice to " + voiceButton.getButtonText() + ". " + voiceReason).trim());
-        });
-    }
     if (undoBtn_.isEnabled() != processor_.canUndo() || redoBtn_.isEnabled() != processor_.canRedo()
         || abABtn_.getToggleState() != (processor_.abSlot() == 0))
         syncSuiteButtons();
@@ -346,8 +302,6 @@ void OpenSmackerEditor::paintContent(juce::Graphics& g) {
     g.setColour(theme::kCaption);
     if (!editLabelBounds_.isEmpty())
         g.drawText("Edit", editLabelBounds_, juce::Justification::centredLeft);
-    if (!voicesLabelBounds_.isEmpty())
-        g.drawText("Voice", voicesLabelBounds_, juce::Justification::centredLeft);
     g.setFont(juce::FontOptions(13.5f));
     if (!versionBounds_.isEmpty())
         g.drawText("v" JucePlugin_VersionString, versionBounds_, juce::Justification::centredLeft);
@@ -417,14 +371,6 @@ void OpenSmackerEditor::layoutContent() {
         page.setBounds(rail.removeFromTop(37));
         rail.removeFromTop(6);
     }
-    rail.removeFromTop(8);
-    voicesLabelBounds_ = rail.removeFromTop(19);
-    rail.removeFromTop(6);
-    for (auto& voiceButton : voices_) {
-        voiceButton.setBounds(rail.removeFromTop(37));
-        rail.removeFromTop(6);
-    }
-
     auto area = content_.getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(railWidth).reduced(14);
     if (currentPage_ == 0) {
         stagePanel_.setBounds(area.removeFromTop(88));

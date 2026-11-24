@@ -120,7 +120,10 @@ constexpr std::array<Patch, 84> bank{{
 }};
 
 FactoryPreset makePreset(const Patch& p) {
-    const float decay = static_cast<float>(p.decayMs);
+    const int minDecay = p.family == 1 ? 150 : (p.family == 2 ? 115 : 135);
+    const int minWire = p.family == 0 ? 105 : (p.family == 3 ? 95 : (p.family == 2 ? 70 : 55));
+    const float decay = static_cast<float>(std::max(p.decayMs, minDecay));
+    const float wireDecay = static_cast<float>(std::max(p.wireMs, minWire));
     const int air = p.air >= 0 ? p.air : kDefaultAir[static_cast<size_t>(p.family)];
     const float bodyLpf = p.family == 1 ? 15000.0f : (p.highDb < -1.0f ? 8500.0f : 12000.0f);
     return { p.name, {
@@ -153,7 +156,7 @@ FactoryPreset makePreset(const Patch& p) {
         { kNoiseType, static_cast<float>(air) },
         { kNoiseAttack, 0.15f },
         { kNoiseHold, 0.4f },
-        { kNoiseDecay, static_cast<float>(p.wireMs) },
+        { kNoiseDecay, wireDecay },
         { kNoiseCurve, -0.55f },
         { kNoiseHPF, static_cast<float>(p.wireHp) },
         { kNoiseLPF, static_cast<float>(p.wireLp) },

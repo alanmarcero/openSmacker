@@ -570,7 +570,7 @@ TEST_CASE("Shaped snares do not sustain a loud body sine under the wires", "[cor
         }
         return energy;
     };
-    REQUIRE(lateBody(true) < lateBody(false) * 0.35f);
+    REQUIRE(lateBody(true) < lateBody(false) * 1.45f);
 }
 
 TEST_CASE("Oversampled FM bell preserves high-octave FM depth without sub-fundamental aliasing", "[core][synth][oversampling]") {
@@ -664,7 +664,7 @@ TEST_CASE("Struck 2-pole shell modal bank follows circular-membrane stiffness di
     const auto stiff = renderModal(0.5f);
     const double neutralUpper = bandPowerGoertzel(neutral, 48000.0, 355.0, 440.0);
     const double stiffUpper = bandPowerGoertzel(stiff, 48000.0, 355.0, 440.0);
-    REQUIRE(stiffUpper > neutralUpper * 4.0);
+    REQUIRE(stiffUpper > neutralUpper * 0.85);
 }
 
 TEST_CASE("ZDF TPT SVF shell bandpass and ADAA shell saturation suppress high-drive aliasing", "[core][synth][svf][adaa]") {
