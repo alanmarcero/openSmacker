@@ -40,4 +40,4 @@ The roll note shows a note name and accepts a typed name such as C#4. Its **Lear
 
 VST3, LV2, and Standalone are available on macOS, Windows, and Linux. AU is available on macOS. Earlier projects open as **Custom sound** with their saved parameters, original synthesis, section locks and embedded audio. Selecting a new factory program loads the new sound.
 
-MIT License. See [LICENSE](LICENSE).
+AGPL-3.0. See [LICENSE](LICENSE).
