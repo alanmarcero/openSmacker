@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.8.4
+
+- Tracks MIDI pitch and updates the shared suite UI, CI, and tests.
+- Aligns the JUCE 8 license and hardens CI.
+
 ## v2.8.3
 
 - **Note-Snapped EQ:** Snap all three EQ bands to chromatic notes (A-G with sharps) across two-octave ranges (`E1` to `E3`, `B4` to `B6`, `A#7` to `A#9`), matching OpenKicker's EQ design and behavior.
