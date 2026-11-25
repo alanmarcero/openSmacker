@@ -211,9 +211,9 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
-          xvfb-run -a -s "-screen 0 1400x900x24" ./build/opensmacker_plugin_tests '[plugin][gui]'
-          cp assets/openSmacker-hit.png docs/screenshots/preview.png
-          git checkout -- assets
+          mkdir -p build/shots
+          xvfb-run -a -s "-screen 0 1400x900x24" env OPENSMACKER_SCREENSHOTS="$PWD/build/shots" ./build/opensmacker_plugin_tests '[plugin][gui]'
+          cp build/shots/openSmacker-hit.png docs/screenshots/preview.png
 
       - name: Commit refreshed preview
         if: steps.scope.outputs.run == 'true'

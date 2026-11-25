@@ -221,19 +221,10 @@ void SmackerStagePanel::paint(juce::Graphics& g) {
     g.fillRoundedRectangle(area.toFloat(), 8);
     auto name = area.removeFromLeft(194).reduced(16, 6);
     const auto* voice = processor_.parameters.getParameter(params::kVoiceMode);
-    g.setColour(theme::kTextDim);
-    g.setFont(juce::FontOptions(13.5f));
-    g.drawText(voice->getCurrentValueAsText(), name.removeFromTop(18), juce::Justification::centredLeft);
-    const auto note = juce::String(core::kNoteNames[static_cast<size_t>(settings.note)].data()) + juce::String(settings.octave);
     g.setColour(theme::kText);
+    g.setFont(juce::FontOptions(22.0f, juce::Font::bold));
+    g.drawText(voice->getCurrentValueAsText(), name.removeFromTop(28), juce::Justification::centredLeft);
     const bool ultraCompact = getHeight() < 110;
-    const bool compact = getHeight() < 140;
-    g.setFont(juce::FontOptions(ultraCompact ? 30.0f : (compact ? 41.0f : 54.0f), juce::Font::bold));
-    g.drawText(note, name.removeFromTop(ultraCompact ? 32 : (compact ? 44 : 61)), juce::Justification::centredLeft);
-    g.setColour(theme::kApricot);
-    g.setFont(juce::FontOptions(14.5f));
-    g.drawText(juce::String(core::noteToHz(settings.note, settings.octave, settings.fineCents), 1) + " Hz",
-               name, juce::Justification::topLeft);
     auto plot = area.reduced(16, ultraCompact ? 6 : 11);
     if (showsFrozenHit_) {
         auto badge = plot.removeFromRight(104);
@@ -292,7 +283,7 @@ juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, con
         // The frozen hit replaces each setting a preset makes, except the ones playback applies.
         const auto& presetValues = presets::factoryPresets().front().values;
         const bool presetSets = std::ranges::any_of(presetValues, [&id](const auto& value) { return value.first == id; });
-        const bool appliedOnPlayback = isOneOf({ kVoiceMode, kAmpEnabled, kLockPitch, kLockIn, kReverseMode, kReverseMix, kOutputGain });
+        const bool appliedOnPlayback = isOneOf({ kVoiceMode, kAmpEnabled, kLockIn, kReverseMode, kReverseMix, kOutputGain });
         const bool midiModulation = isOneOf({ kMidiMode, kBodyVelocityDepth, kWireVelocityDepth, kTransientVelocityDepth,
                                               kBodyAftertouchDepth, kWireAftertouchDepth, kTransientAftertouchDepth,
                                               kMidiCcBody, kMidiCcWire, kMidiCcTransient });
@@ -317,56 +308,6 @@ juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, con
     if (isOneOf({ kCompThresh, kCompRatio, kCompAttack, kCompRelease, kCompMakeup }) && state.getRawParameterValue(kCompMix)->load() <= 0.001f)
         return "Raise Comp mix above 0% to use it.";
     return {};
-}
-
-HitMonitor::HitMonitor(OpenSmackerProcessor& processor) : processor_(processor) {
-    setTooltip("Flashes on each hit, brighter for harder hits. Shows the last note and the voice it played.");
-    startTimerHz(30);
-}
-
-void HitMonitor::timerCallback() {
-    const auto count = processor_.displayTriggerCount.load();
-    const float velocity = processor_.displayVelocity.load();
-    const float faded = glow_ < 0.02f ? 0.0f : glow_ * 0.82f;
-    const float glow = count != lastTriggerCount_ ? velocity : faded;
-    lastTriggerCount_ = count;
-    const int note = processor_.displayLastNote.load();
-    const int voice = processor_.displayLastVoice.load();
-    if (juce::exactlyEqual(glow, glow_) && note == shownNote_ && voice == shownVoice_)
-        return;
-    glow_ = glow;
-    shownNote_ = note;
-    shownVoice_ = voice;
-    repaint();
-}
-
-juce::String HitMonitor::readout() const {
-    if (shownNote_ < 0)
-        return {};
-    const auto* voiceParameter = processor_.parameters.getParameter(params::kVoiceMode);
-    auto source = juce::MidiMessage::getMidiNoteName(shownNote_, true, true, 4);
-    if (shownNote_ == OpenSmackerProcessor::kAuditionNote)
-        source = "Audition";
-    juce::String target = "Snare";
-    if (shownVoice_ >= 0)
-        target = voiceParameter->getText(voiceParameter->convertTo0to1(static_cast<float>(shownVoice_)), 0);
-    return source + " -> " + target;
-}
-
-void HitMonitor::paint(juce::Graphics& g) {
-    auto area = getLocalBounds();
-    const auto lamp = area.removeFromLeft(getHeight()).toFloat().reduced(9.0f);
-    g.setColour(theme::kPanelEdge);
-    g.fillEllipse(lamp);
-    g.setColour(theme::kApricot.withAlpha(glow_));
-    g.fillEllipse(lamp);
-    area.removeFromLeft(4);
-    g.setColour(theme::kCaption);
-    g.setFont(juce::FontOptions(14.0f));
-    g.drawText("Last hit", area.removeFromLeft(62), juce::Justification::centredLeft);
-    g.setColour(theme::kText);
-    g.setFont(juce::FontOptions(14.0f, juce::Font::bold));
-    g.drawText(readout(), area, juce::Justification::centredLeft, true);
 }
 
 PeakMeter::PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb,
@@ -757,18 +698,12 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
     });
     voiceCard_.setRows({ 4 });
     detailCard_.addParameters({
-        { kFmAmount, "FM depth", "Amount of FM overtones in the body." },
-        { kToneFreq, "Shell frequency", "Center of the shell resonance." },
         { kToneQ, "Shell Q", "Width of the shell resonance. Higher values ring at a narrower pitch." },
-        { kShellSpread, "Mode spread", "Moves the upper drum modes apart or closer together." },
         { kTonePitchDecay, "Pitch decay", "Time the pitch sweep takes to reach the root." },
-        { kToneFine, "Fine tune", "Fine pitch offset in cents." },
-        { kLockPitch, "Lock pitch", "Keep the root note, octave, fine tune and shell frequency when you load a preset." },
         { kBodyHPF, "High-pass", "Removes body content below this frequency." },
         { kBodyLPF, "Low-pass", "Removes body content above this frequency." },
-        { kBodyPan, "Pan", "Stereo position of the body." },
     });
-    detailCard_.setRows({ 4, 3, 3 });
+    detailCard_.setRows({ 2, 2 });
     envelopeCard_.addParameters({
         { kAmpEnabled, "MIDI gate", "One-shot plays the whole hit. Hold notes sustains until the matching note-off." },
         { kAmpAttack, "Attack", "Fade-in time at the start of the hit." },
@@ -782,12 +717,10 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         { kClickType, "Strike type", "Strike sound: stick, mallet, rimshot or laser." },
         { kClickLevel, "Level", "Volume of the strike." },
         { kClickFreq, "Frequency", "Pitch of the strike click. Higher values sound brighter." },
-        { kSubThump, "Sub thump", "Adds a low thump under the strike." },
         { kTransientHPF, "High-pass", "Removes strike content below this frequency." },
         { kTransientLPF, "Low-pass", "Removes strike content above this frequency." },
-        { kTransientPan, "Pan", "Stereo position of the strike." },
     });
-    transientCard_.setRows({ 1, 2 }, { 4, 3 });
+    transientCard_.setRows({ 3 }, { 3, 2 });
 
     preStrikeCard_.addParameters({
         { kPreBursts, "Hits", "Number of strikes, counting the main hit. Set 2 or more for a flam or drag." },
@@ -810,9 +743,8 @@ SmackSynthPanel::SmackSynthPanel(OpenSmackerProcessor& processor)
         { kNoiseHold, "Hold", "Time the wires stay at full level before they decay." },
         { kNoiseCurve, "Curve", "Shape of the wire decay. Below zero it drops faster, above zero it fades more evenly." },
         { kNoiseStereoWidth, "Width", "Stereo width of the wires." },
-        { kWirePan, "Pan", "Stereo position of the wires." },
     });
-    wiresCard_.setRows({ 3, 3 }, { 3, 4, 4 });
+    wiresCard_.setRows({ 3, 3 }, { 3, 4, 3 });
 
     addAndMakeVisible(voiceCard_);
     addAndMakeVisible(envelopeCard_);

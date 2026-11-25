@@ -8,8 +8,8 @@
 
 namespace opensmacker::presets {
 
-// Clap, hat, and kick banks are 56 programs. The snare bank is 84.
-inline constexpr int kFactoryProgramCount = 84;
+// Clap, hat, kick, and snare banks are 56 programs.
+inline constexpr int kFactoryProgramCount = 56;
 
 struct FactoryPreset {
     const char* name;
@@ -36,7 +36,7 @@ const std::vector<FactoryPreset>& factoryPresets();
 int firstPresetForFamily(size_t family) noexcept;
 size_t familyForProgram(int program) noexcept;
 void apply(const FactoryPreset& preset, juce::AudioProcessorValueTreeState& state,
-           const SectionLocks& locks = {}, bool preservePitch = false,
+           const SectionLocks& locks = {},
            const std::function<bool(const juce::String&)>& isParamLocked = {});
 
 } // namespace opensmacker::presets

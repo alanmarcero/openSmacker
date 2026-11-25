@@ -52,7 +52,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         .withValueFromStringFunction(fromPercent);
     const auto decibels = Attributes().withStringFromValueFunction([](float value, int) { return signedTenths(value) + " dB"; });
     const auto semitones = Attributes().withStringFromValueFunction([](float value, int) { return signedTenths(value) + " st"; });
-    const auto cents = Attributes().withStringFromValueFunction([](float value, int) { return signedTenths(value) + " ct"; });
     const auto ratio = Attributes().withStringFromValueFunction([](float value, int) { return juce::String(value, 1) + ":1"; });
     const auto hertz = Attributes()
         .withStringFromValueFunction([](float hz, int) {
@@ -78,22 +77,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
             const float number = unit.getFloatValue();
             const bool seconds = unit.endsWith("s") && !unit.endsWith("ms");
             return seconds ? number * 1000.0f : number;
-        });
-    const auto pan = Attributes()
-        .withStringFromValueFunction([](float value, int) {
-            const int amount = juce::roundToInt(value * 100.0f);
-            if (amount == 0)
-                return juce::String("C");
-            return juce::String(std::abs(amount)) + (amount < 0 ? " L" : " R");
-        })
-        .withValueFromStringFunction([](const juce::String& text) {
-            const auto side = text.trim().toUpperCase();
-            const float amount = side.getFloatValue() / 100.0f;
-            if (side.endsWith("L"))
-                return -std::abs(amount);
-            if (side.endsWith("R"))
-                return std::abs(amount);
-            return amount;
         });
     const auto noteName = juce::AudioParameterIntAttributes()
         .withStringFromValueFunction([](int note, int) { return juce::MidiMessage::getMidiNoteName(note, true, true, 4); })
@@ -131,15 +114,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     juce::StringArray voiceModes{ "Snare", "Tom", "Bell", "Rim" };
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{ kVoiceMode, 1 }, "Voice", voiceModes, 0));
-    juce::StringArray noteNames{ "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{ kToneNote, 1 }, "Root note", noteNames, 9)); // A
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kToneOctave, 1 }, "Octave", 1, 8, 3));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneFine, 1 }, "Fine tune", juce::NormalisableRange<float>(-50.0f, 50.0f, 0.5f), 0.0f, cents));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kToneFreq, 1 }, "Shell frequency", juce::NormalisableRange<float>(60.0f, 6000.0f, 1.0f, 0.35f), 220.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kToneQ, 1 }, "Shell Q", juce::NormalisableRange<float>(0.5f, 15.0f, 0.1f), 3.5f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -151,17 +125,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kTonePitchDecay, 1 }, "Pitch decay", juce::NormalisableRange<float>(3.0f, 150.0f, 0.5f), 22.0f, milliseconds));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kFmAmount, 1 }, "FM depth", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.30f, percent));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kShellSpread, 1 }, "Mode spread", juce::NormalisableRange<float>(-0.5f, 0.5f, 0.01f), 0.0f, signedPercent));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kToneLevel, 1 }, "Body level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.85f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kBodyHPF, 1 }, "Body high-pass", juce::NormalisableRange<float>(20.0f, 4000.0f, 1.0f, 0.35f), 20.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kBodyLPF, 1 }, "Body low-pass", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kBodyPan, 1 }, "Body pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kAmpEnabled, 1 }, "MIDI gate", false,
         juce::AudioParameterBoolAttributes()
@@ -198,8 +166,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
         juce::ParameterID{ kNoiseLevel, 1 }, "Wire level", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.80f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kWireTension, 1 }, "Wire tension", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.55f, percent));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kWirePan, 1 }, "Wire pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
 
     // Stick / Mallet / Rim Transient
     juce::StringArray clickTypes{ "Stick", "Mallet", "Rimshot", "Laser" };
@@ -210,13 +176,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kClickFreq, 1 }, "Strike frequency", juce::NormalisableRange<float>(500.0f, 12000.0f, 10.0f, 0.35f), 3800.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kSubThump, 1 }, "Sub thump", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 0.0f, percent));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kTransientHPF, 1 }, "Strike high-pass", juce::NormalisableRange<float>(20.0f, 12000.0f, 1.0f, 0.35f), 20.0f, hertz));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kTransientLPF, 1 }, "Strike low-pass", juce::NormalisableRange<float>(100.0f, 20000.0f, 1.0f, 0.35f), 20000.0f, hertz));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{ kTransientPan, 1 }, "Strike pan", juce::NormalisableRange<float>(-1.0f, 1.0f, 0.01f), 0.0f, pan));
 
     // Impact Distortion
     juce::StringArray distTypes{ "Tape", "Tube", "Hard clip", "Wavefold" };
@@ -277,8 +239,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
         juce::ParameterID{ kMidiMode, 1 }, "MIDI pitch", midiModes, 1));
     params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kLockPitch, 1 }, "Lock pitch", false));
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
         juce::ParameterID{ kLockIn, 1 }, "Freeze hit", false));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kStereoWidth, 1 }, "Stereo width", juce::NormalisableRange<float>(0.0f, 2.0f, 0.01f), 1.0f, percent));
@@ -325,26 +285,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout() {
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kEqHighDb, 1 }, "High EQ Gain", juce::NormalisableRange<float>(-12.0f, 12.0f, 0.1f), 0.0f, decibels));
     params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 83, 0));
+        juce::ParameterID{ kPreset, 1 }, "Preset Index", 0, 55, 0));
 
-    params.push_back(std::make_unique<juce::AudioParameterBool>(
-        juce::ParameterID{ kKeyZonesEnabled, 1 }, "Key zones", false));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneLow, 1 }, "Snare zone low", 0, 127, 36, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kSnareZoneHigh, 1 }, "Snare zone high", 0, 127, 47, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneLow, 1 }, "Tom zone low", 0, 127, 48, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kTomZoneHigh, 1 }, "Tom zone high", 0, 127, 59, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneLow, 1 }, "Bell zone low", 0, 127, 60, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kBellZoneHigh, 1 }, "Bell zone high", 0, 127, 71, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneLow, 1 }, "Rim zone low", 0, 127, 72, noteName));
-    params.push_back(std::make_unique<juce::AudioParameterInt>(
-        juce::ParameterID{ kRimZoneHigh, 1 }, "Rim zone high", 0, 127, 84, noteName));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{ kBodyVelocityDepth, 1 }, "Body velocity", juce::NormalisableRange<float>(0.0f, 1.0f, 0.01f), 1.0f, percent));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
@@ -399,24 +341,13 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     if (const auto* pVoiceMode = apvts.getRawParameterValue(kVoiceMode)) {
         s.synth.voiceMode = static_cast<opensmacker::core::VoiceMode>(static_cast<int>(*pVoiceMode));
     }
-    s.synth.note = static_cast<int>(*apvts.getRawParameterValue(kToneNote));
-    s.synth.octave = static_cast<int>(*apvts.getRawParameterValue(kToneOctave));
-    s.synth.fineCents = *apvts.getRawParameterValue(kToneFine);
-    s.synth.toneFreqHz = *apvts.getRawParameterValue(kToneFreq);
     s.synth.toneQ = *apvts.getRawParameterValue(kToneQ);
     s.synth.toneDecayMs = *apvts.getRawParameterValue(kToneDecay);
     s.synth.tonePitchEnv = *apvts.getRawParameterValue(kTonePitchEnv);
     s.synth.tonePitchDecayMs = *apvts.getRawParameterValue(kTonePitchDecay);
-    if (const auto* pFm = apvts.getRawParameterValue(kFmAmount)) {
-        s.synth.fmAmount = *pFm;
-    }
-    if (const auto* pSpread = apvts.getRawParameterValue(kShellSpread)) {
-        s.synth.shellSpread = *pSpread;
-    }
     s.synth.toneLevel = *apvts.getRawParameterValue(kToneLevel);
     s.synth.bodyHPF = *apvts.getRawParameterValue(kBodyHPF);
     s.synth.bodyLPF = *apvts.getRawParameterValue(kBodyLPF);
-    s.synth.bodyPan = *apvts.getRawParameterValue(kBodyPan);
     s.synth.fullAdsrEnabled = *apvts.getRawParameterValue(kAmpEnabled) > 0.5f;
     s.synth.bodyVelocityDepth = *apvts.getRawParameterValue(kBodyVelocityDepth);
     s.synth.wireVelocityDepth = *apvts.getRawParameterValue(kWireVelocityDepth);
@@ -440,7 +371,6 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     s.synth.noiseStereoWidth = *apvts.getRawParameterValue(kNoiseStereoWidth);
     s.synth.noiseLevel = *apvts.getRawParameterValue(kNoiseLevel);
     s.synth.wireTension = *apvts.getRawParameterValue(kWireTension);
-    s.synth.wirePan = *apvts.getRawParameterValue(kWirePan);
 
     // Click / Strike
     if (const auto* pClickType = apvts.getRawParameterValue(kClickType)) {
@@ -448,12 +378,8 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     }
     s.synth.clickLevel = *apvts.getRawParameterValue(kClickLevel);
     s.synth.clickFreqHz = *apvts.getRawParameterValue(kClickFreq);
-    if (const auto* pSubThump = apvts.getRawParameterValue(kSubThump)) {
-        s.synth.subThump = *pSubThump;
-    }
     s.synth.transientHPF = *apvts.getRawParameterValue(kTransientHPF);
     s.synth.transientLPF = *apvts.getRawParameterValue(kTransientLPF);
-    s.synth.transientPan = *apvts.getRawParameterValue(kTransientPan);
 
     // Reverb
     s.synth.reverbSize = *apvts.getRawParameterValue(kReverbSize);
@@ -495,16 +421,8 @@ opensmacker::core::EngineSettings readSettings(const juce::AudioProcessorValueTr
     s.effects.outputGainDb = *apvts.getRawParameterValue(kOutputGain);
 
     s.keyTracking = *apvts.getRawParameterValue(kKeyTracking);
-    s.noteTracking = s.keyTracking >= 0.5f;
     s.lockIn = *apvts.getRawParameterValue(kLockIn) > 0.5f;
 
-    s.keyZonesEnabled = *apvts.getRawParameterValue(kKeyZonesEnabled) > 0.5f;
-    s.voiceZones = {{
-        { static_cast<int>(*apvts.getRawParameterValue(kSnareZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kSnareZoneHigh)) },
-        { static_cast<int>(*apvts.getRawParameterValue(kTomZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kTomZoneHigh)) },
-        { static_cast<int>(*apvts.getRawParameterValue(kBellZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kBellZoneHigh)) },
-        { static_cast<int>(*apvts.getRawParameterValue(kRimZoneLow)), static_cast<int>(*apvts.getRawParameterValue(kRimZoneHigh)) }
-    }};
     s.rollEnabled = *apvts.getRawParameterValue(kRollEnabled) > 0.5f;
     constexpr std::array<int, 3> rollSubdivisions{ 8, 16, 32 };
     const int rollChoice = static_cast<int>(*apvts.getRawParameterValue(kRollSubdivision));

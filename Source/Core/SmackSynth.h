@@ -44,8 +44,8 @@ struct SmackSynthSettings {
     // Saved sessions from before this engine keep this flag false.
     bool shapedEngine = false;
 
-    int note = 9;
-    int octave = 3;
+    int note = 9;              // A. The plugin keeps this fixed; key tracking moves the played note.
+    int octave = 4;            // A4, the same root the other drum synths track from.
     float fineCents = 0.0f;
 
     int preStrikeCount = 1;
@@ -61,7 +61,7 @@ struct SmackSynthSettings {
     float toneDecayMs = 180.0f;
     float tonePitchEnv = 12.0f;
     float tonePitchDecayMs = 22.0f;
-    float fmAmount = 0.30f;
+    float fmAmount = 0.0f;
     float shellSpread = 0.0f;
     float subThump = 0.0f;
     float toneLevel = 0.85f;

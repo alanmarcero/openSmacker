@@ -109,18 +109,6 @@ TEST_CASE("SmackEngine responds to MIDI CC 74 brightness sweep", "[core][engine]
     REQUIRE(engine.currentPeak() > 0.0f);
 }
 
-TEST_CASE("SmackEngine resolves MIDI notes through four independent voice zones", "[core][engine][zones]") {
-    const std::array<VoiceKeyZone, 4> zones{{
-        { 36, 47 }, { 48, 59 }, { 60, 71 }, { 72, 84 }
-    }};
-
-    REQUIRE(resolveVoiceModeForNote(36, zones) == VoiceMode::DanceSnare);
-    REQUIRE(resolveVoiceModeForNote(59, zones) == VoiceMode::ClubTom);
-    REQUIRE(resolveVoiceModeForNote(60, zones) == VoiceMode::FmBell);
-    REQUIRE(resolveVoiceModeForNote(84, zones) == VoiceMode::PrydaRimSmack);
-    REQUIRE_FALSE(resolveVoiceModeForNote(85, zones).has_value());
-}
-
 TEST_CASE("SmackEngine schedules rolls on host beat subdivisions and honors probability", "[core][engine][roll]") {
     SmackEngine engine;
     engine.prepare(48000.0);
@@ -226,26 +214,20 @@ TEST_CASE("SmackEngine writes every synthesis component to its own output", "[co
     REQUIRE(std::any_of(transientLeft.begin(), transientLeft.end(), [](float sample) { return std::abs(sample) > 0.001f; }));
 }
 
-TEST_CASE("SmackEngine ignores notes outside enabled voice key zones", "[core][engine][zones]") {
+TEST_CASE("SmackEngine plays the preset voice for every note", "[core][engine]") {
     SmackEngine engine;
     engine.prepare(48000.0);
     EngineSettings settings;
-    settings.keyZonesEnabled = true;
-    settings.voiceZones = {{ { 36, 47 }, { 48, 59 }, { 60, 71 }, { 72, 84 } }};
+    settings.synth.voiceMode = VoiceMode::ClubTom;
+    settings.keyTracking = 0.0f;
     std::vector<float> left(256, 0.0f), right(256, 0.0f);
     float* channels[2] = { left.data(), right.data() };
-    const std::array<MidiTrigger, 1> outside{{
+    const std::array<MidiTrigger, 1> high{{
         { .sampleOffset = 0, .noteNumber = 100, .velocity = 1.0f, .audition = false }
     }};
-
-    engine.process(settings, Transport{}, outside, channels, 2, 256);
-    REQUIRE(engine.triggerSerial() == 0);
-
-    const std::array<MidiTrigger, 1> inside{{
-        { .sampleOffset = 0, .noteNumber = 60, .velocity = 1.0f, .audition = false }
-    }};
-    engine.process(settings, Transport{}, inside, channels, 2, 256);
+    engine.process(settings, Transport{}, high, channels, 2, 256);
     REQUIRE(engine.triggerSerial() == 1);
+    REQUIRE(engine.lastTrigger().voice == static_cast<int>(VoiceMode::ClubTom));
 }
 
 TEST_CASE("SmackEngine applies channel aftertouch only to the matching active voice", "[core][engine][aftertouch]") {
@@ -526,7 +508,7 @@ TEST_CASE("Full ADSR keeps MIDI gating active while a Lock-In bank is loaded", "
     REQUIRE(releaseEnergy > 0.1f);
 }
 
-TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][engine][lock_in][layers][zones]") {
+TEST_CASE("SmackEngine Lock-In preserves the preset voice and layer stems", "[core][engine][lock_in][layers]") {
     SmackEngine engine;
     engine.prepare(48000.0);
     EngineSettings settings;
@@ -549,8 +531,7 @@ TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][e
         REQUIRE(restoredVoice.layers[2].left.size() == restoredVoice.left.size());
     }
 
-    settings.keyZonesEnabled = true;
-    settings.voiceZones = {{ { 36, 47 }, { 48, 59 }, { 60, 71 }, { 72, 84 } }};
+    settings.keyTracking = 0.0f;
     const std::array<int, 4> notes{ 36, 48, 60, 72 };
     std::array<float, 4> voiceEnergy{};
     for (size_t voice = 0; voice < notes.size(); ++voice) {
@@ -573,7 +554,7 @@ TEST_CASE("SmackEngine Lock-In preserves voice zones and layer stems", "[core][e
     }
 
     for (size_t voice = 1; voice < voiceEnergy.size(); ++voice)
-        REQUIRE(std::abs(voiceEnergy[voice] - voiceEnergy[0]) > 0.001f);
+        REQUIRE(std::abs(voiceEnergy[voice] - voiceEnergy[0]) < 0.001f);
 }
 
 TEST_CASE("Prepared Lock-In capture does not allocate in the audio callback", "[core][engine][lock_in][realtime]") {

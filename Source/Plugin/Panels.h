@@ -40,21 +40,6 @@ private:
 // Returns an empty string when the control acts.
 [[nodiscard]] juce::String inactiveReason(const juce::AudioProcessorValueTreeState& state, const juce::String& id, bool frozenHitPlays);
 
-// Hit lamp, plus the last note and its voice.
-class HitMonitor : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
-public:
-    explicit HitMonitor(OpenSmackerProcessor& processor);
-    void paint(juce::Graphics& g) override;
-    void timerCallback() override;
-    [[nodiscard]] juce::String readout() const;
-private:
-    OpenSmackerProcessor& processor_;
-    uint32_t lastTriggerCount_ = 0;
-    float glow_ = 0.0f;
-    int shownNote_ = -1;
-    int shownVoice_ = -1;
-};
-
 class PeakMeter : public juce::Component, public juce::SettableTooltipClient, private juce::Timer {
 public:
     PeakMeter(std::atomic<float>& peak, const std::atomic<float>& ceilingDb,

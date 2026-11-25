@@ -17,20 +17,13 @@ inline constexpr const char* kPreLevel = "pre_level";
 
 // Tunable Drum / Bell / Tom Body
 inline constexpr const char* kVoiceMode = "voice_mode";
-inline constexpr const char* kToneNote = "tone_note";
-inline constexpr const char* kToneOctave = "tone_octave";
-inline constexpr const char* kToneFine = "tone_fine";
-inline constexpr const char* kToneFreq = "tone_freq";
 inline constexpr const char* kToneQ = "tone_q";
 inline constexpr const char* kToneDecay = "tone_decay";
 inline constexpr const char* kTonePitchEnv = "tone_pitch_env";
 inline constexpr const char* kTonePitchDecay = "tone_pitch_decay";
-inline constexpr const char* kFmAmount = "fm_amount";
-inline constexpr const char* kShellSpread = "shell_spread";
 inline constexpr const char* kToneLevel = "tone_level";
 inline constexpr const char* kBodyHPF = "body_hpf";
 inline constexpr const char* kBodyLPF = "body_lpf";
-inline constexpr const char* kBodyPan = "body_pan";
 inline constexpr const char* kAmpAttack = "amp_attack";
 inline constexpr const char* kAmpEnabled = "amp_enabled";
 inline constexpr const char* kAmpDecay = "amp_decay";
@@ -48,16 +41,13 @@ inline constexpr const char* kNoiseLPF = "noise_lpf";
 inline constexpr const char* kNoiseStereoWidth = "noise_stereo_width";
 inline constexpr const char* kNoiseLevel = "noise_level";
 inline constexpr const char* kWireTension = "wire_tension";
-inline constexpr const char* kWirePan = "wire_pan";
 
 // Stick / Mallet / Rim Transient
 inline constexpr const char* kClickType = "click_type";
 inline constexpr const char* kClickLevel = "click_level";
 inline constexpr const char* kClickFreq = "click_freq";
-inline constexpr const char* kSubThump = "sub_thump";
 inline constexpr const char* kTransientHPF = "transient_hpf";
 inline constexpr const char* kTransientLPF = "transient_lpf";
-inline constexpr const char* kTransientPan = "transient_pan";
 
 // Impact Distortion
 inline constexpr const char* kDistType = "dist_type";
@@ -92,7 +82,6 @@ inline constexpr const char* kReverseMix = "reverse_mix";
 
 // Global / Master
 inline constexpr const char* kMidiMode = "midi_mode";
-inline constexpr const char* kLockPitch = "lock_pitch";
 inline constexpr const char* kLockIn = "lock_in";
 inline constexpr const char* kStereoWidth = "stereo_width";
 inline constexpr const char* kOutputGain = "output_gain";
@@ -118,16 +107,7 @@ juce::String formatEqNote(float hz, int minMidi, int maxMidi);
 float parseEqNoteOrHz(const juce::String& text, int minMidi, int maxMidi);
 inline constexpr const char* kPreset = "preset";
 
-// MIDI key zones and layer performance
-inline constexpr const char* kKeyZonesEnabled = "key_zones_enabled";
-inline constexpr const char* kSnareZoneLow = "snare_zone_low";
-inline constexpr const char* kSnareZoneHigh = "snare_zone_high";
-inline constexpr const char* kTomZoneLow = "tom_zone_low";
-inline constexpr const char* kTomZoneHigh = "tom_zone_high";
-inline constexpr const char* kBellZoneLow = "bell_zone_low";
-inline constexpr const char* kBellZoneHigh = "bell_zone_high";
-inline constexpr const char* kRimZoneLow = "rim_zone_low";
-inline constexpr const char* kRimZoneHigh = "rim_zone_high";
+// Layer performance
 inline constexpr const char* kBodyVelocityDepth = "body_velocity_depth";
 inline constexpr const char* kWireVelocityDepth = "wire_velocity_depth";
 inline constexpr const char* kTransientVelocityDepth = "transient_velocity_depth";

@@ -44,18 +44,6 @@ void resizeVoiceBuffers(SmackWavVoice& voice, size_t size) {
 
 } // namespace
 
-std::optional<VoiceMode> resolveVoiceModeForNote(
-    int noteNumber, const std::array<VoiceKeyZone, 4>& zones) noexcept {
-    const int note = std::clamp(noteNumber, 0, 127);
-    for (size_t i = 0; i < zones.size(); ++i) {
-        const int low = std::clamp(zones[i].lowNote, 0, 127);
-        const int high = std::clamp(zones[i].highNote, 0, 127);
-        if (low <= high && note >= low && note <= high)
-            return static_cast<VoiceMode>(i);
-    }
-    return std::nullopt;
-}
-
 void SmackWavCache::clear() noexcept {
     isLocked_ = false;
     sampleRate_ = 48000.0;
@@ -636,16 +624,8 @@ void SmackEngine::triggerSmack(
     int noteNumber,
     int channel,
     bool oneShot) noexcept {
-    lastTrigger_ = { std::clamp(noteNumber, 0, 127), -1, velocity, audition };
-    if (settings.keyZonesEnabled && !audition) {
-        const auto mode = resolveVoiceModeForNote(noteNumber, settings.voiceZones);
-        if (!mode)
-            return;
-        activeVoiceMode_ = *mode;
-    } else {
-        activeVoiceMode_ = settings.synth.voiceMode;
-    }
-    lastTrigger_.voice = static_cast<int>(activeVoiceMode_);
+    activeVoiceMode_ = settings.synth.voiceMode;
+    lastTrigger_ = { std::clamp(noteNumber, 0, 127), static_cast<int>(activeVoiceMode_), velocity, audition };
 
     triggerSerial_++;
     currentSmackProgress_ = 0.0f;
@@ -782,7 +762,7 @@ void SmackEngine::process(
             const auto& trig = midiTriggers[triggerIdx++];
             int semitoneOffset = 0;
             if (!trig.audition) {
-                const int rootMidi = 12 * (settings.synth.octave + 1) + settings.synth.note;
+                const int rootMidi = 69; // A4, the same reference the other drum synths use.
                 const float track = std::clamp(settings.keyTracking, 0.0f, 1.0f);
                 semitoneOffset = static_cast<int>(std::lround(static_cast<float>(std::clamp(trig.noteNumber, 0, 127) - rootMidi) * track));
             }

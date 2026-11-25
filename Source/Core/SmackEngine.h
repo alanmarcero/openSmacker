@@ -47,15 +47,7 @@ struct MidiPressureEvent {
     bool polyphonic = false;
 };
 
-struct VoiceKeyZone {
-    int lowNote = 0;
-    int highNote = 127;
-};
-
-[[nodiscard]] std::optional<VoiceMode> resolveVoiceModeForNote(
-    int noteNumber, const std::array<VoiceKeyZone, 4>& zones) noexcept;
-
-// The last note or roll step the engine received. voice is -1 when no key zone took the note.
+// The last note or roll step the engine received. voice is the preset's voice.
 struct LastTrigger {
     int note = -1;
     int voice = -1;
@@ -100,12 +92,9 @@ struct SmackEffectSettings {
 struct EngineSettings {
     SmackSynthSettings synth{};
     SmackEffectSettings effects{};
-    bool noteTracking = false;     // false = Fixed (audition root), true = Note tracking
     float keyTracking = 1.0f;      // 0 = root pitch, 1 = follow the MIDI note
     bool lockIn = false;           // Lock in rendered WAV buffer
     bool bypass = false;
-    bool keyZonesEnabled = false;
-    std::array<VoiceKeyZone, 4> voiceZones{};
     bool rollEnabled = false;
     int rollSubdivision = 16;
     int rollAccentEvery = 4;

@@ -47,7 +47,7 @@ private:
 
 OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     : AudioProcessorEditor(&processorToEdit), processor_(processorToEdit),
-      suiteBar_([this] { return processor_.createHitWavFile(); }), hitMonitor_(processorToEdit),
+      suiteBar_([this] { return processor_.createHitWavFile(); }),
       stagePanel_(processorToEdit), synthPanel_(processorToEdit),
       effectsPanel_(processorToEdit), performancePanel_(processorToEdit),
       tooltipWindow_(this, 500) {
@@ -107,9 +107,9 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     suiteBar_.onPresets = [this] { openPresets(); };
     for (auto* child : std::initializer_list<juce::Component*>{
              &presetBox_, &prevPresetBtn_, &nextPresetBtn_, &auditionBtn_, &viewToggleBtn_,
-             &suiteBar_, &hitMonitor_,
              &stagePanel_, &synthPanel_, &effectsPanel_, &performancePanel_ })
         content_.addAndMakeVisible(child);
+    addAndMakeVisible(suiteBar_);
     auto makeLockBadge = [this](const char* paramId) {
         auto badge = std::make_unique<opensmacker::ui::PadlockBadge>(
             opensmacker::theme::kApricot, [this, paramId](const juce::MouseEvent& event) {
@@ -133,11 +133,12 @@ OpenSmackerEditor::OpenSmackerEditor(OpenSmackerProcessor& processorToEdit)
     setResizeLimits(suite::kMinEditorWidth, suite::kMinEditorHeight, suite::kMaxEditorWidth, suite::kMaxEditorHeight);
     setResizable(true, true);
     if (auto* constrainer = getConstrainer())
-        constrainer->setFixedAspectRatio(0.0);
-    const int savedWidth = processor_.editorWidth();
-    const int savedHeight = processor_.editorHeight();
-    setSize(juce::jlimit(suite::kMinEditorWidth, suite::kMaxEditorWidth, savedWidth),
-            juce::jlimit(suite::kMinEditorHeight, suite::kMaxEditorHeight, savedHeight));
+        constrainer->setFixedAspectRatio(static_cast<double>(suite::kDefaultEditorWidth) / suite::kDefaultEditorHeight);
+    const float savedScale = std::min(static_cast<float>(processor_.editorWidth()) / suite::kDefaultEditorWidth,
+                                       static_cast<float>(processor_.editorHeight()) / suite::kDefaultEditorHeight);
+    const float scale = std::clamp(savedScale > 0.0f ? savedScale : 1.0f, 0.7f, 2.0f);
+    setSize(juce::roundToInt(suite::kDefaultEditorWidth * scale),
+            juce::roundToInt(suite::kDefaultEditorHeight * scale));
     persistEditorSize_ = true;
     processor_.setEditorSize(getWidth(), getHeight());
     setAdvancedView(false);
@@ -169,6 +170,11 @@ bool OpenSmackerEditor::handleShortcut(const juce::KeyPress& key) {
         syncSuiteButtons();
         return true;
     }
+    if (key == juce::KeyPress::escapeKey && presetBrowser_ != nullptr && presetBrowser_->isVisible()) {
+        presetBrowser_->setVisible(false);
+        suiteBar_.setPresetsOpen(false);
+        return true;
+    }
     return false;
 }
 
@@ -179,11 +185,16 @@ void OpenSmackerEditor::chooseProgram(int program) {
 }
 
 void OpenSmackerEditor::openPresets() {
+    if (presetBrowser_ != nullptr && presetBrowser_->isVisible()) {
+        presetBrowser_->setVisible(false);
+        suiteBar_.setPresetsOpen(false);
+        return;
+    }
     std::vector<suite::PresetBrowser::FactoryPreset> factory;
     factory.reserve(static_cast<size_t>(processor_.getNumPrograms()));
     for (int i = 0; i < processor_.getNumPrograms(); ++i)
         factory.push_back({ processor_.getProgramName(i), i });
-    auto browser = std::make_unique<suite::PresetBrowser>(
+    presetBrowser_ = std::make_unique<suite::PresetBrowser>(
         processor_.presetStore(), std::move(factory),
         [this](int index) { chooseProgram(index); },
         [this](const juce::String& name, const juce::String& xml) {
@@ -192,13 +203,16 @@ void OpenSmackerEditor::openPresets() {
         },
         [this](const juce::String& name) { return processor_.saveUserPreset(name); },
         suiteStyle());
-    browser->setOnRename([this](const juce::String& oldName, const juce::String& newName) {
+    presetBrowser_->setOnRename([this](const juce::String& oldName, const juce::String& newName) {
         if (processor_.presetName() == oldName) {
             processor_.parameters.state.setProperty("presetName", newName, nullptr);
             syncPresetBox();
         }
     });
-    juce::CallOutBox::launchAsynchronously(std::move(browser), suiteBar_.getBounds(), &content_);
+    content_.addChildComponent(*presetBrowser_);
+    presetBrowser_->setVisible(true);
+    suiteBar_.setPresetsOpen(true);
+    layoutContent();
 }
 
 void OpenSmackerEditor::setAdvancedView(bool advanced) {
@@ -210,6 +224,9 @@ void OpenSmackerEditor::setAdvancedView(bool advanced) {
 }
 
 void OpenSmackerEditor::setPage(int page) {
+    if (presetBrowser_ != nullptr)
+        presetBrowser_->setVisible(false);
+    suiteBar_.setPresetsOpen(false);
     currentPage_ = juce::jlimit(0, 3, page);
     for (size_t i = 0; i < pages_.size(); ++i)
         markSelected(pages_[i], static_cast<int>(i) == currentPage_);
@@ -301,17 +318,27 @@ void OpenSmackerEditor::paintContent(juce::Graphics& g) {
 }
 
 void OpenSmackerEditor::resized() {
-    const int width = juce::jlimit(suite::kMinEditorWidth, suite::kMaxEditorWidth, getWidth());
-    const int height = juce::jlimit(suite::kMinEditorHeight, suite::kMaxEditorHeight, getHeight());
-    if (width != getWidth() || height != getHeight()) {
+    const float fit = std::min(static_cast<float>(getWidth()) / suite::kDefaultEditorWidth,
+                                static_cast<float>(getHeight()) / suite::kDefaultEditorHeight);
+    const float scale = std::clamp(fit, 0.7f, 2.0f);
+    const int width = juce::roundToInt(suite::kDefaultEditorWidth * scale);
+    const int height = juce::roundToInt(suite::kDefaultEditorHeight * scale);
+    if (std::abs(width - getWidth()) > 1 || std::abs(height - getHeight()) > 1) {
         setSize(width, height);
         return;
     }
-    content_.setTransform(juce::RectanglePlacement(juce::RectanglePlacement::centred)
-        .getTransformToFit(content_.getLocalBounds().toFloat(), getLocalBounds().toFloat()));
+    const float ox = (static_cast<float>(getWidth()) - suite::kDefaultEditorWidth * scale) * 0.5f;
+    const float oy = (static_cast<float>(getHeight()) - suite::kDefaultEditorHeight * scale) * 0.5f;
+    const auto design = juce::AffineTransform::scale(scale).translated(ox, oy);
+    content_.setTransform(design);
+    constexpr int suiteX = 16;
+    constexpr int suiteY = 82;
+    suiteBar_.setBounds(0, 0, suite::kDefaultEditorWidth - suiteX - 18, 36);
+    suiteBar_.setTransform(juce::AffineTransform::translation(static_cast<float>(suiteX), static_cast<float>(suiteY))
+                                .followedBy(design));
     AudioProcessorEditor::resized();
     if (persistEditorSize_)
-        processor_.setEditorSize(width, height);
+        processor_.setEditorSize(getWidth(), getHeight());
 }
 
 void OpenSmackerEditor::layoutContent() {
@@ -323,11 +350,6 @@ void OpenSmackerEditor::layoutContent() {
     prevPresetBtn_.setBounds(top.removeFromRight(40).withHeight(40));
     top.removeFromRight(8);
     presetBox_.setBounds(top);
-
-    auto suite = content_.getLocalBounds().withTrimmedLeft(16).withTrimmedRight(18).withY(82).withHeight(36);
-    hitMonitor_.setBounds(suite.removeFromRight(240));
-    suite.removeFromRight(12);
-    suiteBar_.setBounds(suite);
 
     auto rail = content_.getLocalBounds().withTrimmedTop(headerHeight).withWidth(railWidth).reduced(16, 8);
     versionBounds_ = rail.removeFromBottom(20);
@@ -350,5 +372,12 @@ void OpenSmackerEditor::layoutContent() {
     synthPanel_.setBounds(area);
     effectsPanel_.setBounds(area);
     performancePanel_.setBounds(area);
+    if (presetBrowser_ != nullptr && presetBrowser_->isVisible()) {
+        auto browser = content_.getLocalBounds().withTrimmedTop(headerHeight).withTrimmedLeft(railWidth).reduced(14);
+        browser = browser.removeFromRight(std::min(420, browser.getWidth() - 24));
+        browser.setHeight(std::min(460, browser.getHeight()));
+        presetBrowser_->setBounds(browser);
+        presetBrowser_->toFront(false);
+    }
     syncLockBadges();
 }

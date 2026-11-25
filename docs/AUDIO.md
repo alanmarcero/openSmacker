@@ -19,7 +19,7 @@ Factory hits peak near −5 dBFS. The limiter ceiling stays at −1 dBFS and doe
 
 In One-shot mode, the amplitude envelope falls across the dry hit and reaches silence at the end. Body decay and the separate wire attack, hold, and decay shape their respective layers. Snare and rim pitch is capped so a long decay lengthens the noise, not a bell tone. In Hold notes mode, MIDI note-on opens the amplitude envelope and the matching note-off starts the release. The release range reaches 20 seconds. Audition and host-synced rolls always trigger a one-shot.
 
-Gated reverb follows the dry layers. The 84 factory sounds use 0–7% room mix with a 70 ms reverb gate and have reverse disabled. Users can increase the room time, change the gate, or use a tempo-positioned reverse swell.
+Gated reverb follows the dry layers. The 56 factory sounds use 0–7% room mix with a 70 ms reverb gate and have reverse disabled. Users can increase the room time, change the gate, or use a tempo-positioned reverse swell.
 
 ## Rendering and recall
 

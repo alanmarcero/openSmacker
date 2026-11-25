@@ -289,12 +289,10 @@ void OpenSmackerProcessor::setCurrentProgram(int index) {
     if (index >= 0 && index < static_cast<int>(presets.size())) {
         currentProgram_ = index;
         synthModel_.store(2);
-        const bool preservePitch = parameters.getRawParameterValue(opensmacker::params::kLockPitch) != nullptr
-            && *parameters.getRawParameterValue(opensmacker::params::kLockPitch) > 0.5f;
         opensmacker::presets::SectionLocks locks{};
         for (size_t i = 0; i < locks.size(); ++i)
             locks[i] = sectionLocks_[i].load(std::memory_order_relaxed);
-        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks, preservePitch,
+        opensmacker::presets::apply(presets[static_cast<size_t>(index)], parameters, locks,
                                     [this](const juce::String& id) { return isParamLocked(id); });
         if (!isParamLocked(opensmacker::params::kPreset)) {
             if (auto* param = parameters.getParameter(opensmacker::params::kPreset)) {

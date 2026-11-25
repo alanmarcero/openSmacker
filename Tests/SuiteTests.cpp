@@ -176,32 +176,42 @@ TEST_CASE("Editor size is resizable, scales its layout evenly, and restores with
     OpenSmackerProcessor processor;
     processor.setEditorSize(1480, 900);
     auto editor = std::unique_ptr<OpenSmackerEditor>(static_cast<OpenSmackerEditor*>(processor.createEditor()));
-    REQUIRE(editor->getWidth() == 1480);
-    REQUIRE(editor->getHeight() == 900);
+    const auto lockedSize = [](int width, int height) {
+        const float scale = std::clamp(std::min(static_cast<float>(width) / suite::kDefaultEditorWidth,
+                                                 static_cast<float>(height) / suite::kDefaultEditorHeight),
+                                        0.7f, 2.0f);
+        return std::pair{ juce::roundToInt(suite::kDefaultEditorWidth * scale),
+                          juce::roundToInt(suite::kDefaultEditorHeight * scale) };
+    };
+    const auto openedSize = lockedSize(1480, 900);
+    REQUIRE(editor->getWidth() == openedSize.first);
+    REQUIRE(editor->getHeight() == openedSize.second);
     auto* constrainer = editor->getConstrainer();
     REQUIRE(constrainer != nullptr);
-    CHECK(constrainer->getFixedAspectRatio() == 0.0);
+    CHECK(constrainer->getFixedAspectRatio() == Catch::Approx(static_cast<double>(suite::kDefaultEditorWidth)
+                                                              / suite::kDefaultEditorHeight));
     CHECK(constrainer->getMinimumWidth() == suite::kMinEditorWidth);
     CHECK(constrainer->getMinimumHeight() == suite::kMinEditorHeight);
     CHECK(constrainer->getMinimumWidth() <= suite::kDefaultEditorWidth * 3 / 4);
     CHECK(constrainer->getMaximumWidth() >= suite::kDefaultEditorWidth * 3 / 2);
     CHECK(constrainer->getMaximumHeight() >= suite::kDefaultEditorHeight * 3 / 2);
     editor->setSize(1600, 860);
-    CHECK(editor->getWidth() == 1600);
-    CHECK(editor->getHeight() == 860);
-    CHECK(processor.editorWidth() == 1600);
-    CHECK(processor.editorHeight() == 860);
+    const auto resized = lockedSize(1600, 860);
+    CHECK(editor->getWidth() == resized.first);
+    CHECK(editor->getHeight() == resized.second);
+    CHECK(processor.editorWidth() == resized.first);
+    CHECK(processor.editorHeight() == resized.second);
 
-    // 860 / 752 is the smaller ratio, so the layout scales by it and centres across the width.
-    const float scale = 860.0f / static_cast<float>(suite::kDefaultEditorHeight);
+    const float scale = std::min(static_cast<float>(editor->getWidth()) / suite::kDefaultEditorWidth,
+                                  static_cast<float>(editor->getHeight()) / suite::kDefaultEditorHeight);
     auto* presets = findButton(*editor, "Presets");
     REQUIRE(presets != nullptr);
+    REQUIRE(presets->getParentComponent()->getParentComponent() == editor.get());
     const auto area = editor->getLocalArea(presets, presets->getLocalBounds().toFloat());
     CHECK(area.getWidth() == Catch::Approx(static_cast<float>(presets->getWidth()) * scale).margin(1.0f));
     CHECK(area.getHeight() == Catch::Approx(static_cast<float>(presets->getHeight()) * scale).margin(1.0f));
-    const float leftMargin = (1600.0f - static_cast<float>(suite::kDefaultEditorWidth) * scale) * 0.5f;
-    const float designX = static_cast<float>(presets->getX() + presets->getParentComponent()->getX());
-    CHECK(area.getX() == Catch::Approx(leftMargin + designX * scale).margin(1.0f));
+    const float ox = (static_cast<float>(editor->getWidth()) - suite::kDefaultEditorWidth * scale) * 0.5f;
+    CHECK(area.getX() == Catch::Approx(ox + (16.0f + static_cast<float>(presets->getX())) * scale).margin(1.0f));
 
     std::vector<juce::Rectangle<int>> targets;
     for (auto* child : editor->getChildren())
@@ -212,8 +222,8 @@ TEST_CASE("Editor size is resizable, scales its layout evenly, and restores with
     OpenSmackerProcessor restored;
     restored.setStateInformation(state.getData(), static_cast<int>(state.getSize()));
     auto again = std::unique_ptr<OpenSmackerEditor>(static_cast<OpenSmackerEditor*>(restored.createEditor()));
-    CHECK(again->getWidth() == 1600);
-    CHECK(again->getHeight() == 860);
+    CHECK(again->getWidth() == resized.first);
+    CHECK(again->getHeight() == resized.second);
 
     OpenSmackerProcessor legacy;
     legacy.setCurrentProgram(2);

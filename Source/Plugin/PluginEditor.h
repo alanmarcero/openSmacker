@@ -3,6 +3,7 @@
 #include "EdmLookAndFeel.h"
 #include "Panels.h"
 #include "PluginProcessor.h"
+#include "PresetBrowser.h"
 #include "SuiteBar.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -48,7 +49,7 @@ private:
     juce::TextButton prevPresetBtn_{ "<" }, nextPresetBtn_{ ">" };
     juce::TextButton auditionBtn_{ "Audition hit" }, viewToggleBtn_{ "Advanced controls" };
     suite::SuiteBar suiteBar_;
-    opensmacker::ui::HitMonitor hitMonitor_;
+    std::unique_ptr<suite::PresetBrowser> presetBrowser_;
     int currentPage_ = 0;
     juce::Rectangle<int> artBounds_;
     juce::Rectangle<int> versionBounds_;
