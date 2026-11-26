@@ -809,7 +809,7 @@ TEST_CASE("OpenSmacker exposes 3-band EQ with glide and Output controls on the m
         });
 }
 
-TEST_CASE("All factory hits have attack, body, headroom and a compact tail", "[plugin][audio][presets]") {
+TEST_CASE("All factory hits have attack, body, headroom and a tail that ends", "[plugin][audio][presets]") {
     constexpr int rate = 48000, samples = rate / 2;
     OpenSmackerProcessor processor;
     for (int family = 0; family < 4; ++family) {
@@ -837,7 +837,7 @@ TEST_CASE("All factory hits have attack, body, headroom and a compact tail", "[p
                 if (std::max(std::abs(l), std::abs(r)) >= cutoff) end = i;
             }
             const auto endMs = end * 1000 / rate;
-            CHECK(endMs < 280);
+            CHECK(endMs < 450);
             lowPeak = std::min(lowPeak, peak);
             highPeak = std::max(highPeak, peak);
             shortest = std::min(shortest, endMs);
@@ -1325,4 +1325,22 @@ TEST_CASE("EQ bands snap to chromatic notes across two octaves", "[plugin][eq][n
     checkBand(params::kEqLowFreq, params::kEqLowMinMidi, params::kEqLowMaxMidi, "A0", "A1", "A2", "G#1");
     checkBand(params::kEqMidFreq, params::kEqMidMinMidi, params::kEqMidMaxMidi, "A3", "A4", "A5", "G#4");
     checkBand(params::kEqHighFreq, params::kEqHighMinMidi, params::kEqHighMaxMidi, "A6", "A7", "A8", "G#7");
+    const auto noteMenu = suite::eq::noteMenu(params::kEqLowMinMidi, params::kEqLowMaxMidi, 28, 1);
+    CHECK(noteMenu.getNumItems() == params::kEqLowMaxMidi - params::kEqLowMinMidi + 1);
+    CHECK(suite::eq::midiFromNoteItem(8, 1, params::kEqLowMinMidi, params::kEqLowMaxMidi) == 28);
+    CHECK_FALSE(suite::eq::midiFromNoteItem(0, 1, params::kEqLowMinMidi, params::kEqLowMaxMidi).has_value());
+}
+
+TEST_CASE("Factory snares keep a longer tail than rim shots", "[plugin][presets]") {
+    namespace params = opensmacker::params;
+    OpenSmackerProcessor snare;
+    snare.setCurrentProgram(opensmacker::presets::firstPresetForFamily(0));
+    OpenSmackerProcessor rim;
+    rim.setCurrentProgram(opensmacker::presets::firstPresetForFamily(3));
+    const float snareWire = snare.parameters.getRawParameterValue(params::kNoiseDecay)->load();
+    const float rimWire = rim.parameters.getRawParameterValue(params::kNoiseDecay)->load();
+    const float snareBody = snare.parameters.getRawParameterValue(params::kToneDecay)->load();
+    CHECK(snareWire > 220.0f);
+    CHECK(snareBody > 180.0f);
+    CHECK(snareWire > rimWire + 40.0f);
 }

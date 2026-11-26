@@ -2,6 +2,7 @@
 #include "Parameters.h"
 
 #include <algorithm>
+#include <array>
 #include <ranges>
 
 namespace opensmacker::presets {
@@ -92,10 +93,15 @@ constexpr std::array<Patch, 56> bank{{
 }};
 
 FactoryPreset makePreset(const Patch& p) {
-    const int minDecay = p.family == 1 ? 150 : (p.family == 2 ? 115 : 135);
-    const int minWire = p.family == 0 ? 105 : (p.family == 3 ? 95 : (p.family == 2 ? 70 : 55));
-    const float decay = static_cast<float>(std::max(p.decayMs, minDecay));
-    const float wireDecay = static_cast<float>(std::max(p.wireMs, minWire));
+    // Family order matches the bank: snare, bell, tom, rim.
+    constexpr std::array<float, 4> kDecayScale{ 1.55f, 1.35f, 1.65f, 1.1f };
+    constexpr std::array<float, 4> kMinDecay{ 200.0f, 260.0f, 190.0f, 100.0f };
+    constexpr std::array<float, 4> kWireScale{ 1.9f, 1.0f, 1.25f, 1.35f };
+    constexpr std::array<float, 4> kMinWire{ 240.0f, 40.0f, 70.0f, 120.0f };
+    constexpr std::array<float, 4> kWireCurve{ -0.08f, -0.18f, -0.18f, -0.30f };
+    const auto family = static_cast<size_t>(p.family);
+    const float decay = std::clamp(static_cast<float>(p.decayMs) * kDecayScale[family], kMinDecay[family], 1100.0f);
+    const float wireDecay = std::clamp(static_cast<float>(p.wireMs) * kWireScale[family], kMinWire[family], 1000.0f);
     const int air = p.air >= 0 ? p.air : kDefaultAir[static_cast<size_t>(p.family)];
     const float bodyLpf = p.family == 1 ? 15000.0f : (p.highDb < -1.0f ? 8500.0f : 12000.0f);
     return { p.name, {
@@ -109,9 +115,9 @@ FactoryPreset makePreset(const Patch& p) {
         { kBodyLPF, bodyLpf },
         { kAmpEnabled, 0 },
         { kAmpAttack, 0.2f },
-        { kAmpDecay, std::clamp(decay * 0.9f, 20.0f, 600.0f) },
+        { kAmpDecay, std::clamp(decay * 0.92f, 48.0f, 600.0f) },
         { kAmpSustain, p.sustain },
-        { kAmpRelease, std::clamp(decay * 0.42f, 12.0f, 130.0f) },
+        { kAmpRelease, std::clamp(decay * 0.7f, 36.0f, 480.0f) },
         { kPreBursts, static_cast<float>(p.strikes) },
         { kPreSpread, p.strikes > 2 ? 4.0f : 5.5f },
         { kPreDecay, 3.5f },
@@ -122,7 +128,7 @@ FactoryPreset makePreset(const Patch& p) {
         { kNoiseAttack, 0.15f },
         { kNoiseHold, 0.4f },
         { kNoiseDecay, wireDecay },
-        { kNoiseCurve, -0.55f },
+        { kNoiseCurve, kWireCurve[family] },
         { kNoiseHPF, static_cast<float>(p.wireHp) },
         { kNoiseLPF, static_cast<float>(p.wireLp) },
         { kNoiseStereoWidth, p.width },

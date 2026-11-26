@@ -453,8 +453,23 @@ void DualEqKnob::mouseExit(const juce::MouseEvent&) {
 
 void DualEqKnob::mouseDown(const juce::MouseEvent& event) {
     if (event.eventComponent == &freqReadout_) {
-        if (event.mods.isPopupMenu() && onPopupMenu_)
-            onPopupMenu_(freqId_, event);
+        if (event.mods.isPopupMenu() && freqAttachment_ != nullptr) {
+            auto* param = state_.getParameter(freqId_);
+            if (param == nullptr) return;
+            const auto [minMidi, maxMidi] = opensmacker::params::eqBandMidiLimits(freqId_);
+            const int current = suite::eq::nearestMidi(freqHz_, minMidi, maxMidi);
+            auto menu = suite::eq::noteMenu(minMidi, maxMidi, current, 1);
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&freqReadout_),
+                [this, minMidi, maxMidi](int itemId) {
+                    const auto midi = suite::eq::midiFromNoteItem(itemId, 1, minMidi, maxMidi);
+                    if (!midi || freqAttachment_ == nullptr) return;
+                    const float hz = suite::eq::noteToHz(*midi);
+                    freqHz_ = hz;
+                    freqAttachment_->setValueAsCompleteGesture(hz);
+                    updateFreqReadout();
+                    repaint();
+                });
+        }
         return;
     }
     if (event.mods.isPopupMenu()) {

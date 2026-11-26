@@ -570,7 +570,10 @@ TEST_CASE("Shaped snares do not sustain a loud body sine under the wires", "[cor
         }
         return energy;
     };
-    REQUIRE(lateBody(true) < lateBody(false) * 1.45f);
+    const double shapedTail = lateBody(true);
+    const double legacyTail = lateBody(false);
+    REQUIRE(shapedTail > legacyTail * 0.12);
+    REQUIRE(shapedTail < legacyTail * 1.45);
 }
 
 TEST_CASE("Oversampled FM bell preserves high-octave FM depth without sub-fundamental aliasing", "[core][synth][oversampling]") {

@@ -96,13 +96,13 @@ struct ShapedProfile {
 ShapedProfile shapedProfile(VoiceMode mode) noexcept {
     switch (mode) {
         case VoiceMode::DanceSnare:
-            return { 0.40f, { 0.08f, 0.05f, 0.035f }, { 0.22f, 0.10f, 0.045f }, 0.96f, 0.5f, false, false };
+            return { 0.48f, { 0.16f, 0.10f, 0.06f }, { 0.22f, 0.10f, 0.045f }, 0.96f, 0.5f, false, false };
         case VoiceMode::ClubTom:
-            return { 0.46f, { 0.16f, 0.11f, 0.085f }, { 0.21f, 0.12f, 0.095f }, 0.90f, 0.40f, false, true };
+            return { 0.58f, { 0.26f, 0.18f, 0.12f }, { 0.21f, 0.12f, 0.095f }, 0.90f, 0.40f, false, true };
         case VoiceMode::FmBell:
             return { 0.95f, { 0.56f, 0.42f, 0.28f }, { 0.42f, 0.26f, 0.12f }, 0.74f, 1.0f, true, false };
         case VoiceMode::PrydaRimSmack:
-            return { 0.55f, { 0.095f, 0.06f, 0.038f }, { 0.30f, 0.15f, 0.075f }, 0.74f, 0.35f, false, false };
+            return { 0.42f, { 0.12f, 0.07f, 0.045f }, { 0.24f, 0.12f, 0.06f }, 0.74f, 0.35f, false, false };
     }
     return { 0.30f, { 0.08f, 0.05f, 0.03f }, { 0.12f, 0.06f, 0.03f }, 0.7f, 0.5f, false, false };
 }
@@ -629,10 +629,14 @@ StereoFrame SmackSynth::processSample(const SmackSynthSettings& settings) noexce
     const float stiffnessB = std::clamp(settings.shellSpread, -0.5f, 0.5f) * 0.18f;
     const auto profile = shapedProfile(settings.voiceMode);
     float fundTau = bodyDecay * profile.fundScale;
-    if (!profile.bell) {
-        const float maxFundSec = profile.octave ? 0.11f : 0.040f;
+    // Snares and toms keep a body ring. Rims stay a short knock.
+    float maxFundSec = 0.16f;
+    if (profile.octave)
+        maxFundSec = 0.28f;
+    if (settings.voiceMode == VoiceMode::PrydaRimSmack)
+        maxFundSec = 0.055f;
+    if (!profile.bell)
         fundTau = std::min(fundTau, maxFundSec * sr);
-    }
     float fundEnv = 1.0f;
     if (!fullAdsrEnabled_)
         fundEnv = std::exp(-static_cast<float>(std::max(0, mainAge)) / std::max(1.0f, fundTau));
