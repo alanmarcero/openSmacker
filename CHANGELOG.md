@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.8.5
+
+- Lengthens snare, tom, and bell tails so they ring instead of cracking like rim shots. Rims stay short.
+- Right-click an EQ note to pick a note in that band.
+
 ## v2.8.4
 
 - Tracks MIDI pitch and updates the shared suite UI, CI, and tests.
